@@ -1,0 +1,9 @@
+The files in this directory are coming from
+http://www.opengl.org/registry/
+
+They constitute a machine-readable description of the OpenGL API.
+We automatically generate the bindings by parsing these files.
+
+The version of these files in this directory corresponds to OpenGL 4.1.
+
+gl.spec.FIXED is a version of gl.spec with bugs fixed (these have also been reported to Khronos)
