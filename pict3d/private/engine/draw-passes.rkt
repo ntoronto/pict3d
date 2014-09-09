@@ -146,19 +146,24 @@ code
   )
 
 (define-singleton (blend-program)
-  (make-gl-program (list (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
+  (make-gl-program (make-vao-struct)
+                   (list (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
 
 (define-singleton (bloom-extract-program)
-  (make-gl-program (list (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
+  (make-gl-program (make-vao-struct)
+                   (list (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
 
 (define-singleton (bloom-combine-program)
-  (make-gl-program (list (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
+  (make-gl-program (make-vao-struct)
+                   (list (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
 
 (define-singleton (blur-vert-program)
-  (make-gl-program (list (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
+  (make-gl-program (make-vao-struct)
+                   (list (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
 
 (define-singleton (blur-horz-program)
-  (make-gl-program (list (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
+  (make-gl-program (make-vao-struct)
+                   (list (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
 
 ;; ===================================================================================================
 ;; Framebuffers
@@ -292,8 +297,6 @@ code
   (define unproj0 (flt3->unproj0 view->clip))
   (define unproj1 (flt3->unproj1 view->clip))
   
-  (glEnableClientState GL_VERTEX_ARRAY)
-  (glEnableClientState GL_INDEX_ARRAY)
   (glEnable GL_TEXTURE_2D)
   
   (define-values (bloom-width bloom-height)

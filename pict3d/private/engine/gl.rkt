@@ -405,6 +405,50 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
         [else  (raise-result-error 'gl-framebuffer-renderbuffer "gl-renderbuffer" a)]))
 
 ;; ===================================================================================================
+;; Vertex array object structs
+
+(: gl-type-size-hash (HashTable Integer Index))
+(define gl-type-size-hash
+  (make-hasheq (list (cons GL_FLOAT 4)
+                     (cons GL_UNSIGNED_BYTE 1)
+                     ;; Doesn't work (no f16vector in Racket)
+                     #;(cons GL_HALF_FLOAT 2))))
+
+(: gl-type->size (-> Integer Index))
+(define (gl-type->size t)
+  (hash-ref gl-type-size-hash t (λ () (error 'gl-type->size "unknown GL type ~e" t))))
+
+(struct vao-field ([name : String]
+                   [count : Index]
+                   [type : Integer]
+                   [normalized? : Boolean]
+                   [size : Index])
+  #:transparent)
+
+(struct vao-struct ([fields : (Listof vao-field)]
+                    [size : Index])
+  #:transparent)
+
+(: make-vao-field (->* [String Index Integer] [Boolean] vao-field))
+(define (make-vao-field name count type [normalized? #t])
+  (vao-field name count type normalized? (assert (* count (gl-type->size type)) index?)))
+
+(: make-vao-struct (-> vao-field * vao-struct))
+(define (make-vao-struct . fs)
+  (vao-struct fs (assert (apply + (map vao-field-size fs)) index?)))
+
+(: vao-struct-bind-attributes (-> vao-struct Void))
+(define (vao-struct-bind-attributes struct)
+  (match-define (vao-struct fields struct-size) struct)
+  (for/fold ([start : Nonnegative-Fixnum  0]) ([field  (in-list fields)]
+                                               [index : Natural  (in-naturals 0)])
+    (match-define (vao-field name field-count type normalized? field-size) field)
+    (glEnableVertexAttribArray index)
+    (glVertexAttribPointer index field-count type normalized? struct-size start)
+    (unsafe-fx+ start field-size))
+  (void))
+
+;; ===================================================================================================
 ;; Managed shaders and programs
 
 (: make-gl-shader (-> Integer String gl-object))
@@ -424,13 +468,17 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
                   handle
                   (λ ([handle : Natural]) (glDeleteShader handle))))
 
-(: make-gl-program (-> (Listof gl-object) gl-object))
-(define (make-gl-program shaders)
+(: make-gl-program (-> vao-struct (Listof gl-object) gl-object))
+(define (make-gl-program struct shaders)
   (check-current-gl-context 'make-gl-program)
   
   (define handle (glCreateProgram))
   (for ([shader  (in-list shaders)])
     (glAttachShader handle (gl-object-handle shader)))
+  
+  (for ([field  (in-list (vao-struct-fields struct))]
+        [index : Natural  (in-naturals 0)])
+    (glBindAttribLocation handle index (vao-field-name field)))
   
   (glLinkProgram handle)
   (define status (glGetProgramiv handle GL_LINK_STATUS))
@@ -623,49 +671,6 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
 (: gl-program-uniform (-> gl-object String Uniform Void))
 (define (gl-program-uniform prog name u)
   (gl-uniform (glGetUniformLocation (gl-object-handle prog) name) u))
-
-;; ===================================================================================================
-;; Vertex array object structs
-
-(: gl-type-size-hash (HashTable Integer Index))
-(define gl-type-size-hash
-  (make-hasheq (list (cons GL_FLOAT 4)
-                     (cons GL_UNSIGNED_BYTE 1)
-                     ;; Doesn't work (no f16vector in Racket)
-                     #;(cons GL_HALF_FLOAT 2))))
-
-(: gl-type->size (-> Integer Index))
-(define (gl-type->size t)
-  (hash-ref gl-type-size-hash t (λ () (error 'gl-type->size "unknown GL type ~e" t))))
-
-(struct vao-field ([index : Natural]
-                   [count : Index]
-                   [type : Integer]
-                   [normalized? : Boolean]
-                   [size : Index])
-  #:transparent)
-
-(struct vao-struct ([fields : (Listof vao-field)]
-                    [size : Index])
-  #:transparent)
-
-(: make-vao-field (->* [Natural Index Integer] [Boolean] vao-field))
-(define (make-vao-field index count type [normalized? #t])
-  (vao-field index count type normalized? (assert (* count (gl-type->size type)) index?)))
-
-(: make-vao-struct (-> vao-field * vao-struct))
-(define (make-vao-struct . fs)
-  (vao-struct fs (assert (apply + (map vao-field-size fs)) index?)))
-
-(: vao-struct-bind-attributes (-> vao-struct Void))
-(define (vao-struct-bind-attributes struct)
-  (match-define (vao-struct fields struct-size) struct)
-  (for/fold ([start : Nonnegative-Fixnum  0]) ([field  (in-list fields)])
-    (match-define (vao-field index field-count type normalized? field-size) field)
-    (glEnableVertexAttribArray index)
-    (glVertexAttribPointer index field-count type normalized? struct-size start)
-    (unsafe-fx+ start field-size))
-  (void))
 
 ;; ===================================================================================================
 ;; Misc. convenience

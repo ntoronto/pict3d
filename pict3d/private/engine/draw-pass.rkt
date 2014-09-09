@@ -81,8 +81,24 @@
     [else
      (raise-argument-error 'make-vertex-buffer "Index" size)]))
 
-(define get-all-vertex-buffer
-  (make-cached-vector 'get-all-vertex-buffer make-vertex-buffer vertex-buffer-length))
+(: vertex-buffers (HashTable vao-struct vertex-buffer))
+(define vertex-buffers (make-weak-hasheq))
+
+(: get-vertex-buffer (-> vao-struct Nonnegative-Fixnum (Values vertex-buffer Nonnegative-Fixnum)))
+(define (get-vertex-buffer struct vertex-count)
+  (define size (unsafe-fx* (vao-struct-size struct) vertex-count))
+  (define vbuf (hash-ref vertex-buffers struct #f))
+  (cond [(and vbuf (< size (vertex-buffer-length vbuf)))
+         (values vbuf size)]
+        [else
+         (printf "allocating vertex buffer of size ~v~n" (next-pow2 size))
+         (define vbuf (make-vertex-buffer (next-pow2 size)))
+         (match-define (vertex-buffer vao buf _) vbuf)
+         (with-gl-vertex-array (vertex-buffer-vao vbuf)
+           (with-gl-array-buffer (vertex-buffer-buf vbuf)
+             (vao-struct-bind-attributes struct)))
+         (hash-set! vertex-buffers struct vbuf)
+         (values vbuf size)]))
 
 (define get-all-starts (make-cached-vector 'get-all-starts make-s32vector s32vector-length))
 (define get-all-counts (make-cached-vector 'get-all-counts make-s32vector s32vector-length))
@@ -101,7 +117,7 @@
      GL_MAP_INVALIDATE_RANGE_BIT
      GL_MAP_INVALIDATE_BUFFER_BIT
      ;; Can't use this with multiple calls to this function per frame
-     ;; Doesn't seem to help much anyway
+     ;; Can help a bit
      ;GL_MAP_UNSYNCHRONIZED_BIT
      ))
    cpointer?))
@@ -126,14 +142,11 @@
   
   (when (> vertex-count 0)
     (define struct-size (vao-struct-size struct))
-    (define buffer-size (unsafe-fx* vertex-count struct-size))
-    ;; Get a big enough VAO and vertex buffer
-    (match-define (vertex-buffer vao buf _) (get-all-vertex-buffer buffer-size))
+    ;; Get (and cache) a VAO with a big enough buffer
+    (define-values (vbuf buffer-size) (get-vertex-buffer struct vertex-count))
     ;; With both...
-    (with-gl-vertex-array vao
-      (with-gl-array-buffer buf
-        ;; Bind the attributes
-        (vao-struct-bind-attributes struct)
+    (with-gl-vertex-array (vertex-buffer-vao vbuf)
+      (with-gl-array-buffer (vertex-buffer-buf vbuf)
         ;; Map the vertex buffer into memory
         (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
         ;; Copy the vertex data into the buffer
@@ -180,14 +193,11 @@
   
   (when (and (> vertex-count 0) (> prim-count 0))
     (define struct-size (vao-struct-size struct))
-    (define buffer-size (unsafe-fx* vertex-count struct-size))
-    ;; Get a big enough VAO and vertex buffer
-    (match-define (vertex-buffer vao buf _) (get-all-vertex-buffer buffer-size))
+    ;; Get (and cache) a VAO with a big enough buffer
+    (define-values (vbuf buffer-size) (get-vertex-buffer struct vertex-count))
     ;; With both...
-    (with-gl-vertex-array vao
-      (with-gl-array-buffer buf
-        ;; Bind the attributes
-        (vao-struct-bind-attributes struct)
+    (with-gl-vertex-array (vertex-buffer-vao vbuf)
+      (with-gl-array-buffer (vertex-buffer-buf vbuf)
         ;; Map the vertex array into memory
         (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
         ;; Allocate space for starts and counts

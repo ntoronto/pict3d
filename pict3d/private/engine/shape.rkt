@@ -428,9 +428,16 @@ code
    ))
 
 (define-singleton (mat-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_position" 3 GL_FLOAT)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER mat-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER mat-fragment-code))))
+    (make-gl-program
+     struct
+     (list (make-gl-shader GL_VERTEX_SHADER mat-vertex-code)
+           (make-gl-shader GL_FRAGMENT_SHADER mat-fragment-code))))
   
   (define uniforms
     (list (cons "model" 'model)
@@ -440,15 +447,6 @@ code
           (cons "proj" 'proj)
           (cons "znear" 'znear)
           (cons "zfar" 'zfar)))
-  
-  (define handle (gl-object-handle program))
-  (define vert_normal_roughness (cast (glGetAttribLocation handle "vert_normal_roughness") Natural))
-  (define vert_position (cast (glGetAttribLocation handle "vert_position") Natural))
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field vert_normal_roughness 4 GL_UNSIGNED_BYTE)
-     (make-vao-field vert_position 3 GL_FLOAT)))
   
   (program-spec program uniforms struct))
 
@@ -563,8 +561,19 @@ code
    ))
 
 (define-singleton (sphere-mat-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "trans0" 4 GL_FLOAT)
+     (make-vao-field "trans1" 4 GL_FLOAT)
+     (make-vao-field "trans2" 4 GL_FLOAT)
+     (make-vao-field "untrans0" 4 GL_FLOAT)
+     (make-vao-field "untrans1" 4 GL_FLOAT)
+     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "vert_roughness_inside" 4 GL_UNSIGNED_BYTE)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER sphere-mat-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER sphere-mat-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-mat-fragment-code))))
   
   (define uniforms
@@ -578,25 +587,6 @@ code
           (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)))
-  
-  (define handle (gl-object-handle program))
-  (define trans0 (cast (glGetAttribLocation handle "trans0") Natural))
-  (define trans1 (cast (glGetAttribLocation handle "trans1") Natural))
-  (define trans2 (cast (glGetAttribLocation handle "trans2") Natural))
-  (define untrans0 (cast (glGetAttribLocation handle "untrans0") Natural))
-  (define untrans1 (cast (glGetAttribLocation handle "untrans1") Natural))
-  (define untrans2 (cast (glGetAttribLocation handle "untrans2") Natural))
-  (define vert_roughness_inside (cast (glGetAttribLocation handle "vert_roughness_inside") Natural))
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field trans0 4 GL_FLOAT)
-     (make-vao-field trans1 4 GL_FLOAT)
-     (make-vao-field trans2 4 GL_FLOAT)
-     (make-vao-field untrans0 4 GL_FLOAT)
-     (make-vao-field untrans1 4 GL_FLOAT)
-     (make-vao-field untrans2 4 GL_FLOAT)
-     (make-vao-field vert_roughness_inside 4 GL_UNSIGNED_BYTE)))
   
   (program-spec program uniforms struct))
 
@@ -707,8 +697,21 @@ code
    ))
 
 (define-singleton (sphere-opaq-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "trans0" 4 GL_FLOAT)
+     (make-vao-field "trans1" 4 GL_FLOAT)
+     (make-vao-field "trans2" 4 GL_FLOAT)
+     (make-vao-field "untrans0" 4 GL_FLOAT)
+     (make-vao-field "untrans1" 4 GL_FLOAT)
+     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-opaq-fragment-code))))
   
   (define uniforms
@@ -725,29 +728,6 @@ code
           (cons "ambient" 'ambient)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
-  
-  (define handle (gl-object-handle program))
-  (define trans0 (cast (glGetAttribLocation handle "trans0") Natural))
-  (define trans1 (cast (glGetAttribLocation handle "trans1") Natural))
-  (define trans2 (cast (glGetAttribLocation handle "trans2") Natural))
-  (define untrans0 (cast (glGetAttribLocation handle "untrans0") Natural))
-  (define untrans1 (cast (glGetAttribLocation handle "untrans1") Natural))
-  (define untrans2 (cast (glGetAttribLocation handle "untrans2") Natural))
-  (define vert_rcolor (cast (glGetAttribLocation handle "vert_rcolor") Natural))
-  (define vert_ecolor (cast (glGetAttribLocation handle "vert_ecolor") Natural))
-  (define vert_material_inside (cast (glGetAttribLocation handle "vert_material_inside") Natural))
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field trans0 4 GL_FLOAT)
-     (make-vao-field trans1 4 GL_FLOAT)
-     (make-vao-field trans2 4 GL_FLOAT)
-     (make-vao-field untrans0 4 GL_FLOAT)
-     (make-vao-field untrans1 4 GL_FLOAT)
-     (make-vao-field untrans2 4 GL_FLOAT)
-     (make-vao-field vert_rcolor 4 GL_UNSIGNED_BYTE)
-     (make-vao-field vert_ecolor 4 GL_UNSIGNED_BYTE)
-     (make-vao-field vert_material_inside 4 GL_UNSIGNED_BYTE)))
   
   (program-spec program uniforms struct))
 
@@ -813,8 +793,21 @@ code
    ))
 
 (define-singleton (sphere-tran-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "trans0" 4 GL_FLOAT)
+     (make-vao-field "trans1" 4 GL_FLOAT)
+     (make-vao-field "trans2" 4 GL_FLOAT)
+     (make-vao-field "untrans0" 4 GL_FLOAT)
+     (make-vao-field "untrans1" 4 GL_FLOAT)
+     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-tran-fragment-code))))
   
   (define uniforms
@@ -831,29 +824,6 @@ code
           (cons "ambient" 'ambient)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
-  
-  (define handle (gl-object-handle program))
-  (define trans0 (cast (glGetAttribLocation handle "trans0") Natural))
-  (define trans1 (cast (glGetAttribLocation handle "trans1") Natural))
-  (define trans2 (cast (glGetAttribLocation handle "trans2") Natural))
-  (define untrans0 (cast (glGetAttribLocation handle "untrans0") Natural))
-  (define untrans1 (cast (glGetAttribLocation handle "untrans1") Natural))
-  (define untrans2 (cast (glGetAttribLocation handle "untrans2") Natural))
-  (define vert_rcolor (cast (glGetAttribLocation handle "vert_rcolor") Natural))
-  (define vert_ecolor (cast (glGetAttribLocation handle "vert_ecolor") Natural))
-  (define vert_material_inside (cast (glGetAttribLocation handle "vert_material_inside") Natural))
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field trans0 4 GL_FLOAT)
-     (make-vao-field trans1 4 GL_FLOAT)
-     (make-vao-field trans2 4 GL_FLOAT)
-     (make-vao-field untrans0 4 GL_FLOAT)
-     (make-vao-field untrans1 4 GL_FLOAT)
-     (make-vao-field untrans2 4 GL_FLOAT)
-     (make-vao-field vert_rcolor 4 GL_UNSIGNED_BYTE)
-     (make-vao-field vert_ecolor 4 GL_UNSIGNED_BYTE)
-     (make-vao-field vert_material_inside 4 GL_UNSIGNED_BYTE)))
   
   (program-spec program uniforms struct))
 
@@ -926,8 +896,11 @@ code
    ))
 
 (define-singleton (directional-light-program-spec)
+  (define struct (make-vao-struct))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
   
   (define uniforms
@@ -942,7 +915,7 @@ code
           (cons "depth" 'depth)
           (cons "material" 'material)))
   
-  (program-spec program uniforms (make-vao-struct)))
+  (program-spec program uniforms struct))
 
 ;; ===================================================================================================
 ;; Point light program
@@ -1033,8 +1006,14 @@ code
    ))
 
 (define-singleton (point-light-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_position_radius" 4 GL_FLOAT)
+     (make-vao-field "vert_intensity" 3 GL_FLOAT)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER point-light-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER point-light-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER point-light-fragment-code))))
   
   (define uniforms
@@ -1049,12 +1028,6 @@ code
           (cons "unproj1" 'unproj1)
           (cons "depth" 'depth)
           (cons "material" 'material)))
-  
-  (define handle (gl-object-handle program))
-  (define struct
-    (make-vao-struct
-     (make-vao-field (cast (glGetAttribLocation handle "vert_position_radius") Natural) 4 GL_FLOAT)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_intensity") Natural) 3 GL_FLOAT)))
   
   (program-spec program uniforms struct))
 
@@ -1126,8 +1099,16 @@ code
    ))
 
 (define-singleton (opaq-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_position" 3 GL_FLOAT)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER opaq-fragment-code))))
   
   (define uniforms
@@ -1139,14 +1120,6 @@ code
           (cons "ambient" 'ambient)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
-  
-  (define handle (gl-object-handle program))
-  (define struct
-    (make-vao-struct
-     (make-vao-field (cast (glGetAttribLocation handle "vert_rcolor") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_ecolor") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_material") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_position") Natural) 3 GL_FLOAT)))
   
   (program-spec program uniforms struct))
 
@@ -1187,8 +1160,16 @@ code
    ))
 
 (define-singleton (tran-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_position" 3 GL_FLOAT)))
+  
   (define program
-    (make-gl-program (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER tran-fragment-code))))
   
   (define uniforms
@@ -1199,14 +1180,6 @@ code
           (cons "zfar" 'zfar)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
-  
-  (define handle (gl-object-handle program))
-  (define struct
-    (make-vao-struct
-     (make-vao-field (cast (glGetAttribLocation handle "vert_rcolor") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_ecolor") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_material") Natural) 4 GL_UNSIGNED_BYTE)
-     (make-vao-field (cast (glGetAttribLocation handle "vert_position") Natural) 3 GL_FLOAT)))
   
   (program-spec program uniforms struct))
 

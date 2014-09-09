@@ -9,22 +9,22 @@
 
 (define spheres
   (combine
-   (combine* (for/list ([_  (in-range 50000)])
+   (combine* (for/list ([_  (in-range 100000)])
                (let* ([r  (+ (* (random) 0.5) 0.5)]
                       [g  (+ (* (random) 0.5) 0.5)]
                       [b  (+ (* (random) 0.5) 0.5)])
                  (with-color (list r g b (if (< (random) 0.5) 0.75 1.0))
-                   (sphere (list (- (* (random) 20) 10)
-                                 (- (* (random) 20) 10)
-                                 (- (* (random) 20) 10))
+                   (sphere (list (* (- (random) 0.5) 40)
+                                 (* (- (random) 0.5) 40)
+                                 (* (- (random) 0.5) 40))
                           (* 0.125 (+ (random) 0.1)))))))
-   (combine* (for/list ([_  (in-range 500)])
+   (combine* (for/list ([_  (in-range 1000)])
                (let* ([r  (random)]
                       [g  (random)]
                       [b  (random)])
-                 (light (list (- (* (random) 20) 10)
-                              (- (* (random) 20) 10)
-                              (- (* (random) 20) 10))
+                 (light (list (* (- (random) 0.5) 40)
+                              (* (- (random) 0.5) 40)
+                              (* (- (random) 0.5) 40))
                         (list r g b)
                         (* (random) 0.5)))))))
 (define frozen-spheres (freeze spheres))

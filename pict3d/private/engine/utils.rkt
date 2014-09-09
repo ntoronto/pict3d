@@ -17,16 +17,7 @@
 
 (: next-pow2 (-> Natural Natural))
 (define (next-pow2 size)
-  (expt 2 (integer-length (- size 1))))
-
-#|
-(require/typed
- profile
- [profile-thunk  (-> (-> Any) Any)])
-
-(define-syntax-rule (profile body ...)
-  (profile-thunk (λ () body ...)))
-|#
+  (arithmetic-shift 1 (integer-length (- size 1))))
 
 (: byte->flonum (-> Byte Flonum))
 (define (byte->flonum b)

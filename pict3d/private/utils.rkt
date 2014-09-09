@@ -6,6 +6,13 @@
 
 (provide (all-defined-out))
 
+(require/typed
+ profile
+ [profile-thunk  (-> (-> Any) Any)])
+
+(define-syntax-rule (profile body ...)
+  (profile-thunk (λ () body ...)))
+
 ;; ===================================================================================================
 ;; Lists with minimum length
 

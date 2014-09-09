@@ -12,6 +12,7 @@
          "../engine/shape.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
+         "../utils.rkt"
          "pict3d-snip.rkt"
          )
 
@@ -83,6 +84,8 @@
                          (basis-inverse camera-basis))
             (scale-flt3 (flvector 1.0 -1.0 -1.0)))))
     
+    ;(values
+    ;(profile
     (time
      ;; Lock everything up for drawing
      (with-gl-context (send canvas get-managed-gl-context)

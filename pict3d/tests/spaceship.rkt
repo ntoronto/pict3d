@@ -1,7 +1,166 @@
-#lang typed/racket/base
+#lang typed/racket
 
-(require pict3d)
+(require typed/racket/gui
+         typed/racket/class
+         pict3d)
 
+(require math/flonum
+         math/base
+         pict3d/private/math/flv3)
+
+(: 3d-polar->cartesian (-> Flonum Flonum Flonum FlVector))
+(define (3d-polar->cartesian θ ρ r)
+  (let ([cos-ρ  (cos ρ)])
+    (flvector (* r (* (cos θ) cos-ρ))
+              (* r (* (sin θ) cos-ρ))
+              (* r (sin ρ)))))
+
+(: cartesian->3d-polar (-> FlVector (Values Flonum Flonum Flonum)))
+(define (cartesian->3d-polar v)
+  (define-values (x y z) (flv3-values v))
+  (define r (flsqrt (+ (sqr x) (sqr y) (sqr z))))
+  (values (atan y x) (asin (/ z r)) r))
+
+(: retesselate (-> (-> FlVector FlVector)
+                   (-> (List FlVector FlVector FlVector)
+                       (Listof (List FlVector FlVector FlVector)))))
+(define ((retesselate f) vs)
+  (match-define (list v0 v1 v2) vs)
+  (define v01 (f (flv3* (flv3+ v0 v1) 0.5)))
+  (define v12 (f (flv3* (flv3+ v1 v2) 0.5)))
+  (define v20 (f (flv3* (flv3+ v2 v0) 0.5)))
+  (list (list v0 v01 v20)
+        (list v1 v12 v01)
+        (list v2 v20 v12)
+        (list v01 v12 v20)))
+
+(: absmax (-> Flonum Flonum Flonum))
+(define (absmax x y)
+  (if (> (abs x) (abs y)) x y))
+
+(: make-planetoid (-> Pict3D))
+(define (make-planetoid)
+  (define n 200)
+  (define as
+    (build-list n (λ (_) (assert (flv3normalize (flvector (- (random) 0.5)
+                                                          (- (random) 0.5)
+                                                          (- (random) 0.5)))
+                                 values))))
+  (define ws (build-list n (λ (_) (+ 0.5 (* (random) 10.0)))))
+  (define ss (build-list n (λ (_) (+ 0.05 (* (random) 0.05)))))
+  
+  (: f (-> FlVector FlVector))
+  (define (f v)
+    (let ([v  (assert (flv3normalize v) values)])
+      (define r
+        (for/fold ([r : Flonum  0.0]) ([a  (in-list as)]
+                                       [w  (in-list ws)]
+                                       [s  (in-list ss)])
+          (+ r (* s (flexp (* (sqr w) (- (flv3dot v a) 1.0)))))))
+      (flv3* v r)))
+  
+  (define vss
+    (map
+     (λ ([vs : (List FlVector FlVector FlVector)])
+       (match-define (list v0 v1 v2) vs)
+       (list (f v0) (f v1) (f v2)))
+     (list (list (flvector 1.0 0.0 0.0)
+                 (flvector 0.0 1.0 0.0)
+                 (flvector 0.0 0.0 1.0))
+           (list (flvector 0.0 1.0 0.0)
+                 (flvector -1.0 0.0 0.0)
+                 (flvector 0.0 0.0 1.0))
+           (list (flvector -1.0 0.0 0.0)
+                 (flvector 0.0 -1.0 0.0)
+                 (flvector 0.0 0.0 1.0))
+           (list (flvector 0.0 -1.0 0.0)
+                 (flvector 1.0 0.0 0.0)
+                 (flvector 0.0 0.0 1.0))
+           (list (flvector 0.0 1.0 0.0)
+                 (flvector 1.0 0.0 0.0)
+                 (flvector 0.0 0.0 -1.0))
+           (list (flvector -1.0 0.0 0.0)
+                 (flvector 0.0 1.0 0.0)
+                 (flvector 0.0 0.0 -1.0))
+           (list (flvector 0.0 -1.0 0.0)
+                 (flvector -1.0 0.0 0.0)
+                 (flvector 0.0 0.0 -1.0))
+           (list (flvector 1.0 0.0 0.0)
+                 (flvector 0.0 -1.0 0.0)
+                 (flvector 0.0 0.0 -1.0)))))
+  (let* ([vss  (append* (map (retesselate f) vss))]
+         [vss  (append* (map (retesselate f) vss))]
+         [vss  (append* (map (retesselate f) vss))]
+         ;[vss  (append* (map (retesselate f) vss))]
+         )
+    (combine*
+     (map (λ ([vs : (List FlVector FlVector FlVector)])
+            (apply triangle vs))
+          vss))))
+
+(define num-planetoids 1000)
+
+(struct planetoid ([pict : Pict3D]
+                   [position : User-Vector]
+                   [axis : User-Vector]
+                   [speed : Real])
+  #:transparent)
+
+(define the-planetoid
+  (with-material '(0.01 0.29 0.70 0.1)
+    (planetoid (with-color (list (- 0.8 (* (random) 0.16))
+                                 (- 0.9 (* (random) 0.18))
+                                 (- 1.0 (* (random) 0.20)))
+                 (freeze (make-planetoid)))
+               (list (* (- (random) 0.5) 10.0)
+                     (* (- (random) 0.5) 10.0)
+                     (* (- (random) 0.5) 10.0))
+               (list (- (random) 0.5) (- (random) 0.5) (- (random) 0.5))
+               (+ 0.1 (random)))))
+
+(define planetoids
+  (make-list num-planetoids the-planetoid)
+  #;
+  (with-material '(0.01 0.29 0.70 0.1)
+    (build-list
+     num-planetoids
+     (λ ([n : Index])
+       (printf "planetoid ~v~n" n)
+       (planetoid (with-color (list (- 0.8 (* (random) 0.16))
+                                    (- 0.9 (* (random) 0.18))
+                                    (- 1.0 (* (random) 0.20)))
+                    (freeze (make-planetoid)))
+                  (list (* (- (random) 0.5) 40.0)
+                        (* (- (random) 0.5) 40.0)
+                        (* (- (random) 0.5) 40.0))
+                  (list (- (random) 0.5) (- (random) 0.5) (- (random) 0.5))
+                  (+ 0.1 (random)))))))
+
+(define frame (new frame% [label "1"] [width 400] [height 400]))
+(define canvas (new pict3d-canvas% [parent frame]))
+(send frame show #t)
+
+(define sun
+  (combine
+   (with-color "black"
+     (with-emitted '(4.0 3.2 2.4)
+       (sphere '(0 0 0) 1)))
+   (light '(0 0 0) '(2.0 1.6 1.2) 2)))
+
+(for ([angle  (in-range 0 (* 5 360) 1)])
+  (define pict
+    (set-basis
+     (combine
+      (combine*
+       (for/list : (Listof Pict3D) ([p  (in-list planetoids)])
+         (match-define (planetoid pict pos axis speed) p)
+         (move (rotate pict axis (* speed angle)) pos)))
+      sun)
+     "camera"
+     (normal-basis '(0 -40 0) '(0 1 0))))
+  (send canvas set-pict3d pict)
+  (sleep/yield (/ 16 1000)))
+#|
 (current-material '(0.05 0.75 0.25 0.1))
 
 (define body
@@ -68,3 +227,4 @@
    -90))
 
 ship
+|#
