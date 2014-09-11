@@ -2,6 +2,31 @@
 
 (provide (all-defined-out))
 
+(define matrix-code
+  (string-append
+   #<<code
+mat4x3 rows2mat4x3(vec4 row0, vec4 row1, vec4 row2) {
+  return transpose(mat3x4(row0, row1, row2));
+}
+
+mat4 a2p(mat4x3 m) {
+  return mat4(vec4(m[0],0), vec4(m[1],0), vec4(m[2],0), vec4(m[3],1));
+}
+
+mat3 linear_inverse(mat3 m) {
+  float det = dot(m[0], cross(m[1], m[2]));
+  return transpose(mat3(cross(m[1],m[2]),
+                        cross(m[2],m[0]),
+                        cross(m[0],m[1]))) / det;
+}
+
+mat4x3 affine_inverse(mat4x3 m) {
+  mat3 n = linear_inverse(mat3(m[0],m[1],m[2]));
+  return mat4x3(n[0], n[1], n[2], -(n*m[3]));
+}
+code
+   "\n\n"))
+
 (define rgb-hsv-code
   (string-append
    #<<code
@@ -70,51 +95,24 @@ float unfrag_depth(float znear, float zfar, float logz) {
 code
    "\n\n"))
 
-(define light-code
-  (string-append
-   #<<code
-vec3 attenuate_invsqr(vec3 light_color, float dist) {
-  return max(vec3(0.0), (light_color/(dist*dist) - 0.05) / 0.95);
-}
-
-vec3 attenuate_linear(vec3 light_color, float radius, float dist) {
-  return light_color * max(0.0, (radius - dist) / radius);
-}
-
-// Ward model for anisotropic, but without the anisotropy (so that it's consistent with the
-// full anisotropic model if we ever want to use it)
-float specular(vec3 N, vec3 L, float dotLN, vec3 V, float m) {
-  float dotVN = dot(V,N);
-  vec3 uH = L+V;  // unnormalized half vector
-  float dotsum = dotVN + dotLN;
-  float dotHNsqr = dotsum * dotsum / dot(uH,uH);  // pow(dot(N,normalize(uH)),2)
-  float mm = m * m;
-  return dotVN <= 0.0 ? 0.0 :
-           sqrt(dotLN/dotVN) / (12.566371 * mm) * exp((dotHNsqr - 1.0) / (mm * dotHNsqr));
-}
-code
-   "\n\n"))
-
 (define get-view-position-fragment-code
   (string-append
    depth-fragment-code
    #<<code
-vec4 get_view_position(sampler2D depthTex, int width, int height, mat3 unproj0, mat3 unproj1,
+vec3 get_view_position(sampler2D depthTex, int width, int height, mat3 unproj0, mat3 unproj1,
                        float znear, float zfar) {
-  // clip xy
-  vec3 cpos = vec3(2.0*(gl_FragCoord.x / width - 0.5), 2.0*(gl_FragCoord.y / height - 0.5), 1.0);
-  
   // compute view z from depth buffer
   float depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r;
   if (depth == 0.0) discard;
   float z = unfrag_depth(znear, zfar, depth);
   
+  // clip xy
+  vec3 cpos = vec3((gl_FragCoord.xy / vec2(width,height) - vec2(0.5)) * 2.0, 1.0);
+  
   // compute view position from clip xy and view z
   vec3 p0 = unproj0 * cpos;
   vec3 p1 = unproj1 * cpos;
-  vec4 pos = vec4(p0*z+p1, p0.z);
-  pos.xyz /= pos.w;
-  return pos;
+  return (p0*z+p1) / p0.z;
 }
 code
    "\n\n"))
@@ -195,7 +193,6 @@ code
    #<<code
 float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
   aabb bbx = impostor_bounds(view, proj, wmin, wmax);
-  if (bbx.is_degenerate > 0.0) return 1.0;
 
   // output the correct vertices for a triangle strip
   switch (gl_VertexID) {
@@ -213,7 +210,7 @@ float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
     break;
   }
 
-  return 0.0;
+  return bbx.is_degenerate;
 }
 code
    "\n\n"))
@@ -224,7 +221,6 @@ code
    #<<code
 float output_impostor_quad(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
   aabb bbx = impostor_bounds(view, proj, wmin, wmax);
-  if (bbx.is_degenerate > 0.0) return 1.0;
 
   // output the correct vertices for a quad
   switch (gl_VertexID % 4) {
@@ -242,7 +238,7 @@ float output_impostor_quad(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
     break;
   }
 
-  return 0.0;
+  return bbx.is_degenerate;
 }
 code
    "\n\n"))
@@ -251,20 +247,17 @@ code
   (string-append
    #<<code
 vec3 frag_coord_to_direction(vec4 frag_coord, mat4 unproj, int width, int height) {
-  float clip_x = (frag_coord.x / width - 0.5) * 2.0;
-  float clip_y = (frag_coord.y / height - 0.5) * 2.0;
-  vec4 vpos = unproj * vec4(clip_x, clip_y, 0.0, 1.0);
-  vpos /= vpos.w;
+  vec2 clip_xy = (frag_coord.xy / vec2(width,height) - vec2(0.5)) * 2.0;
+  vec4 vpos = unproj * vec4(clip_xy, 0.0, 1.0);
   return normalize(vpos.xyz);
 }
 
 vec2 unit_sphere_intersect(vec3 origin, vec3 dir) {
-  vec3 c = -origin;
-  float b = -dot(c,dir);
-  float disc = b*b - dot(c,c) + 1;
-  if (disc < 0.0) return vec2(-1e39,-1e39);
+  float b = dot(origin,dir);
+  float disc = b*b - dot(origin,origin) + 1;
+  if (disc < 0.0) discard;
   float q = sqrt(disc);
-  return vec2(-b - q, -b + q);
+  return vec2(-q,q) - vec2(b);
 }
 code
    "\n\n"))

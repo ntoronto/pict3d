@@ -68,7 +68,7 @@
   #:transparent)
 
 (struct sphere-shape solid-shape
-  ([transform : FlAffine3-]
+  ([transform : affine]
    [color : FlVector]
    [emitted-color : FlVector]
    [material : material]
@@ -80,9 +80,7 @@
 (struct point-light-shape light-shape ([position : FlVector] [radius : Flonum]) #:transparent)
 
 (struct frozen-scene-shape shape
-  ([transform : FlAffine3-]
-   [inverse : FlAffine3-]
-   [scene : Nonempty-Scene])
+  ([scene : Nonempty-Scene])
   #:transparent)
 
 (define-type Shape (U triangle-shape
@@ -188,14 +186,14 @@
         [else
          (rectangle-shape (box 'lazy) b c e m face)]))
 
-(: make-sphere-shape (-> FlAffine3- FlVector FlVector material Boolean sphere-shape))
+(: make-sphere-shape (-> (U FlAffine3- affine) FlVector FlVector material Boolean sphere-shape))
 (define (make-sphere-shape t c e m inside?)
   (cond [(not (= 4 (flvector-length c)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 t c e m inside?)]
         [(not (= 3 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-3 flvector" 2 t c e m inside?)]
         [else
-         (sphere-shape (box 'lazy) t c e m inside?)]))
+         (sphere-shape (box 'lazy) (->affine t) c e m inside?)]))
 
 (: make-directional-light-shape (-> FlVector FlVector directional-light-shape))
 (define (make-directional-light-shape intensity direction)
@@ -207,10 +205,20 @@
 
 (: make-frozen-scene-shape (-> Nonempty-Scene Shape))
 (define (make-frozen-scene-shape s)
-  (frozen-scene-shape (box 'lazy) identity-flt3 identity-flt3 s))
+  (frozen-scene-shape (box 'lazy) s))
 
 ;; ===================================================================================================
 ;; Shape bounding box
+
+(define sphere-aabb
+  (assert (make-flaabb3 (flvector -1.0 -1.0 -1.0)
+                        (flvector +1.0 +1.0 +1.0))
+          values))
+
+(define directional-light-aabb
+  (assert (make-flaabb3 (flvector -inf.0 -inf.0 -inf.0)
+                        (flvector +inf.0 +inf.0 +inf.0))
+          values))
 
 (: shape-aabb (-> Shape FlAABB3))
 (define (shape-aabb s)
@@ -219,32 +227,22 @@
      (cond [(triangle-shape? s)  (fltriangle3-aabb (triangle-shape-fltriangle3 s))]
            [(quad-shape? s)  (assert (flv3aabb (quad-shape-vertices s)) values)]
            [(rectangle-shape? s)  (rectangle-shape-aabb s)]
-           [(sphere-shape? s)
-            (flaabb3-transform (assert (make-flaabb3 (flvector -1.0 -1.0 -1.0)
-                                                     (flvector +1.0 +1.0 +1.0))
-                                       values)
-                               (sphere-shape-transform s))])]
+           [(sphere-shape? s)  sphere-aabb])]
     [(light-shape? s)
-     (match s
-       [(? directional-light-shape?)
-        (assert (make-flaabb3 (flvector -inf.0 -inf.0 -inf.0)
-                              (flvector +inf.0 +inf.0 +inf.0))
-                values)]
-       [(? point-light-shape? s)
-        (define p (point-light-shape-position s))
-        (define radius (point-light-shape-radius s))
-        (define r (flvector radius radius radius))
-        (assert (make-flaabb3 (flv3- p r) (flv3+ p r)) values)])]
+     (cond [(directional-light-shape? s)  directional-light-aabb]
+           [(point-light-shape? s)
+            (define p (point-light-shape-position s))
+            (define radius (point-light-shape-radius s))
+            (define r (flvector radius radius radius))
+            (assert (make-flaabb3 (flv3- p r) (flv3+ p r)) values)])]
     [(frozen-scene-shape? s)
-     (flaabb3-transform
-      (flscene3-aabb (frozen-scene-shape-scene s))
-      (frozen-scene-shape-transform s))]))
+     (flscene3-aabb (frozen-scene-shape-scene s))]))
 
 ;; ===================================================================================================
 ;; Shape transformation
 
-(: shape-transform (->* [Shape FlAffine3- FlAffine3-] [Boolean] (Listof Shape)))
-(define (shape-transform a t tinv [transform-frozen? #f])
+(: shape-transform (-> Shape FlAffine3- FlAffine3- (Listof Shape)))
+(define (shape-transform a t tinv)
   (cond
     [(flidentity3? t)  (list a)]
     [else
@@ -259,22 +257,24 @@
      
      (cond
        [(solid-shape? a)
-        (match a
-          ;; Triangle: transform vertices
-          [(triangle-shape passes tri ns cs es ms face)
+        (cond
+          [(triangle-shape? a)
+           (match-define (triangle-shape passes tri ns cs es ms face) a)
            (define vs (fltriangle3-vertices tri))
            (define new-vs (vector-map transform-pos vs))
            (define new-ns (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns)))
            (list (triangle-shape (box 'lazy) (fltriangle3 new-vs) new-ns cs es ms
                                  (if (flt3consistent? t) face (opposite-gl-face face))))]
           ;; Quad: transform vertices
-          [(quad-shape passes vs ns cs es ms face)
+          [(quad-shape? a)
+           (match-define (quad-shape passes vs ns cs es ms face) a)
            (define new-vs (vector-map transform-pos vs))
            (define new-ns (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns)))
            (list (quad-shape (box 'lazy) new-vs new-ns cs es ms
                              (if (flt3consistent? t) face (opposite-gl-face face))))]
           ;; Rectangle: split into quads
-          [(rectangle-shape passes b c e m old-face)
+          [(rectangle-shape? a)
+           (match-define (rectangle-shape passes b c e m old-face) a)
            (define-values (xmin ymin zmin xmax ymax zmax) (flaabb3-values b))
            
            (define face (if (flt3consistent? t) old-face (opposite-gl-face old-face)))
@@ -300,36 +300,32 @@
                  (make-quad-shape (vector v3 v4 v8 v7) nback  c e m face)
                  (make-quad-shape (vector v4 v1 v5 v8) nleft  c e m face)
                  (make-quad-shape (vector v2 v3 v7 v6) nright c e m face))]
-          ;; Sphere: apply transform
-          [(sphere-shape passes t0 c e m inside?)
-           (list (sphere-shape (box 'lazy) (flt3compose t t0) c e m inside?))])]
+          [(sphere-shape? a)
+           (match-define (sphere-shape passes t0 c e m inside?) a)
+           (list (sphere-shape (box 'lazy) (affine-compose t t0) c e m inside?))])]
        [(light-shape? a)
-        (match a
-          ;; Directional light: transform just direction
-          [(directional-light-shape passes intensity direction)
-           (list (directional-light-shape (box 'lazy) intensity (transform-norm direction)))]
-          ;; Point light: transform just center
-          [(point-light-shape passes intensity position radius)
+        (cond
+          [(directional-light-shape? a)  (list a)]
+          [(point-light-shape? a)
+           (match-define (point-light-shape passes intensity position radius) a)
            (list (point-light-shape (box 'lazy) intensity (transform-pos position) radius))])]
        ;; Frozen scene
        [(frozen-scene-shape? a)
-        (match-define (frozen-scene-shape passes t0 tinv0 s) a)
-        (cond
-          [transform-frozen?
-           ;; Transform the frozen scene piece at a time; don't re-freeze
-           (append*
-            (flscene3-extract
-             (flscene3-transform s t0 tinv0)
-             (λ ([a : Shape] [t0 : FlAffine3-] [tinv0 : FlAffine3-])
-               (shape-transform a (flt3compose t t0) (flt3compose tinv0 tinv) #t))))]
-          [else
-           ;; Just compose the transformation
-           (list (frozen-scene-shape passes (flt3compose t t0) (flt3compose tinv0 tinv) s))])])]))
+        (: transformed-shape (-> Shape FlAffine3- (Listof Shape)))
+        (define (transformed-shape s t)
+          (shape-transform s t (flt3inverse t)))
+        
+        (append* (flscene3-extract (flscene3-transform-shapes
+                                    (frozen-scene-shape-scene a)
+                                    t tinv)
+                                   identity-flt3
+                                   flt3compose
+                                   transformed-shape))])]))
 
 ;; ===================================================================================================
 ;; Shape-specific scene functions
 
-(define-values (shape->flscene3 flscene3-transform)
+(define-values (shape->flscene3 flscene3-transform-shapes)
   ((inst make-flscene3-ops Shape)
    shape-aabb
    shape-transform))
@@ -373,15 +369,105 @@
   (hsv->rgb (flvector h s (+ v.lo (* 256.0 v.hi)))))
 
 ;; ===================================================================================================
-;; Material program
+;; Program pieces
 
-(define mat-vertex-code
+(define model-vertex-code
   (string-append
+   matrix-code
    #<<code
-#version 130
+in vec4 _model0;
+in vec4 _model1;
+in vec4 _model2;
 
-uniform mat4 model;
-uniform mat4 unmodel;
+mat4x3 get_model_transform() {
+  return rows2mat4x3(_model0, _model1, _model2);
+}
+code
+   "\n\n"))
+
+(define output-mat-fragment-code
+  (string-append
+   depth-fragment-code
+   pack-unpack-normal-code
+   #<<code
+void output_mat(vec3 dir, float roughness, float z, float znear, float zfar) {
+  gl_FragDepth = frag_depth(znear, zfar, z);
+  gl_FragColor = vec4(pack_normal(normalize(dir)), 1.0, roughness);
+}
+code
+   "\n\n"))
+
+(define output-opaq-fragment-code
+  (string-append
+   depth-fragment-code
+   #<<code
+void output_opaq(vec3 color, float a, float z, float znear, float zfar) {
+  gl_FragDepth = frag_depth(znear, zfar, z);
+  gl_FragColor = vec4(color, a);
+}
+code
+   "\n\n"))
+
+(define output-tran-fragment-code
+  (string-append
+   depth-fragment-code
+   #<<code
+void output_tran(vec3 color, float a, float z, float znear, float zfar) {
+  float depth = frag_depth(znear, zfar, z);
+  float d = 1 - depth;
+  float weight = a * clamp(1 / (d*d*d) - 1, 0.001953125, 32768.0);
+  gl_FragDepth = depth;
+  gl_FragData[0] = vec4(color * weight * a, a);
+  gl_FragData[1] = vec4(a * weight);
+}
+code
+   "\n\n"))
+
+(define light-fragment-code
+  (string-append
+   get-surface-fragment-code
+   #<<code
+vec3 attenuate_invsqr(vec3 light_color, float dist) {
+  return max(vec3(0.0), (light_color/(dist*dist) - 0.05) / 0.95);
+}
+
+vec3 attenuate_linear(vec3 light_color, float radius, float dist) {
+  return light_color * max(0.0, (radius - dist) / radius);
+}
+
+// Ward model for anisotropic, but without the anisotropy (so that it's consistent with the
+// full anisotropic model if we ever want to use it)
+float specular(vec3 N, vec3 L, vec3 V, float dotLN, float dotVN, float m) {
+  vec3 uH = L+V;  // unnormalized half vector
+  float dotsum = dotVN + dotLN;
+  float dotHNsqr = dotsum * dotsum / dot(uH,uH);  // pow(dot(N,normalize(uH)),2)
+  float mm = m * m;
+  return sqrt(dotLN/dotVN) / (12.566371 * mm) * exp((dotHNsqr - 1.0) / (mm * dotHNsqr));
+}
+
+void output_light(vec3 light, surface s, vec3 L, vec3 V) {
+  vec3 N = s.normal;
+  float dotNL = dot(N,L);
+  if (dotNL < 1e-7) discard;
+  float dotNV = dot(N,V);
+  if (dotNV < 1e-7) discard;
+  gl_FragData[0] = vec4(light * dotNL, 0.0);
+  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,s.roughness), 0.0);
+}
+code
+   "\n\n"))
+
+;; ===================================================================================================
+;; Solid polygon programs
+
+;; ---------------------------------------------------------------------------------------------------
+;; Program 1: material
+
+(define polygon-mat-vertex-code
+  (string-append
+   "#version 130\n\n"
+   model-vertex-code
+   #<<code
 uniform mat4 view;
 uniform mat4 unview;
 uniform mat4 proj;
@@ -394,10 +480,12 @@ smooth out vec3 frag_normal;
 smooth out float frag_roughness;
 
 void main() {
-  vec4 position = view * (model * vec4(vert_position,1));
+  mat4x3 model = get_model_transform();
+  mat4x3 unmodel = affine_inverse(model);
+  vec4 position = view * (a2p(model) * vec4(vert_position,1));
   gl_Position = proj * position;
   vec3 normal = normalize(vert_normal_roughness.xyz - vec3(127.0/255.0));
-  vec4 norm = (vec4(normal,0) * unmodel) * unview;
+  vec4 norm = (vec4(normal,0) * a2p(unmodel)) * unview;
   frag_position = position;
   frag_normal = normalize(norm.xyz);
   frag_roughness = vert_normal_roughness.w;
@@ -405,11 +493,10 @@ void main() {
 code
    ))
 
-(define mat-fragment-code
+(define polygon-mat-fragment-code
   (string-append
    "#version 130\n\n"
-   pack-unpack-normal-code
-   depth-fragment-code
+   output-mat-fragment-code
    #<<code
 uniform float znear;
 uniform float zfar;
@@ -419,15 +506,12 @@ smooth in vec3 frag_normal;
 smooth in float frag_roughness;
 
 void main() {
-  gl_FragDepth = frag_depth(znear, zfar, frag_position.z);
-  gl_FragColor.rg = pack_normal(normalize(frag_normal));
-  gl_FragColor.b = 1.0;  // reserved
-  gl_FragColor.a = frag_roughness;
+  output_mat(frag_normal, frag_roughness, frag_position.z, znear, zfar);
 }
 code
    ))
 
-(define-singleton (mat-program-spec)
+(define-singleton (polygon-mat-program-spec)
   (define struct
     (make-vao-struct
      (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
@@ -436,17 +520,158 @@ code
   (define program
     (make-gl-program
      struct
-     (list (make-gl-shader GL_VERTEX_SHADER mat-vertex-code)
-           (make-gl-shader GL_FRAGMENT_SHADER mat-fragment-code))))
+     (list (make-gl-shader GL_VERTEX_SHADER polygon-mat-vertex-code)
+           (make-gl-shader GL_FRAGMENT_SHADER polygon-mat-fragment-code))))
   
   (define uniforms
-    (list (cons "model" 'model)
-          (cons "unmodel" 'unmodel)
-          (cons "view" 'view)
+    (list (cons "view" 'view)
           (cons "unview" 'unview)
           (cons "proj" 'proj)
           (cons "znear" 'znear)
           (cons "zfar" 'zfar)))
+  
+  (program-spec program uniforms struct))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Program 2: color
+
+(define polygon-draw-vertex-code
+  (string-append
+   "#version 130\n\n"
+   model-vertex-code
+   rgb-hsv-code
+   #<<code
+uniform mat4 view;
+uniform mat4 proj;
+
+in vec4 vert_rcolor;
+in vec4 vert_ecolor;    // vec4(hue, saturation, value.hi, value.lo)
+in vec4 vert_material;  // vec4(ambient, diffuse, specular, 0)
+in vec3 vert_position;
+
+smooth out vec4 frag_position;
+smooth out vec4 frag_rcolor;
+smooth out vec3 frag_ecolor;
+smooth out float frag_ambient;
+smooth out float frag_diffuse;
+smooth out float frag_specular;
+
+void main() {
+  mat4x3 model = get_model_transform();
+  vec4 position = view * (a2p(model) * vec4(vert_position,1));
+  gl_Position = proj * position;
+  frag_position = position;
+  frag_rcolor = vert_rcolor;
+  frag_ecolor = hsv_to_rgb(vec3(vert_ecolor.xy, vert_ecolor.w + 256.0 * vert_ecolor.z));
+  frag_ambient = vert_material.x;
+  frag_diffuse = vert_material.y;
+  frag_specular = vert_material.z;
+}
+code
+   ))
+
+(define polygon-opaq-fragment-code
+  (string-append
+   "#version 130\n\n"
+   output-opaq-fragment-code
+   #<<code
+uniform float znear;
+uniform float zfar;
+
+uniform vec3 ambient;
+uniform sampler2D diffuse;
+uniform sampler2D specular;
+
+smooth in vec4 frag_position;
+smooth in vec4 frag_rcolor;
+smooth in vec3 frag_ecolor;
+smooth in float frag_ambient;
+smooth in float frag_diffuse;
+smooth in float frag_specular;
+
+void main() {
+  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
+  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
+  output_opaq(color, frag_rcolor.a, frag_position.z, znear, zfar);
+}
+code
+   ))
+
+(define polygon-tran-fragment-code
+  (string-append
+   "#version 130\n\n"
+   output-tran-fragment-code
+   #<<code
+uniform float znear;
+uniform float zfar;
+
+uniform vec3 ambient;
+uniform sampler2D diffuse;
+uniform sampler2D specular;
+
+smooth in vec4 frag_position;
+smooth in vec4 frag_rcolor;
+smooth in vec3 frag_ecolor;
+smooth in float frag_ambient;
+smooth in float frag_diffuse;
+smooth in float frag_specular;
+
+void main() {
+  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
+  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
+  output_tran(color, frag_rcolor.a, frag_position.z, znear, zfar);
+}
+code
+   ))
+
+(define-singleton (polygon-opaq-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_position" 3 GL_FLOAT)))
+  
+  (define program
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
+                           (make-gl-shader GL_FRAGMENT_SHADER polygon-opaq-fragment-code))))
+  
+  (define uniforms
+    (list (cons "view" 'view)
+          (cons "proj" 'proj)
+          (cons "znear" 'znear)
+          (cons "zfar" 'zfar)
+          (cons "ambient" 'ambient)
+          (cons "diffuse" 'diffuse)
+          (cons "specular" 'specular)))
+  
+  (program-spec program uniforms struct))
+
+(define-singleton (polygon-tran-program-spec)
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_position" 3 GL_FLOAT)))
+  
+  (define program
+    (make-gl-program struct
+                     (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
+                           (make-gl-shader GL_FRAGMENT_SHADER polygon-tran-fragment-code))))
+  
+  (define uniforms
+    (list (cons "view" 'view)
+          (cons "proj" 'proj)
+          (cons "znear" 'znear)
+          (cons "zfar" 'zfar)
+          (cons "diffuse" 'diffuse)
+          (cons "specular" 'specular)))
   
   (program-spec program uniforms struct))
 
@@ -456,60 +681,39 @@ code
 ;; ---------------------------------------------------------------------------------------------------
 ;; Program 1: material
 
-(define matrix-code
-  (string-append
-   #<<code
-mat4 affine_to_projective(mat4x3 m) {
-  return mat4(vec4(m[0],0), vec4(m[1],0), vec4(m[2],0), vec4(m[3],1));
-}
-
-mat3 linear_inverse(mat3 m) {
-  float det = dot(m[0], cross(m[1], m[2]));
-  return transpose(mat3(cross(m[1],m[2]),
-                        cross(m[2],m[0]),
-                        cross(m[0],m[1]))) / det;
-}
-
-mat4x3 affine_inverse(mat4x3 m) {
-  mat3 n = linear_inverse(mat3(m[0],m[1],m[2]));
-  return mat4x3(n[0], n[1], n[2], -(n*m[3]));
-}
-code
-   "\n\n"))
-
 (define sphere-mat-vertex-code
   (string-append
    "#version 130\n\n"
    output-impostor-quad-vertex-code
-   ;matrix-code
+   model-vertex-code
    #<<code
-uniform mat4 model;
 uniform mat4 view;
-uniform mat4 unmodel;
 uniform mat4 unview;
 uniform mat4 proj;
 
-in vec4 trans0;
-in vec4 trans1;
-in vec4 trans2;
-in vec4 untrans0;
-in vec4 untrans1;
-in vec4 untrans2;
+in vec4 sphere0;
+in vec4 sphere1;
+in vec4 sphere2;
 in vec4 vert_roughness_inside;
 
-flat out mat4 sphere_to_view;
-flat out mat4 view_to_sphere;
+flat out mat4x3 frag_trans;
+flat out mat4x3 frag_untrans;
 flat out float frag_roughness;
 flat out float frag_inside;
-
-smooth out float is_degenerate;
+smooth out float frag_is_degenerate;
 
 void main() {
-  sphere_to_view = view * model * transpose(mat4(trans0,trans1,trans2,vec4(0,0,0,1)));
-  view_to_sphere = transpose(mat4(untrans0,untrans1,untrans2,vec4(0,0,0,1))) * unmodel * unview;
+  mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
+  mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
+  mat4x3 unmodel = affine_inverse(model);
+  mat4 trans = view * a2p(model);
+  mat4 untrans = a2p(unmodel) * unview;
+
+  frag_trans = mat4x3(trans);
+  frag_untrans = mat4x3(untrans);
   frag_roughness = vert_roughness_inside.x;
   frag_inside = vert_roughness_inside.y;
-  is_degenerate = output_impostor_quad(sphere_to_view, proj, vec3(-1.0), vec3(+1.0));
+  frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
 }
 code
    ))
@@ -517,8 +721,7 @@ code
 (define sphere-mat-fragment-code
   (string-append
    "#version 130\n\n"
-   pack-unpack-normal-code
-   depth-fragment-code
+   output-mat-fragment-code
    ray-trace-fragment-code
    #<<code
 uniform mat4 proj;
@@ -528,34 +731,28 @@ uniform float zfar;
 uniform int width;
 uniform int height;
 
-flat in mat4 sphere_to_view;
-flat in mat4 view_to_sphere;
+flat in mat4x3 frag_trans;
+flat in mat4x3 frag_untrans;
 flat in float frag_roughness;
 flat in float frag_inside;
-
-smooth in float is_degenerate;
+smooth in float frag_is_degenerate;
 
 void main() {
   // all fragments should discard if this one does
-  if (is_degenerate > 0.0) discard;
+  if (frag_is_degenerate > 0.0) discard;
 
   vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = (view_to_sphere * vec4(0,0,0,1)).xyz;
-  vec3 end = (view_to_sphere * vec4(vdir,1)).xyz;
-  vec3 dir = normalize(end - start);
+  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
+  vec3 dir = normalize(mat3(frag_untrans) * vdir);
   vec2 ts = unit_sphere_intersect(start, dir);
-  float t = (frag_inside == 0.0) ? ts.x : ts.y;
+  float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
-  if (t < 0.0) discard;
+  if (t <= 0.0) discard;
   
   vec3 pos = start + dir * t;
-  vec3 vpos = (sphere_to_view * vec4(pos, 1.0)).xyz;
-  vec3 vnorm = normalize((vec4(pos, 0.0) * view_to_sphere).xyz);
-  
-  gl_FragDepth = frag_depth(znear, zfar, vpos.z);
-  gl_FragColor.rg = pack_normal((frag_inside == 0.0) ? vnorm : -vnorm);
-  gl_FragColor.b = 1.0;  // reserved
-  gl_FragColor.a = frag_roughness;
+  vec3 vpos = frag_trans * vec4(pos, 1.0);
+  vec3 vnorm = pos * mat3(frag_untrans);
+  output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos.z, znear, zfar);
 }
 code
    ))
@@ -563,12 +760,9 @@ code
 (define-singleton (sphere-mat-program-spec)
   (define struct
     (make-vao-struct
-     (make-vao-field "trans0" 4 GL_FLOAT)
-     (make-vao-field "trans1" 4 GL_FLOAT)
-     (make-vao-field "trans2" 4 GL_FLOAT)
-     (make-vao-field "untrans0" 4 GL_FLOAT)
-     (make-vao-field "untrans1" 4 GL_FLOAT)
-     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "sphere0" 4 GL_FLOAT)
+     (make-vao-field "sphere1" 4 GL_FLOAT)
+     (make-vao-field "sphere2" 4 GL_FLOAT)
      (make-vao-field "vert_roughness_inside" 4 GL_UNSIGNED_BYTE)))
   
   (define program
@@ -577,9 +771,7 @@ code
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-mat-fragment-code))))
   
   (define uniforms
-    (list (cons "model" 'model)
-          (cons "unmodel" 'unmodel)
-          (cons "view" 'view)
+    (list (cons "view" 'view)
           (cons "unview" 'unview)
           (cons "proj" 'proj)
           (cons "unproj" 'unproj)
@@ -593,50 +785,50 @@ code
 ;; ---------------------------------------------------------------------------------------------------
 ;; Program 2: color
 
-(define sphere-vertex-code
+(define sphere-draw-vertex-code
   (string-append
    "#version 130\n\n"
    output-impostor-quad-vertex-code
    rgb-hsv-code
-   matrix-code
+   model-vertex-code
    #<<code
-uniform mat4 model;
 uniform mat4 view;
-uniform mat4 unmodel;
 uniform mat4 unview;
 uniform mat4 proj;
 
-in vec4 trans0;
-in vec4 trans1;
-in vec4 trans2;
-in vec4 untrans0;
-in vec4 untrans1;
-in vec4 untrans2;
+in vec4 sphere0;
+in vec4 sphere1;
+in vec4 sphere2;
 in vec4 vert_rcolor;
 in vec4 vert_ecolor;           // vec4(hue, saturation, value.hi, value.lo)
 in vec4 vert_material_inside;  // vec4(ambient, diffuse, specular, inside?)
 
-flat out mat4 sphere_to_view;
-flat out mat4 view_to_sphere;
+flat out mat4x3 frag_trans;
+flat out mat4x3 frag_untrans;
 flat out vec4 frag_rcolor;
 flat out vec3 frag_ecolor;
 flat out float frag_ambient;
 flat out float frag_diffuse;
 flat out float frag_specular;
 flat out float frag_inside;
-
-smooth out float is_degenerate;
+smooth out float frag_is_degenerate;
 
 void main() {
-  sphere_to_view = view * model * transpose(mat4(trans0,trans1,trans2,vec4(0,0,0,1)));
-  view_to_sphere = transpose(mat4(untrans0,untrans1,untrans2,vec4(0,0,0,1))) * unmodel * unview;
+  mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
+  mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
+  mat4x3 unmodel = affine_inverse(model);
+  mat4 trans = view * a2p(model);
+  mat4 untrans = a2p(unmodel) * unview;
+
+  frag_trans = mat4x3(trans);
+  frag_untrans = mat4x3(untrans);
   frag_rcolor = vert_rcolor;
   frag_ecolor = hsv_to_rgb(vec3(vert_ecolor.xy, vert_ecolor.w + 256.0 * vert_ecolor.z));
   frag_ambient = vert_material_inside.x;
   frag_diffuse = vert_material_inside.y;
   frag_specular = vert_material_inside.z;
   frag_inside = vert_material_inside.w;
-  is_degenerate = output_impostor_quad(sphere_to_view, proj, vec3(-1.0), vec3(+1.0));
+  frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
 }
 code
    ))
@@ -644,8 +836,7 @@ code
 (define sphere-opaq-fragment-code
   (string-append
    "#version 130\n\n"
-   pack-unpack-normal-code
-   depth-fragment-code
+   output-opaq-fragment-code
    ray-trace-fragment-code
    #<<code
 uniform mat4 proj;
@@ -659,39 +850,87 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in mat4 sphere_to_view;
-flat in mat4 view_to_sphere;
+flat in mat4x3 frag_trans;
+flat in mat4x3 frag_untrans;
 flat in vec4 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
-
-smooth in float is_degenerate;
+smooth in float frag_is_degenerate;
 
 void main() {
   // all fragments should discard if this one does
-  if (is_degenerate > 0.0) discard;
+  if (frag_is_degenerate > 0.0) discard;
 
   vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = (view_to_sphere * vec4(0,0,0,1)).xyz;
-  vec3 end = (view_to_sphere * vec4(vdir,1)).xyz;
-  vec3 dir = normalize(end - start);
+  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
+  vec3 dir = normalize(mat3(frag_untrans) * vdir);
   vec2 ts = unit_sphere_intersect(start, dir);
-  float t = (frag_inside == 0.0) ? ts.x : ts.y;
+  float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
-  if (t < 0.0) discard;
+  if (t <= 0.0) discard;
   
   vec3 pos = start + dir * t;
-  vec3 vpos = (sphere_to_view * vec4(pos, 1.0)).xyz;
+  vec3 vpos = frag_trans * vec4(pos, 1.0);
   
-  gl_FragDepth = frag_depth(znear, zfar, vpos.z);
   vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  gl_FragColor.rgb = frag_ecolor + frag_rcolor.rgb * light;
-  gl_FragColor.a = frag_rcolor.a;
+  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
+  output_opaq(color, frag_rcolor.a, vpos.z, znear, zfar);
+}
+code
+   ))
+
+(define sphere-tran-fragment-code
+  (string-append
+   "#version 130\n\n"
+   output-tran-fragment-code
+   ray-trace-fragment-code
+   #<<code
+uniform mat4 proj;
+uniform mat4 unproj;
+uniform float znear;
+uniform float zfar;
+uniform int width;
+uniform int height;
+
+uniform vec3 ambient;
+uniform sampler2D diffuse;
+uniform sampler2D specular;
+
+flat in mat4x3 frag_trans;
+flat in mat4x3 frag_untrans;
+flat in vec4 frag_rcolor;
+flat in vec3 frag_ecolor;
+flat in float frag_ambient;
+flat in float frag_diffuse;
+flat in float frag_specular;
+flat in float frag_inside;
+smooth in float frag_is_degenerate;
+
+void main() {
+  // all fragments should discard if this one does
+  if (frag_is_degenerate > 0.0) discard;
+
+  vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
+  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
+  vec3 dir = normalize(mat3(frag_untrans) * vdir);
+  vec2 ts = unit_sphere_intersect(start, dir);
+  float t = mix(ts.x, ts.y, frag_inside);
+  // many nearby fragments should discard if this one does
+  if (t <= 0.0) discard;
+  
+  vec3 pos = start + dir * t;
+  vec3 vpos = frag_trans * vec4(pos, 1.0);
+  
+  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
+  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
+  output_tran(color, frag_rcolor.a, vpos.z, znear, zfar);
 }
 code
    ))
@@ -699,26 +938,21 @@ code
 (define-singleton (sphere-opaq-program-spec)
   (define struct
     (make-vao-struct
-     (make-vao-field "trans0" 4 GL_FLOAT)
-     (make-vao-field "trans1" 4 GL_FLOAT)
-     (make-vao-field "trans2" 4 GL_FLOAT)
-     (make-vao-field "untrans0" 4 GL_FLOAT)
-     (make-vao-field "untrans1" 4 GL_FLOAT)
-     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "sphere0" 4 GL_FLOAT)
+     (make-vao-field "sphere1" 4 GL_FLOAT)
+     (make-vao-field "sphere2" 4 GL_FLOAT)
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
+                     (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-opaq-fragment-code))))
   
   (define uniforms
-    (list (cons "model" 'model)
-          (cons "view" 'view)
+    (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "unmodel" 'unmodel)
           (cons "unview" 'unview)
           (cons "unproj" 'unproj)
           (cons "znear" 'znear)
@@ -731,90 +965,24 @@ code
   
   (program-spec program uniforms struct))
 
-(define sphere-tran-fragment-code
-  (string-append
-   "#version 130\n\n"
-   pack-unpack-normal-code
-   depth-fragment-code
-   ray-trace-fragment-code
-   #<<code
-uniform mat4 proj;
-uniform mat4 unproj;
-uniform float znear;
-uniform float zfar;
-uniform int width;
-uniform int height;
-
-uniform vec3 ambient;
-uniform sampler2D diffuse;
-uniform sampler2D specular;
-
-flat in mat4 sphere_to_view;
-flat in mat4 view_to_sphere;
-flat in vec4 frag_rcolor;
-flat in vec3 frag_ecolor;
-flat in float frag_ambient;
-flat in float frag_diffuse;
-flat in float frag_specular;
-flat in float frag_inside;
-
-smooth in float is_degenerate;
-
-void main() {
-  // all fragments should discard if this one does
-  if (is_degenerate > 0.0) discard;
-
-  vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = (view_to_sphere * vec4(0,0,0,1)).xyz;
-  vec3 end = (view_to_sphere * vec4(vdir,1)).xyz;
-  vec3 dir = normalize(end - start);
-  vec2 ts = unit_sphere_intersect(start, dir);
-  float t = (frag_inside == 0.0) ? ts.x : ts.y;
-  // many nearby fragments should discard if this one does
-  if (t < 0.0) discard;
-  
-  vec3 pos = start + dir * t;
-  vec3 vpos = (sphere_to_view * vec4(pos, 1.0)).xyz;
-  
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 light_color = frag_ecolor + frag_rcolor.rgb * light;
-  
-  float depth = frag_depth(znear, zfar, vpos.z);
-  float a = frag_rcolor.a;
-  float d = 1 - depth;
-  float weight = a * clamp(1 / (d*d*d) - 1, 0.001953125, 32768.0);
-  gl_FragDepth = depth;
-  gl_FragData[0] = vec4(light_color * weight * a, a);
-  gl_FragData[1] = vec4(a * weight);
-}
-code
-   ))
-
 (define-singleton (sphere-tran-program-spec)
   (define struct
     (make-vao-struct
-     (make-vao-field "trans0" 4 GL_FLOAT)
-     (make-vao-field "trans1" 4 GL_FLOAT)
-     (make-vao-field "trans2" 4 GL_FLOAT)
-     (make-vao-field "untrans0" 4 GL_FLOAT)
-     (make-vao-field "untrans1" 4 GL_FLOAT)
-     (make-vao-field "untrans2" 4 GL_FLOAT)
+     (make-vao-field "sphere0" 4 GL_FLOAT)
+     (make-vao-field "sphere1" 4 GL_FLOAT)
+     (make-vao-field "sphere2" 4 GL_FLOAT)
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER sphere-vertex-code)
+                     (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-tran-fragment-code))))
   
   (define uniforms
-    (list (cons "model" 'model)
-          (cons "view" 'view)
+    (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "unmodel" 'unmodel)
           (cons "unview" 'unview)
           (cons "unproj" 'unproj)
           (cons "znear" 'znear)
@@ -859,10 +1027,8 @@ code
   (string-append
    "#version 130\n\n"
    get-view-position-fragment-code
-   get-surface-fragment-code
-   light-code
+   light-fragment-code
    #<<code
-uniform mat4 unmodel;
 uniform mat4 unview;
 uniform mat3 unproj0;
 uniform mat3 unproj1;
@@ -879,18 +1045,10 @@ uniform vec3 light_dir;
 uniform vec3 light_color;
 
 void main() {
-  vec4 pos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar);
-  surface s = get_surface(material);
-  vec3 N = s.normal;
-  vec3 L = normalize(-light_dir * mat3(unmodel) * mat3(unview));
-  float dotNL = dot(N,L);
-  if (dotNL <= 0.0) discard;
-
-  float m = s.roughness;
-  vec3 V = normalize(-pos.xyz);
-  
-  gl_FragData[0] = vec4(light_color * dotNL, 0.0);
-  gl_FragData[1] = vec4(light_color * specular(N,L,dotNL,V,m), 0.0);
+  vec3 pos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar);
+  vec3 L = normalize(-light_dir * mat3(unview));
+  vec3 V = normalize(-pos);
+  output_light(light_color, get_surface(material), L, V);
 }
 code
    ))
@@ -904,8 +1062,7 @@ code
                            (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
   
   (define uniforms
-    (list (cons "unmodel" 'unmodel)
-          (cons "unview" 'unview)
+    (list (cons "unview" 'unview)
           (cons "unproj0" 'unproj0)
           (cons "unproj1" 'unproj1)
           (cons "znear" 'znear)
@@ -924,8 +1081,8 @@ code
   (string-append
    "#version 130\n\n"
    output-impostor-quad-vertex-code
+   model-vertex-code
    #<<code
-uniform mat4 model;
 uniform mat4 view;
 uniform mat4 proj;
 
@@ -935,19 +1092,19 @@ in vec3 vert_intensity;
 flat out vec3 frag_position;
 flat out float frag_radius;
 flat out vec3 frag_intensity;
-
-smooth out float is_degenerate;
+smooth out float frag_is_degenerate;
 
 void main() {
-  mat4 vm = view * model;
+  mat4x3 model = get_model_transform();
+  mat4 trans = view * a2p(model);
   vec3 position = vert_position_radius.xyz;
   float radius = vert_position_radius.w;
   vec3 wmin = position - vec3(radius);
   vec3 wmax = position + vec3(radius);
-  frag_position = (vm * vec4(position.xyz,1)).xyz;
+  frag_position = (trans * vec4(position.xyz,1)).xyz;
   frag_radius = radius;
   frag_intensity = vert_intensity;
-  is_degenerate = output_impostor_quad(vm, proj, wmin, wmax);
+  frag_is_degenerate = output_impostor_quad(trans, proj, wmin, wmax);
 }
 code
    ))
@@ -956,8 +1113,7 @@ code
   (string-append
    "#version 130\n\n"
    get-view-position-fragment-code
-   get-surface-fragment-code
-   light-code
+   light-fragment-code
    #<<code
 uniform float znear;
 uniform float zfar;
@@ -972,35 +1128,22 @@ uniform sampler2D material;
 flat in vec3 frag_position;
 flat in float frag_radius;
 flat in vec3 frag_intensity;
-
-smooth in float is_degenerate;
+smooth in float frag_is_degenerate;
 
 void main() {
   // all fragments should discard if this one does
-  if (is_degenerate > 0.0) discard;
+  if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vpos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar).xyz;
-  
-  // D = vector from fragment to light source
+  vec3 vpos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar);
   vec3 D = frag_position - vpos;
   float dist = length(D);
-  
   if (dist > frag_radius) discard;
   
-  // get surface normal, direction to light, roughness, direction to viewer
-  surface s = get_surface(material);
-  vec3 N = s.normal;
   vec3 L = normalize(D);
-  float dotNL = dot(N,L);
-  if (dotNL <= 0.0) discard;
-
-  float m = s.roughness;
   vec3 V = normalize(-vpos);
-
   vec3 light = attenuate_invsqr(frag_intensity, dist);
-  //vec3 light = attenuate_linear(frag_intensity, frag_radius, dist);  
-  gl_FragData[0] = vec4(light * dotNL, 0.0);
-  gl_FragData[1] = vec4(light * specular(N,L,dotNL,V,m), 0.0);
+  //vec3 light = attenuate_linear(frag_intensity, frag_radius, dist);
+  output_light(light, get_surface(material), L, V);
 }
 code
    ))
@@ -1017,8 +1160,7 @@ code
                            (make-gl-shader GL_FRAGMENT_SHADER point-light-fragment-code))))
   
   (define uniforms
-    (list (cons "model" 'model)
-          (cons "view" 'view)
+    (list (cons "view" 'view)
           (cons "proj" 'proj)
           (cons "znear" 'znear)
           (cons "zfar" 'zfar)
@@ -1028,158 +1170,6 @@ code
           (cons "unproj1" 'unproj1)
           (cons "depth" 'depth)
           (cons "material" 'material)))
-  
-  (program-spec program uniforms struct))
-
-;; ===================================================================================================
-;; Solid polygon programs
-
-(define shape-vertex-code
-  (string-append
-   "#version 130\n\n"
-   rgb-hsv-code
-   #<<code
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 proj;
-
-in vec4 vert_rcolor;
-in vec4 vert_ecolor;    // vec4(hue, saturation, value.hi, value.lo)
-in vec4 vert_material;  // vec4(ambient, diffuse, specular, 0)
-in vec3 vert_position;
-
-smooth out vec4 frag_position;
-smooth out vec4 frag_rcolor;
-smooth out vec3 frag_ecolor;
-smooth out float frag_ambient;
-smooth out float frag_diffuse;
-smooth out float frag_specular;
-
-void main() {
-  vec4 position = view * (model * vec4(vert_position,1));
-  gl_Position = proj * position;
-  frag_position = position;
-  frag_rcolor = vert_rcolor;
-  frag_ecolor = hsv_to_rgb(vec3(vert_ecolor.xy, vert_ecolor.w + 256.0 * vert_ecolor.z));
-  frag_ambient = vert_material.x;
-  frag_diffuse = vert_material.y;
-  frag_specular = vert_material.z;
-}
-code
-   ))
-
-(define opaq-fragment-code
-  (string-append
-   "#version 130\n\n"
-   depth-fragment-code
-   #<<code
-uniform float znear;
-uniform float zfar;
-
-uniform vec3 ambient;
-uniform sampler2D diffuse;
-uniform sampler2D specular;
-
-smooth in vec4 frag_position;
-smooth in vec4 frag_rcolor;
-smooth in vec3 frag_ecolor;
-smooth in float frag_ambient;
-smooth in float frag_diffuse;
-smooth in float frag_specular;
-
-void main() {
-  gl_FragDepth = frag_depth(znear, zfar, frag_position.z);
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  gl_FragColor.rgb = frag_ecolor + frag_rcolor.rgb * light;
-  gl_FragColor.a = frag_rcolor.a;
-}
-code
-   ))
-
-(define-singleton (opaq-program-spec)
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_position" 3 GL_FLOAT)))
-  
-  (define program
-    (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER opaq-fragment-code))))
-  
-  (define uniforms
-    (list (cons "model" 'model)
-          (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
-          (cons "ambient" 'ambient)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
-  
-  (program-spec program uniforms struct))
-
-(define tran-fragment-code
-  (string-append
-   "#version 130\n\n"
-   depth-fragment-code
-   #<<code
-uniform float znear;
-uniform float zfar;
-
-uniform vec3 ambient;
-uniform sampler2D diffuse;
-uniform sampler2D specular;
-
-smooth in vec4 frag_position;
-smooth in vec4 frag_rcolor;
-smooth in vec3 frag_ecolor;
-smooth in float frag_ambient;
-smooth in float frag_diffuse;
-smooth in float frag_specular;
-
-void main() {
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 light_color = frag_ecolor + frag_rcolor.rgb * light;
-  
-  float depth = frag_depth(znear, zfar, frag_position.z);
-  float a = frag_rcolor.a;
-  float d = 1 - depth;
-  float weight = a * clamp(1 / (d*d*d) - 1, 0.001953125, 32768.0);
-  gl_FragDepth = depth;
-  gl_FragData[0] = vec4(light_color * weight * a, a);
-  gl_FragData[1] = vec4(a * weight);
-}
-code
-   ))
-
-(define-singleton (tran-program-spec)
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_position" 3 GL_FLOAT)))
-  
-  (define program
-    (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER shape-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER tran-fragment-code))))
-  
-  (define uniforms
-    (list (cons "model" 'model)
-          (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
   
   (program-spec program uniforms struct))
 
@@ -1196,7 +1186,7 @@ code
                                  Face
                                  Passes))
 (define (make-polygon-shape-passes mode len vs ns cs es ms face)
-  (define mat-data-size (* len (vao-struct-size (program-spec-struct (mat-program-spec)))))
+  (define mat-data-size (* len (vao-struct-size (program-spec-struct (polygon-mat-program-spec)))))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -1211,7 +1201,7 @@ code
                       (unsafe-fx+ i 12))])
       i))
   
-  (define draw-data-size (* len (vao-struct-size (program-spec-struct (opaq-program-spec)))))
+  (define draw-data-size (* len (vao-struct-size (program-spec-struct (polygon-opaq-program-spec)))))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -1248,12 +1238,16 @@ code
          #()
          #()
          #()
-         (vector (shape-params mat-program-spec empty face mode (single-vertices len mat-data)))
-         (vector (shape-params tran-program-spec empty face mode (single-vertices len draw-data))))
+         (vector (shape-params polygon-mat-program-spec empty face mode
+                               (single-vertices len mat-data)))
+         (vector (shape-params polygon-tran-program-spec empty face mode
+                               (single-vertices len draw-data))))
         (vector
          #()
-         (vector (shape-params mat-program-spec empty face mode (single-vertices len mat-data)))
-         (vector (shape-params opaq-program-spec empty face mode (single-vertices len draw-data)))
+         (vector (shape-params polygon-mat-program-spec empty face mode
+                               (single-vertices len mat-data)))
+         (vector (shape-params polygon-opaq-program-spec empty face mode
+                               (single-vertices len draw-data)))
          #()
          #())))
   passes)
@@ -1308,7 +1302,7 @@ code
   
   (define r (flonum->byte (material-roughness m)))
   
-  (define mat-data-size (* 24 (vao-struct-size (program-spec-struct (mat-program-spec)))))
+  (define mat-data-size (* 24 (vao-struct-size (program-spec-struct (polygon-mat-program-spec)))))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -1323,7 +1317,7 @@ code
       i))
   
   (define material-data-size
-    (assert (- (vao-struct-size (program-spec-struct (opaq-program-spec))) 12) positive?))
+    (assert (- (vao-struct-size (program-spec-struct (polygon-opaq-program-spec))) 12) positive?))
   (define material-data (make-bytes material-data-size))
   (define material-ptr (u8vector->cpointer material-data))
   (let* ([i  (begin (bytes-copy! material-data 0 (pack-color c) 0 4)
@@ -1338,7 +1332,7 @@ code
                     (unsafe-fx+ i 1))])
     (void))
   
-  (define draw-data-size (* 24 (vao-struct-size (program-spec-struct (opaq-program-spec)))))
+  (define draw-data-size (* 24 (vao-struct-size (program-spec-struct (polygon-opaq-program-spec)))))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([v  (in-vector vs)])
@@ -1357,12 +1351,16 @@ code
          #()
          #()
          #()
-         (vector (shape-params mat-program-spec empty face GL_QUADS (single-vertices 24 mat-data)))
-         (vector (shape-params tran-program-spec empty face GL_QUADS (single-vertices 24 draw-data))))
+         (vector (shape-params polygon-mat-program-spec empty face GL_QUADS
+                               (single-vertices 24 mat-data)))
+         (vector (shape-params polygon-tran-program-spec empty face GL_QUADS
+                               (single-vertices 24 draw-data))))
         (vector
          #()
-         (vector (shape-params mat-program-spec empty face GL_QUADS (single-vertices 24 mat-data)))
-         (vector (shape-params opaq-program-spec empty face GL_QUADS (single-vertices 24 draw-data)))
+         (vector (shape-params polygon-mat-program-spec empty face GL_QUADS
+                               (single-vertices 24 mat-data)))
+         (vector (shape-params polygon-opaq-program-spec empty face GL_QUADS
+                               (single-vertices 24 draw-data)))
          #()
          #())))
   passes)
@@ -1372,36 +1370,27 @@ code
 
 (: make-sphere-shape-passes (-> sphere-shape Passes))
 (define (make-sphere-shape-passes a)
-  (match-define (sphere-shape _ t0 c e m inside?) a)
+  (match-define (sphere-shape _ t c e m inside?) a)
   
+  (define affine-ptr (f32vector->cpointer (affine-data t)))
+  (define roughness (flonum->byte (material-roughness m)))
   (define inside (if inside? 255 0))
   
-  (define t (->flaffine3 t0))
-  (define tinv (flt3inverse t))
-  (define t-ptr (f32vector->cpointer (flvector->f32vector (flaffine3-entries t))))
-  (define tinv-ptr (f32vector->cpointer (flvector->f32vector (flaffine3-entries tinv))))
-  
-  (define trans-datum-size (* 24 4))
-  (define trans-datum (make-bytes trans-datum-size))
-  (define trans-ptr (u8vector->cpointer trans-datum))
-  (memcpy trans-ptr 0 t-ptr (* 12 4) _byte)
-  (memcpy trans-ptr (* 12 4) tinv-ptr (* 12 4) _byte)
-  
-  (define mat-datum-size (+ trans-datum-size 4))  ; last two bytes are unused
+  (define mat-datum-size (+ affine-data-size 4))  ; last two bytes are unused
   (define mat-data-size (* 4 mat-datum-size))
   (define mat-data (make-bytes mat-data-size))
-  (bytes-copy! mat-data 0 trans-datum)
-  (bytes-set! mat-data trans-datum-size (flonum->byte (material-roughness m)))
-  (bytes-set! mat-data (unsafe-fx+ trans-datum-size 1) inside)
+  (memcpy (u8vector->cpointer mat-data) affine-ptr affine-data-size)
+  (bytes-set! mat-data affine-data-size roughness)
+  (bytes-set! mat-data (unsafe-fx+ 1 affine-data-size) inside)
   (for ([j  (in-range 1 4)])
-    (bytes-copy! mat-data (* j mat-datum-size) mat-data 0 mat-datum-size))
+    (bytes-copy! mat-data (unsafe-fx* j mat-datum-size) mat-data 0 mat-datum-size))
   
   (define draw-datum-size (vao-struct-size (program-spec-struct (sphere-opaq-program-spec))))
   (define draw-data-size (* 4 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
   (let* ([i  0]
-         [i  (begin (bytes-copy! draw-data i trans-datum 0 (* 24 4))
-                    (unsafe-fx+ i (* 24 4)))]
+         [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-data-size)
+                    (unsafe-fx+ i affine-data-size))]
          [i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
                     (unsafe-fx+ i 4))]
          [i  (begin (bytes-copy! draw-data i (pack-emitted e) 0 4)
@@ -1411,7 +1400,7 @@ code
     (bytes-set! draw-data (unsafe-fx+ i 2) (flonum->byte (material-specular m)))
     (bytes-set! draw-data (unsafe-fx+ i 3) inside))
   (for ([j  (in-range 1 4)])
-    (bytes-copy! draw-data (* j draw-datum-size) draw-data 0 draw-datum-size))
+    (bytes-copy! draw-data (unsafe-fx* j draw-datum-size) draw-data 0 draw-datum-size))
   
   (define transparent? (< (flvector-ref c 3) 1.0))
   
@@ -1616,11 +1605,14 @@ code
 (define (make-frozen-scene-shape-passes a)
   (define s (frozen-scene-shape-scene a))
   
-  (: transformed-passes (-> Shape FlAffine3- FlAffine3- (Listof Passes)))
-  (define (transformed-passes s t tinv)
-    (map shape-passes (shape-transform s t tinv #t)))
+  (: transformed-passes (-> Shape FlAffine3- (Listof Passes)))
+  (define (transformed-passes s t)
+    (map shape-passes (shape-transform s t (flt3inverse t))))
   
-  (define ps (append* (flscene3-extract s transformed-passes)))
+  (define ps (append* (flscene3-extract (flscene3-transform-shapes s identity-flt3 identity-flt3)
+                                        identity-flt3
+                                        flt3compose
+                                        transformed-passes)))
   (define num-passes (apply max (map vector-length ps)))
   
   (: get-swap-params (-> Integer (Vectorof shape-params)))
@@ -1639,13 +1631,13 @@ code
            ([s  (in-list (group-by-key! ps get-swap-params 0 (vector-length ps)
                                         shape-params-program-spec))]
             [pd  (in-value ((span-key s)))]
+            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
+                                        shape-params-uniforms))]
+            [uniforms  (in-value (span-key s))]
             [s  (in-list ((inst group-by-key! shape-params Face)
                           ps get-swap-params (span-start s) (span-end s)
                           shape-params-face))]
             [face  (in-value (span-key s))]
-            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                        shape-params-uniforms))]
-            [uniforms  (in-value (span-key s))]
             [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
                                         shape-params-mode))]
             [mode  (in-value (span-key s))])
@@ -1671,3 +1663,12 @@ code
                   [(point-light-shape? a)        (make-point-light-shape-passes a)])]
            [(frozen-scene-shape? a)
             (make-frozen-scene-shape-passes a)]))))
+
+(: flscene3-draw-passes (-> Scene (Listof draw-passes)))
+(define (flscene3-draw-passes s)
+  ((inst flscene3-extract Shape draw-passes affine)
+   s
+   identity-affine
+   affine-compose
+   (λ ([a : Shape] [m : affine])
+     (draw-passes (shape-passes a) m))))

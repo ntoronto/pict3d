@@ -49,15 +49,6 @@
 ;; ===================================================================================================
 ;; Rendering threads
 
-(: transformed-draw-passes (-> Shape FlAffine3- FlAffine3- draw-passes))
-(define (transformed-draw-passes s t tinv)
-  (cond [(frozen-scene-shape? s)
-         (draw-passes (flt3compose t (frozen-scene-shape-transform s))
-                      (flt3compose (frozen-scene-shape-inverse s) tinv)
-                      (shape-passes s))]
-        [else
-         (draw-passes t tinv (shape-passes s))]))
-
 (struct render-command ([pict3d : Pict3D] [width : Index] [height : Index]) #:transparent)
 
 (: make-canvas-render-thread (-> (Instance Pict3D-Canvas%) (Async-Channelof render-command) Thread))
@@ -90,9 +81,7 @@
      ;; Lock everything up for drawing
      (with-gl-context (send canvas get-managed-gl-context)
        ;; Extract draw passes from the scene
-       (define passes
-         (list->vector
-          (flscene3-extract (send scene get-scene) transformed-draw-passes)))
+       (define passes (list->vector (flscene3-draw-passes (send scene get-scene))))
        ;; Draw them and swap buffers
        (draw-draw-passes passes width height view)
        (gl-swap-buffers))

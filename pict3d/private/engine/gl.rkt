@@ -12,6 +12,12 @@
 
 (provide (all-defined-out))
 
+(require/typed
+ racket/base
+ [call-with-semaphore  (All (A) (-> Semaphore (-> A) A))])
+
+(define master-gl-context-mutex (make-semaphore 1))
+
 (: master-frame (U #f (Instance Frame%)))
 (define master-frame #f)
 
@@ -20,23 +26,26 @@
 
 (: get-master-gl-context (-> (Instance GL-Context<%>)))
 (define (get-master-gl-context)
-  (define ctxt master-context)
-  (cond [ctxt  ctxt]
-        [else
-         (define config (new gl-config%))
-         (send config set-legacy? #f)
-         (define frame (new frame% [label "Master GL context frame"] [width 1024] [height 1024]))
-         (define canvas (new canvas% [parent frame] [style '(gl no-autoclear)] [gl-config config]))
-         (send frame show #t)
-         (send frame show #f)
-         (sleep/yield 1)
-         (define ctxt (send (send canvas get-dc) get-gl-context))
-         (cond [(and ctxt (send ctxt ok?))
-                (set! master-frame frame)
-                (set! master-context ctxt)
-                ctxt]
-               [else
-                (error 'get-master-gl-context "can't get a GL context")])]))
+  (call-with-semaphore
+   master-gl-context-mutex
+   (λ ()
+     (define ctxt master-context)
+     (cond [ctxt  ctxt]
+           [else
+            (define config (new gl-config%))
+            (send config set-legacy? #f)
+            (define frame (new frame% [label "Master GL context frame"] [width 512] [height 512]))
+            (define canvas (new canvas% [parent frame] [style '(gl no-autoclear)] [gl-config config]))
+            (send frame show #t)
+            (send frame show #f)
+            (sleep/yield 1)
+            (define ctxt (send (send canvas get-dc) get-gl-context))
+            (cond [(and ctxt (send ctxt ok?))
+                   (set! master-frame frame)
+                   (set! master-context ctxt)
+                   ctxt]
+                  [else
+                   (error 'get-master-gl-context "can't get a GL context")])]))))
 
 ;; ===================================================================================================
 ;; Managed contexts
@@ -87,6 +96,16 @@
   (define ctxt (check-current-gl-context 'gl-swap-buffers))
   (send (get-gl-context ctxt) swap-buffers))
 
+(define-syntax-rule (call-with-gl-state body-thunk param obj set-state!)
+  (let ()
+    (check-current-gl-context 'call-with-gl-state)
+    (define old (param))
+    (cond [(eq? old obj)  (body-thunk)]
+          [else  (set-state! obj)
+                 (begin0
+                   (parameterize ([param obj]) (body-thunk))
+                   (set-state! old))])))
+
 ;; ===================================================================================================
 ;; Managed objects
 
@@ -136,16 +155,7 @@
   obj)
 
 (define-syntax-rule (call-with-gl-object body-thunk param obj bind)
-  (let ()
-    (check-current-gl-context 'call-with-gl-object)
-    (define old (param))
-    (cond [(eq? old obj)
-           (body-thunk)]
-          [else
-           (bind (gl-object-handle obj))
-           (begin0
-             (parameterize ([param obj]) (body-thunk))
-             (bind (gl-object-handle old)))])))
+  (call-with-gl-state body-thunk param obj (λ (v) (bind (gl-object-handle v)))))
 
 ;; ===================================================================================================
 ;; Managed buffers
@@ -163,6 +173,12 @@
                        current-gl-array-buffer
                        obj-stx
                        (λ ([handle : Natural]) (glBindBuffer GL_ARRAY_BUFFER handle))))
+
+(: gl-bind-array-buffer (-> gl-object Void))
+(define (gl-bind-array-buffer buf)
+  (unless (eq? buf (current-gl-array-buffer))
+    (glBindBuffer GL_ARRAY_BUFFER (gl-object-handle buf))
+    (current-gl-array-buffer buf)))
 
 (: current-gl-element-array-buffer (Parameterof gl-object))
 (define current-gl-element-array-buffer (make-parameter null-gl-object))
@@ -189,6 +205,12 @@
                        current-gl-vertex-array
                        obj-stx
                        glBindVertexArray))
+
+(: gl-bind-vertex-array (-> gl-object Void))
+(define (gl-bind-vertex-array vao)
+  (unless (eq? vao (current-gl-vertex-array))
+    (glBindVertexArray (gl-object-handle vao))
+    (current-gl-vertex-array vao)))
 
 ;; ===================================================================================================
 ;; Managed textures
@@ -696,8 +718,8 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
     [(back)  'front]
     [else  'both]))
 
-(: gl-draw-face (-> Face Void))
-(define (gl-draw-face f)
+(: gl-set-draw-face (-> Face Void))
+(define (gl-set-draw-face f)
   (case f
     [(neither)  (glEnable GL_CULL_FACE)
                 (glCullFace GL_FRONT_AND_BACK)]
@@ -706,3 +728,17 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
     [(back)  (glEnable GL_CULL_FACE)
              (glCullFace GL_FRONT)]
     [else  (glDisable GL_CULL_FACE)]))
+
+(: current-gl-draw-face (Parameterof Face))
+(define current-gl-draw-face (make-parameter 'both))
+
+(define-syntax-rule (with-gl-draw-face face-stx body ...)
+  (let ([body-thunk  (λ () body ...)]
+        [face : Face  face-stx])
+    (call-with-gl-state body-thunk current-gl-draw-face face gl-set-draw-face)))
+
+(: gl-draw-face (-> Face Void))
+(define (gl-draw-face face)
+  (unless (eq? face (current-gl-draw-face))
+    (gl-set-draw-face face)
+    (current-gl-draw-face face)))

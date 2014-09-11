@@ -47,7 +47,25 @@
  [ctype-sizeof   (parse-type #'(-> CType Index))]
  [ctype-alignof  (parse-type #'(-> CType Index))]
  
- [memcpy  (parse-type #'(-> CPointer Integer CPointer Integer CType Void))]
+ [memmove  (parse-type #'(case->
+                          (-> CPointer CPointer Integer Void)
+                          (-> CPointer CPointer Integer CType Void)
+                          (-> CPointer Integer CPointer Integer Void)
+                          (-> CPointer Integer CPointer Integer CType Void)
+                          (-> CPointer Integer CPointer Integer Integer Void)
+                          (-> CPointer Integer CPointer Integer Integer CType Void)))]
+ [memcpy  (parse-type #'(case->
+                         (-> CPointer CPointer Integer Void)
+                         (-> CPointer CPointer Integer CType Void)
+                         (-> CPointer Integer CPointer Integer Void)
+                         (-> CPointer Integer CPointer Integer CType Void)
+                         (-> CPointer Integer CPointer Integer Integer Void)
+                         (-> CPointer Integer CPointer Integer Integer CType Void)))]
+ [memset  (parse-type #'(case->
+                         (-> CPointer Byte Integer Void)
+                         (-> CPointer Byte Integer CType Void)
+                         (-> CPointer Integer Byte Integer Void)
+                         (-> CPointer Integer Byte Integer CType Void)))]
  [_byte  (parse-type #'CType)]
  
  ;; from ffi/vector

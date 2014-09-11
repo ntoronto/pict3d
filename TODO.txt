@@ -14,17 +14,15 @@ pict3d%
 ======================================================================================================
 Medium-term (if time before RacketCon)
 
-Reorganize engine code (especially "shape.rkt")
+Reorganize engine code
+ * Remove shape-polymorphism in scenes
+ * Separate shape/scene code from generating passes
 
 Fix specular highlight seam
 
-Faster uniforms (aim for 1000 model matrix changes per frame)
+Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
-Faster attributes: choose locations in engine code
-
-Send one attribute for light position and radius
-
-Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin
+Add empty flaabb3 variant
 
 New shape constructors
  * cylinder
@@ -55,6 +53,7 @@ Don't use plane normal transform on directional light (possibly don't apply tran
 
 Try state grouping on a test application using `equal?` instead of `eq?`
 
+? Precompute ray-tracing per-pixel directions when projection matrix changes
 ? Package transform and inverse into a struct (may interfere with state grouping by `eq?`)
 ? Draw Pict3D with alpha (to let REPL background show through)
 ? Special-case transformation matrix struct for translation

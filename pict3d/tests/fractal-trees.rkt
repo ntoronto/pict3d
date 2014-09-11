@@ -26,11 +26,13 @@
          (pin (pin branch left "left" "base")
               right "right" "base")]))
 
-(define t (freeze (build-tree 9)))
-(define s
-  (for*/fold ([s : Pict3D t]) ([x  (in-range -3 4)]
-                               [y  (in-range -3 4)])
-    (combine s (move t (list (* x 5) (* y 5) 0)))))
-
+(define t (build-tree 10))
+(define frozen-t (freeze t))
 t
+frozen-t
+
+(define s
+  (for*/fold ([s : Pict3D frozen-t]) ([x  (in-range -4 5)]
+                                      [y  (in-range -4 5)])
+    (combine s (move frozen-t (list (* x 5) (* y 5) 0)))))
 s

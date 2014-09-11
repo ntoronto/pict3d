@@ -140,6 +140,8 @@
           (cond [new-view  (loop new-view)]
                 [else  view]))))
     
+    ;(values
+    ;(profile
     (time
      ;; Lock everything up for drawing
      (with-gl-context (get-gl-snip-context)
@@ -412,28 +414,16 @@
       (lazy-box-ref!
        passes
        (λ ()
-         (: transformed-draw-passes (-> Shape FlAffine3- FlAffine3- draw-passes))
-         (define (transformed-draw-passes s t tinv)
-           (cond [(frozen-scene-shape? s)
-                  (draw-passes (flt3compose t (frozen-scene-shape-transform s))
-                               (flt3compose (frozen-scene-shape-inverse s) tinv)
-                               (shape-passes s))]
-                 [else
-                  (draw-passes t tinv (shape-passes s))]))
-         
          (define scene-val scene)
          (if scene-val
              (list->vector
-              (append (flscene3-extract scene-val transformed-draw-passes)
-                      (flscene3-extract axes transformed-draw-passes)
-                      (list (draw-passes identity-flt3 identity-flt3
-                                         (shape-passes standard-over-light))
-                            (draw-passes identity-flt3 identity-flt3
-                                         (shape-passes standard-under-light)))
+              (append (flscene3-draw-passes scene-val)
+                      (flscene3-draw-passes axes)
+                      (list (draw-passes (shape-passes standard-over-light) identity-affine)
+                            (draw-passes (shape-passes standard-under-light) identity-affine))
                       (append*
-                       (for/list : (Listof (Listof draw-passes))
-                         ([(name p)  (in-hash bases)])
-                         (flscene3-extract (force (Basis-scene p)) transformed-draw-passes)))))
+                       (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
+                         (flscene3-draw-passes (force (Basis-scene p)))))))
              (vector))
          ))
       )

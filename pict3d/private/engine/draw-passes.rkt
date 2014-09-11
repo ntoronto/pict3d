@@ -180,9 +180,10 @@ code
 (define (size-lte s1 s2)
   (match-define (list w1 h1) s1)
   (match-define (list w2 h2) s2)
-  (cond [(and (<= w1 w2) (<= h1 h2))  #t]
-        [else  (list (* (quotient (+ (max w1 w2) 63) 64) 64)
-                     (* (quotient (+ (max h1 h2) 63) 64) 64))]))
+  (define new-w (* (quotient (+ w1 63) 64) 64))
+  (define new-h (* (quotient (+ h1 63) 64) 64))
+  (cond [(and (= new-w w2) (= new-h h2))  #t]
+        [else  (list new-w new-h)]))
 
 (define-singleton/context (get-depth-buffer [width : Natural] [height : Natural]) #:lte size-lte
   (printf "new ~a × ~a depth-buffer~n" width height)
@@ -306,26 +307,16 @@ code
           (values (min (* 2 s) (max 1 (round (* width (/ s height))))) s))))
   
   ;; Set up framebuffer objects for the different passes
-  (define-values (depth-buffer
-                  tran-depth-buffer
-                  mat-fbo
-                  tran-mat-fbo
-                  light-fbo
-                  tran-fbo
-                  draw-fbo
-                  reduce-fbo
-                  bloom-fbo
-                  blur-fbo)
-    (values (get-depth-buffer width height)
-            (get-tran-depth-buffer width height)
-            (get-mat-fbo width height)
-            (get-tran-mat-fbo width height)
-            (get-light-fbo width height)
-            (get-tran-fbo width height)
-            (get-draw-fbo width height)
-            (get-reduce-fbo width height)
-            (get-bloom-fbo bloom-width bloom-height)
-            (get-blur-fbo bloom-width bloom-height)))
+  (define depth-buffer (get-depth-buffer width height))
+  (define tran-depth-buffer (get-tran-depth-buffer width height))
+  (define mat-fbo (get-mat-fbo width height))
+  (define tran-mat-fbo (get-tran-mat-fbo width height))
+  (define light-fbo (get-light-fbo width height))
+  (define tran-fbo (get-tran-fbo width height))
+  (define draw-fbo (get-draw-fbo width height))
+  (define reduce-fbo (get-reduce-fbo width height))
+  (define bloom-fbo (get-bloom-fbo bloom-width bloom-height))
+  (define blur-fbo (get-blur-fbo bloom-width bloom-height))
   
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms

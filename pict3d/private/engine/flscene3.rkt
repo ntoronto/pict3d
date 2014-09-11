@@ -12,8 +12,6 @@
 
 (provide (all-defined-out))
 
-(define flscene3-transform-threshold 128)
-
 ;; ===================================================================================================
 ;; Types
 
@@ -84,8 +82,8 @@
                      (nonempty-flscene3-count s)
                      t tinv s)))
 
-(: make-flscene3-tran (All (A) (-> FlAffine3- FlAffine3- (FlScene3 A) (FlScene3 A))))
-(define (make-flscene3-tran t tinv s)
+(: flscene3-transform (All (A) (-> (FlScene3 A) FlAffine3- FlAffine3- (FlScene3 A))))
+(define (flscene3-transform s t tinv)
   (if (empty-flscene3? s) s (make-nonempty-flscene3-tran t tinv s)))
 
 ;; ===================================================================================================
@@ -197,19 +195,17 @@
 
 ;; ===================================================================================================
 
-(: flscene3-extract (All (A B) (-> (FlScene3 A) (-> A FlAffine3- FlAffine3- B) (Listof B))))
-(define (flscene3-extract s f)
-  (let loop ([s s]
-             [t : FlAffine3-  identity-flt3]
-             [tinv : FlAffine3-  identity-flt3])
+(: flscene3-extract (All (A B T) (-> (FlScene3 A) T (-> T FlAffine3- T) (-> A T B) (Listof B))))
+(define (flscene3-extract s t-id t-compose f)
+  (let loop ([s s] [t : T  t-id])
     (match s
       [(? empty-flscene3? s)  empty]
       [(flscene3-leaf b c a)
-       (list (f a t tinv))]
+       (list (f a t))]
       [(flscene3-node b c s1 s2)
-       (append (loop s1 t tinv) (loop s2 t tinv))]
+       (append (loop s1 t) (loop s2 t))]
       [(flscene3-tran b c t0 tinv0 s0)
-       (loop s0 (flt3compose t t0) (flt3compose tinv0 tinv))])))
+       (loop s0 (t-compose t t0))])))
 
 (: flscene3-filter (All (A) (-> (FlScene3 A) (-> A Boolean) (FlScene3 A))))
 (define (flscene3-filter s p?)
@@ -248,24 +244,21 @@
     ;; -----------------------------------------------------------------------------------------------
     ;; Transform a scene
     
-    (: transform-all (-> (Nonempty-FlScene3 A) FlAffine3- FlAffine3- (FlScene3 A)))
-    (define (transform-all s t tinv)
+    (: nonempty-transform-shapes (-> (Nonempty-FlScene3 A) FlAffine3- FlAffine3- (FlScene3 A)))
+    (define (nonempty-transform-shapes s t tinv)
       (match s
         [(flscene3-leaf b c a)
          (flscene3-union* (map shape->flscene3 (shape-transform a t tinv)))]
         [(flscene3-node b c s1 s2)
-         (make-flscene3-node (transform-all s1 t tinv)
-                             (transform-all s2 t tinv))]
+         (make-flscene3-node (nonempty-transform-shapes s1 t tinv)
+                             (nonempty-transform-shapes s2 t tinv))]
         [(flscene3-tran b c t0 tinv0 s0)
-         (transform-all s0 (flt3compose t t0) (flt3compose tinv0 tinv))]))
+         (nonempty-transform-shapes s0 (flt3compose t t0) (flt3compose tinv0 tinv))]))
+      
     
-    (: flscene3-transform (-> (FlScene3 A) FlAffine3- FlAffine3- (FlScene3 A)))
-    (define (flscene3-transform s t tinv)
-      (cond [(empty-flscene3? s)  s]
-            [(< (flscene3-count s) flscene3-transform-threshold)
-             (transform-all s t tinv)]
-            [else
-             (make-flscene3-tran t tinv s)]))
+    (: flscene3-transform-shapes (-> (FlScene3 A) FlAffine3- FlAffine3- (FlScene3 A)))
+    (define (flscene3-transform-shapes s t tinv)
+      (if (empty-flscene3? s) s (nonempty-transform-shapes s t tinv)))
     
     ;; -----------------------------------------------------------------------------------------------
     ;; Simple collision detection
@@ -278,4 +271,4 @@
     ;; -----------------------------------------------------------------------------------------------
     
     (values shape->flscene3
-            flscene3-transform)))
+            flscene3-transform-shapes)))
