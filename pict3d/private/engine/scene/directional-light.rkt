@@ -7,7 +7,7 @@
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
@@ -18,7 +18,7 @@
 
 (provide make-directional-light-shape
          make-directional-light-shape-passes
-         directional-light-shape-aabb
+         directional-light-shape-rect
          directional-light-shape-transform
          )
 
@@ -133,10 +133,9 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(define directional-light-shape-aabb
-  (assert (make-flaabb3 (flvector -inf.0 -inf.0 -inf.0)
-                        (flvector +inf.0 +inf.0 +inf.0))
-          values))
+(define directional-light-shape-rect
+  (nonempty-flrect3 (flvector -inf.0 -inf.0 -inf.0)
+                    (flvector +inf.0 +inf.0 +inf.0)))
 
 ;; ===================================================================================================
 ;; Transform

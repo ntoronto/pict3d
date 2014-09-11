@@ -12,7 +12,7 @@
          typed/opengl
          "../math/flv3.rkt"
          "../math/flt3.rkt"
-         "../math/flaabb3.rkt"
+         "../math/flrect3.rkt"
          "../engine/scene.rkt"
          "../engine/gl.rkt"
          "../engine/utils.rkt"
@@ -186,9 +186,9 @@
     (define camera
       (let* ([s  (send scene get-scene)]
              [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-             [b  (and (not (empty-scene? s)) (scene-aabb s))]
-             [c  (if b (flaabb3-center b) (flvector 0.0 0.0 0.0))]
-             [d  (if b (flv3mag (flv3- (flaabb3-max b) c)) 0.0)])
+             [b  (and (not (empty-scene? s)) (scene-rect s))]
+             [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
+             [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
         (new camera%
              [position  (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0))))]
              [velocity  (flvector 0.0 0.0 0.0)]

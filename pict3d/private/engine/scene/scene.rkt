@@ -27,7 +27,7 @@ for `Scene`.
          racket/fixnum
          (except-in typed/opengl/ffi -> cast)
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../../utils.rkt"
          "../draw-pass.rkt"
          "../affine.rkt"
@@ -44,12 +44,12 @@ for `Scene`.
 
 (: shape->scene (-> Shape Nonempty-Scene))
 (define (shape->scene a)
-  (scene-leaf (shape-aabb a) 1 a))
+  (scene-leaf (shape-rect a) 1 a))
 
 (: make-nonempty-scene-node (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-scene-node s1 s2)
   (define c (fx+ (nonempty-scene-count s1) (nonempty-scene-count s2)))
-  (define b (flaabb3-join (scene-aabb s1) (scene-aabb s2)))
+  (define b (flrect3-join (scene-rect s1) (scene-rect s2)))
   (scene-node b c s1 s2))
 
 (: make-scene-node (-> Scene Scene Scene))
@@ -64,7 +64,7 @@ for `Scene`.
       (make-nonempty-scene-tran (flt3compose t (scene-tran-transform s))
                                 (flt3compose (scene-tran-inverse s) tinv)
                                 (scene-tran-scene s))
-      (scene-tran (flaabb3-transform (scene-aabb s) t)
+      (scene-tran (flrect3-transform (scene-rect s) t)
                   (nonempty-scene-count s)
                   t tinv s)))
 
@@ -131,9 +131,9 @@ for `Scene`.
   (let loop ([s s] [d d])
     (cond
       [(or (= d 0) (scene-leaf? s) (scene-tran? s))
-       (define b (scene-aabb s))
-       (define xmin (flvector-ref (flaabb3-min b) i))
-       (define xmax (flvector-ref (flaabb3-max b) i))
+       (define b (scene-rect s))
+       (define xmin (flvector-ref (flrect3-min b) i))
+       (define xmax (flvector-ref (flrect3-max b) i))
        (if (< (- x xmin) (- xmax x))
            (values s empty-scene)
            (values empty-scene s))]
@@ -159,7 +159,7 @@ for `Scene`.
     [(or (= d 0) (scene-leaf? s) (scene-tran? s))  s]
     [(scene-node? s)
      (match-define (scene-node b c s1 s2) s)
-     (define-values (i x) (flaabb3-longest-axis/center b))
+     (define-values (i x) (flrect3-longest-axis/center b))
      (define-values (s11 s12) (scene-rebalance-split s1 i x d))
      (define-values (s21 s22) (scene-rebalance-split s2 i x d))
      (cond
@@ -213,21 +213,21 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Shape bounding box
 
-(: shape-aabb (-> Shape FlAABB3))
-(define (shape-aabb a)
+(: shape-rect (-> Shape Nonempty-FlRect3))
+(define (shape-rect a)
   (cond
     [(solid-shape? a)
      (cond
-       [(triangle-shape? a)   (triangle-shape-aabb a)]
-       [(quad-shape? a)       (quad-shape-aabb a)]
-       [(rectangle-shape? a)  (rectangle-shape-aabb a)]
-       [(sphere-shape? a)     (sphere-shape-aabb a)])]
+       [(triangle-shape? a)   (triangle-shape-rect a)]
+       [(quad-shape? a)       (quad-shape-rect a)]
+       [(rectangle-shape? a)  (rectangle-shape-rect a)]
+       [(sphere-shape? a)     (sphere-shape-rect a)])]
     [(light-shape? a)
      (cond
-       [(directional-light-shape? a)  directional-light-shape-aabb]
-       [(point-light-shape? a)        (point-light-shape-aabb a)])]
+       [(directional-light-shape? a)  directional-light-shape-rect]
+       [(point-light-shape? a)        (point-light-shape-rect a)])]
     [(frozen-scene-shape? a)
-     (frozen-scene-shape-aabb a)]))
+     (frozen-scene-shape-rect a)]))
 
 ;; ===================================================================================================
 ;; Shape and scene (forced) transformation
@@ -479,9 +479,9 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Bounding box
 
-(: frozen-scene-shape-aabb (-> frozen-scene-shape FlAABB3))
-(define (frozen-scene-shape-aabb a)
-  (scene-aabb (frozen-scene-shape-scene a)))
+(: frozen-scene-shape-rect (-> frozen-scene-shape Nonempty-FlRect3))
+(define (frozen-scene-shape-rect a)
+  (scene-rect (frozen-scene-shape-scene a)))
 
 ;; ===================================================================================================
 ;; Transform

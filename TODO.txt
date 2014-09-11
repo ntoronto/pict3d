@@ -1,13 +1,9 @@
 ======================================================================================================
 Short-term (before RacketCon)
 
-flaabb3
- * Rename to flrect3
- * Add empty variant
-
 View frustum culling
 
-(: pict3d-render (-> Pict3D Integer Integer (Instance Bitmap%)))
+(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
 

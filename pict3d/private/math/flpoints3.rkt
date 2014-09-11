@@ -6,12 +6,12 @@
          racket/match
          racket/list
          "../math/flv3.rkt"
-         "../math/flaabb3.rkt")
+         "../math/flrect3.rkt")
 
 (provide FlPoints3 flpoints3? flpoints3-data flpoints3-vertices
          (rename-out [flpoints3* flpoints3])
          flpoints3-length
-         flpoints3-aabb)
+         flpoints3-rect)
 
 (struct flpoints3 ([data : Any]
                    [vertices : (Vectorof FlVector)])
@@ -38,6 +38,6 @@
 (define (flpoints3-length p)
   (vector-length (flpoints3-vertices p)))
 
-(: flpoints3-aabb (-> flpoints3 FlAABB3))
-(define (flpoints3-aabb p)
-  (assert (flv3aabb (flpoints3-vertices p)) values))
+(: flpoints3-rect (-> flpoints3 FlRect3))
+(define (flpoints3-rect p)
+  (assert (flv3rect (flpoints3-vertices p)) values))

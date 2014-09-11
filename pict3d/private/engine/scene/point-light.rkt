@@ -9,7 +9,7 @@
          (except-in typed/opengl/ffi -> cast)
          "../../math/flv3.rkt"
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../draw-pass.rkt"
          "../gl.rkt"
          "../shader-lib.rkt"
@@ -20,7 +20,7 @@
 
 (provide make-point-light-shape
          make-point-light-shape-passes
-         point-light-shape-aabb
+         point-light-shape-rect
          point-light-shape-transform
          )
 
@@ -159,12 +159,12 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: point-light-shape-aabb (-> point-light-shape FlAABB3))
-(define (point-light-shape-aabb a)
+(: point-light-shape-rect (-> point-light-shape Nonempty-FlRect3))
+(define (point-light-shape-rect a)
   (define p (point-light-shape-position a))
   (define radius (point-light-shape-radius a))
   (define r (flvector radius radius radius))
-  (assert (make-flaabb3 (flv3- p r) (flv3+ p r)) values))
+  (nonempty-flrect3 (flv3- p r) (flv3+ p r)))
 
 ;; ===================================================================================================
 ;; Transform

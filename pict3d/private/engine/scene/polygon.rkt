@@ -10,7 +10,7 @@
          (except-in typed/opengl/ffi -> cast)
          math/flonum
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
@@ -21,17 +21,17 @@
 
 (provide make-triangle-shape
          make-triangle-shape-passes
-         triangle-shape-aabb
+         triangle-shape-rect
          triangle-shape-transform
          
          make-quad-shape
          make-quad-shape-passes
-         quad-shape-aabb
+         quad-shape-rect
          quad-shape-transform
          
          make-rectangle-shape
          make-rectangle-shape-passes
-         ;rectangle-shape-aabb  ; already an accessor
+         ;rectangle-shape-rect  ; already an accessor
          rectangle-shape-transform
          )
 
@@ -108,7 +108,7 @@
         [else
          (quad-shape (box 'lazy) vs ns cs es ms face)]))
 
-(: make-rectangle-shape (-> FlAABB3 FlVector FlVector material Face rectangle-shape))
+(: make-rectangle-shape (-> Nonempty-FlRect3 FlVector FlVector material Face rectangle-shape))
 (define (make-rectangle-shape b c e m face)
   (cond [(not (= 4 (flvector-length c)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 b c e m face)]
@@ -426,9 +426,9 @@ code
 
 (: make-rectangle-shape-passes (-> rectangle-shape Passes))
 (define (make-rectangle-shape-passes a)
-  (match-define (rectangle-shape _ aabb c e m face) a)
+  (match-define (rectangle-shape _ rect c e m face) a)
   
-  (define-values (xmin ymin zmin xmax ymax zmax) (flaabb3-values aabb))
+  (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values rect))
   
   (define v1 (f32vector xmin ymin zmin))
   (define v2 (f32vector xmax ymin zmin))
@@ -526,15 +526,15 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: triangle-shape-aabb (-> triangle-shape FlAABB3))
-(define (triangle-shape-aabb a)
-  (assert (flv3aabb (triangle-shape-vertices a)) values))
+(: triangle-shape-rect (-> triangle-shape Nonempty-FlRect3))
+(define (triangle-shape-rect a)
+  (assert (flv3rect (triangle-shape-vertices a)) nonempty-flrect3?))
 
-(: quad-shape-aabb (-> quad-shape FlAABB3))
-(define (quad-shape-aabb a)
-  (assert (flv3aabb (quad-shape-vertices a)) values))
+(: quad-shape-rect (-> quad-shape Nonempty-FlRect3))
+(define (quad-shape-rect a)
+  (assert (flv3rect (quad-shape-vertices a)) nonempty-flrect3?))
 
-;; rectangle-shape-aabb is already an accessor
+;; rectangle-shape-rect is already an accessor
 
 ;; ===================================================================================================
 ;; Transform
@@ -565,7 +565,7 @@ code
                                        quad-shape quad-shape)))
 (define (rectangle-shape-transform a t tinv)
   (match-define (rectangle-shape passes b c e m old-face) a)
-  (define-values (xmin ymin zmin xmax ymax zmax) (flaabb3-values b))
+  (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
   
   (define face (if (flt3consistent? t) old-face (opposite-gl-face old-face)))
   

@@ -5,13 +5,13 @@
 (require (for-syntax racket/base)
          racket/list
          racket/match
-         "../math/flaabb3.rkt"
+         "../math/flrect3.rkt"
          "../utils.rkt")
 
 (provide FlLines3 fllines3? fllines3-data fllines3-vertices fllines3-segments
          (rename-out [fllines3* fllines3])
          fllines3-length
-         fllines3-aabb)
+         fllines3-rect)
 
 (struct fllines3 ([data : Any]
                   [vertices : (Vectorof FlVector)]
@@ -43,6 +43,6 @@
 (define (fllines3-length p)
   (vector-length (fllines3-vertices p)))
 
-(: fllines3-aabb (-> fllines3 FlAABB3))
-(define (fllines3-aabb p)
-  (assert (flv3aabb (fllines3-vertices p)) values))
+(: fllines3-rect (-> fllines3 FlRect3))
+(define (fllines3-rect p)
+  (assert (flv3rect (fllines3-vertices p)) values))

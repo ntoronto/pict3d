@@ -77,13 +77,13 @@ code
 (define impostor-bounds-code
   (string-append
    #<<code
-struct aabb {
+struct rect {
   vec3 mins;
   vec3 maxs;
   float is_degenerate;
 };
 
-aabb impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
+rect impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
   vec4 vs[8];
   vs[0] = vec4(wmin, 1.0);
   vs[1] = vec4(wmin.xy, wmax.z, 1.0);
@@ -114,7 +114,7 @@ aabb impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
     cmax = max(cmax, cpos.xyz);
   }
   
-  if (vmin.z > 0.0) return aabb(cmin, cmax, 1.0);
+  if (vmin.z > 0.0) return rect(cmin, cmax, 1.0);
 
   // if we're inside it, we should draw on the whole screen
   if (max(vmin.x, max(vmin.y, vmin.z)) <= 0.0 &&
@@ -123,7 +123,7 @@ aabb impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
     cmax = vec3(+1.0);
   }
 
-  return aabb(cmin, cmax, 0.0);
+  return rect(cmin, cmax, 0.0);
 }
 code
    "\n\n"))
@@ -133,7 +133,7 @@ code
    impostor-bounds-code
    #<<code
 float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
-  aabb bbx = impostor_bounds(view, proj, wmin, wmax);
+  rect bbx = impostor_bounds(view, proj, wmin, wmax);
 
   // output the correct vertices for a triangle strip
   switch (gl_VertexID) {
@@ -161,7 +161,7 @@ code
    impostor-bounds-code
    #<<code
 float output_impostor_quad(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
-  aabb bbx = impostor_bounds(view, proj, wmin, wmax);
+  rect bbx = impostor_bounds(view, proj, wmin, wmax);
 
   // output the correct vertices for a quad
   switch (gl_VertexID % 4) {

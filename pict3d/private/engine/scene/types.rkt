@@ -3,7 +3,7 @@
 (require racket/match
          racket/list
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../../utils.rkt"
          "../draw-pass.rkt"
          "../affine.rkt"
@@ -38,7 +38,7 @@
   #:transparent)
 
 (struct rectangle-shape solid-shape
-  ([aabb : FlAABB3]
+  ([rect : Nonempty-FlRect3]
    [color : FlVector]
    [emitted-color : FlVector]
    [material : material]
@@ -77,7 +77,7 @@
 (struct Empty-Scene scene () #:transparent)
 
 (struct nonempty-scene scene
-  ([aabb : FlAABB3]
+  ([rect : Nonempty-FlRect3]
    [count : Positive-Fixnum])
   #:transparent)
 
@@ -105,8 +105,13 @@
 
 (define empty-scene (Empty-Scene))
 (define empty-scene? Empty-Scene?)
-(define scene-aabb nonempty-scene-aabb)
 
-(: scene-count (-> Scene Nonnegative-Fixnum))
+(: scene-rect (case-> (-> Nonempty-Scene Nonempty-FlRect3)
+                      (-> Scene FlRect3)))
+(define (scene-rect s)
+  (if (empty-scene? s) empty-flrect3 (nonempty-scene-rect s)))
+
+(: scene-count (case-> (-> Nonempty-Scene Positive-Fixnum)
+                       (-> Scene Nonnegative-Fixnum)))
 (define (scene-count s)
   (if (empty-scene? s) 0 (nonempty-scene-count s)))

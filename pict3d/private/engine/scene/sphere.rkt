@@ -9,7 +9,7 @@
          (except-in typed/opengl/ffi -> cast)
          math/flonum
          "../../math/flt3.rkt"
-         "../../math/flaabb3.rkt"
+         "../../math/flrect3.rkt"
          "../affine.rkt"
          "../gl.rkt"
          "../types.rkt"
@@ -21,7 +21,7 @@
 
 (provide make-sphere-shape
          make-sphere-shape-passes
-         sphere-shape-aabb
+         sphere-shape-rect
          sphere-shape-transform
          )
 
@@ -417,14 +417,13 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(define unit-sphere-aabb
-  (assert (make-flaabb3 (flvector -1.0 -1.0 -1.0)
-                        (flvector +1.0 +1.0 +1.0))
-          values))
+(define unit-sphere-rect
+  (nonempty-flrect3 (flvector -1.0 -1.0 -1.0)
+                    (flvector +1.0 +1.0 +1.0)))
 
-(: sphere-shape-aabb (-> sphere-shape FlAABB3))
-(define (sphere-shape-aabb a)
-  (flaabb3-transform unit-sphere-aabb (affine-transform (sphere-shape-affine a))))
+(: sphere-shape-rect (-> sphere-shape Nonempty-FlRect3))
+(define (sphere-shape-rect a)
+  (flrect3-transform unit-sphere-rect (affine-transform (sphere-shape-affine a))))
 
 ;; ===================================================================================================
 ;; Transform

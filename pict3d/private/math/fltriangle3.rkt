@@ -20,7 +20,7 @@ Clipping
            racket/match
            math/flonum
            "../math/flv3.rkt"
-           "../math/flaabb3.rkt"
+           "../math/flrect3.rkt"
            "../utils.rkt"
            "../types.rkt")
   
@@ -57,9 +57,9 @@ Clipping
     (define s (flv3polygon-regularity (fltriangle3-vertices p)))
     (if s s 0.0))
   
-  (: fltriangle3-aabb (-> FlTriangle3 FlAABB3))
-  (define (fltriangle3-aabb p)
-    (assert (flv3aabb (fltriangle3-vertices p)) flaabb3?))
+  (: fltriangle3-rect (-> FlTriangle3 FlRect3))
+  (define (fltriangle3-rect p)
+    (assert (flv3rect (fltriangle3-vertices p)) flrect3?))
   
   (: fltriangle3-centroid (-> FlTriangle3 FlVector))
   (define (fltriangle3-centroid p)
@@ -270,7 +270,7 @@ Clipping
          fltriangle3-normal
          fltriangle3-plane
          fltriangle3-regularity
-         fltriangle3-aabb
+         fltriangle3-rect
          fltriangle3-clip
          fltriangle3-split
          fltriangle3-splitting-planes

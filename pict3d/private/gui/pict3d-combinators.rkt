@@ -6,7 +6,7 @@
          math/base
          "../math/flv3.rkt"
          "../math/flt3.rkt"
-         "../math/flaabb3.rkt"
+         "../math/flrect3.rkt"
          "../engine/scene.rkt"
          "../engine/utils.rkt"
          "../engine/types.rkt"
@@ -191,7 +191,7 @@
 (: rectangle (->* [User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
 (define (rectangle v1 v2 [face 'front])
   (shape->pict3d
-   (make-rectangle-shape (assert (flv3aabb (vector (->flv3 v1) (->flv3 v2))) values)
+   (make-rectangle-shape (assert (flv3rect (vector (->flv3 v1) (->flv3 v2))) nonempty-flrect3?)
                          (current-color)
                          (current-emitted)
                          (current-material)

@@ -38,7 +38,7 @@
          flv3dist^2
          flv3dist
          flv3equiv?
-         flv3aabb-values
+         flv3rect-values
          
          FlPlane3 flplane3? flplane3-normal flplane3-distance
          (rename-out [flplane3* flplane3])
@@ -432,10 +432,10 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Bounding box
 
-(: flv3aabb-values (-> (Vectorof FlVector) (Values Flonum Flonum Flonum Flonum Flonum Flonum)))
-(define (flv3aabb-values vs)
+(: flv3rect-values (-> (Vectorof FlVector) (Values Flonum Flonum Flonum Flonum Flonum Flonum)))
+(define (flv3rect-values vs)
   (define n (vector-length vs))
-  (cond [(= n 0)  (raise-type-error 'flv3aabb-values "nonempty vector" vs)]
+  (cond [(= n 0)  (raise-type-error 'flv3rect-values "nonempty vector" vs)]
         [else
          (define-values (x y z) (flv3-values (unsafe-vector-ref vs 0)))
          (for/fold ([xmin : Flonum  x]
@@ -562,7 +562,7 @@
   (cond
     [(= n 0)  (flvector)]
     [else
-     (define-values (xmin ymin zmin xmax ymax zmax) (flv3aabb-values vs))
+     (define-values (xmin ymin zmin xmax ymax zmax) (flv3rect-values vs))
      (define m (max (abs xmin) (abs xmax) (abs ymin) (abs ymax) (abs zmin) (abs zmax)))
      (cond
        [(= m 0.0)  (and (= 0.0 (flplane3-point-dist plane (unsafe-vector-ref vs 0)))
@@ -772,7 +772,7 @@ Using fl2 arithmetic,
 (: slow-flv3polygon-centroid/error (-> (Vectorof FlVector)
                                        (Values Flonum Flonum Flonum Flonum Flonum Flonum)))
 (define (slow-flv3polygon-centroid/error vs)
-  (define-values (xmin ymin zmin xmax ymax zmax) (flv3aabb-values vs))
+  (define-values (xmin ymin zmin xmax ymax zmax) (flv3rect-values vs))
   (define nx (flpow2near (max (abs xmin) (abs xmax))))
   (define ny (flpow2near (max (abs ymin) (abs ymax))))
   (define nz (flpow2near (max (abs zmin) (abs zmax))))
@@ -963,7 +963,7 @@ Using fl2 arithmetic,
 (define (newell-normal-reduction vs)
   (define n (vector-length vs))
   ;; Find the bounding box
-  (define-values (xbmin ybmin zbmin xbmax ybmax zbmax) (flv3aabb-values vs))
+  (define-values (xbmin ybmin zbmin xbmax ybmax zbmax) (flv3rect-values vs))
   ;; Find the square root of the largest product computed while computing the normal
   (define-values (x1 y1 z1) (let-values ([(x y z)  (flv3-values (vector-ref vs (- n 1)))])
                               (values (flsqrt (flabs x))
@@ -1143,7 +1143,7 @@ Using fl2 arithmetic,
 
 (: slow-flv3polygon-regularity (-> (Vectorof FlVector) Index (Values Flonum Flonum)))
 (define (slow-flv3polygon-regularity vs n)
-  (define-values (xmin ymin zmin xmax ymax zmax) (flv3aabb-values vs))
+  (define-values (xmin ymin zmin xmax ymax zmax) (flv3rect-values vs))
   (define s (flpow2near (/ (max (abs xmin) (abs xmax) (abs ymin) (abs ymax) (abs zmin) (abs zmax))
                            (flsqrt (/ +max.0 256.0)))))
   (fast-flv3polygon-regularity (vector-map (λ ([v : FlVector]) (flv3/ v s)) vs) n))
