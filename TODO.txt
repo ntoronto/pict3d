@@ -19,7 +19,6 @@ Fix "resizing sphere animation window creates garbage on borders"
 Medium-term (if time before RacketCon)
 
 Reorganize engine code
- * Remove shape-polymorphism in scenes
  * Separate shape/scene code from generating passes
 
 Fix specular highlight seam
@@ -48,6 +47,8 @@ pict3d% GUI toggles
  * Sunlight and underlight
  * Debug view of lights
  * Normals, outlines, etc.
+
+Simple collision detection
 
 Light min radius (test with cartoon lighting)
 

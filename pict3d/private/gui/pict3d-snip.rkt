@@ -14,10 +14,9 @@
          "../math/flt3.rkt"
          "../math/flaabb3.rkt"
          "../utils.rkt"
-         "../engine/flscene3.rkt"
+         "../engine/scene.rkt"
          "../engine/gl.rkt"
          "../engine/utils.rkt"
-         "../engine/shape.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
          "axes-scene.rkt"
@@ -70,7 +69,7 @@
 (define (basis t [tinv (flt3inverse t)])
   (Basis t
          tinv
-         (delay (flscene3-transform
+         (delay (scene-transform
                  axes
                  (flt3compose t smaller-flt3)
                  (flt3compose bigger-flt3 tinv)))))
@@ -185,8 +184,8 @@
     (: camera (Instance Camera%))
     (define camera
       (let* ([s  (send scene get-scene)]
-             [s  (flscene3-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-             [b  (and (not (empty-flscene3? s)) (flscene3-aabb s))]
+             [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
+             [b  (and (not (empty-scene? s)) (scene-aabb s))]
              [c  (if b (flaabb3-center b) (flvector 0.0 0.0 0.0))]
              [d  (if b (flv3mag (flv3- (flaabb3-max b) c)) 0.0)])
         (new camera%
@@ -417,13 +416,13 @@
          (define scene-val scene)
          (if scene-val
              (list->vector
-              (append (flscene3-draw-passes scene-val)
-                      (flscene3-draw-passes axes)
+              (append (scene-draw-passes scene-val)
+                      (scene-draw-passes axes)
                       (list (draw-passes (shape-passes standard-over-light) identity-affine)
                             (draw-passes (shape-passes standard-under-light) identity-affine))
                       (append*
                        (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
-                         (flscene3-draw-passes (force (Basis-scene p)))))))
+                         (scene-draw-passes (force (Basis-scene p)))))))
              (vector))
          ))
       )
@@ -493,7 +492,7 @@
     (assert (current-pict3d-projection-width) index?)
     (assert (current-pict3d-projection-height) index?)))
 
-(define empty-pict3d (pict3d empty-flscene3 (make-immutable-hash)))
+(define empty-pict3d (pict3d empty-scene (make-immutable-hash)))
 
 (: pict3d-scene (-> Pict3D Scene))
 (define (pict3d-scene s) (send s get-scene))

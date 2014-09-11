@@ -10,3 +10,9 @@
                       [uniforms : (List-Hash String (U Symbol Uniform))]
                       [struct : vao-struct])
   #:transparent)
+
+(struct material ([ambient : Flonum]
+                  [diffuse : Flonum]
+                  [specular : Flonum]
+                  [roughness : Flonum])
+  #:transparent)

@@ -7,9 +7,9 @@
          "../math/flv3.rkt"
          "../math/flt3.rkt"
          "../math/flaabb3.rkt"
-         "../engine/flscene3.rkt"
+         "../engine/scene.rkt"
          "../engine/utils.rkt"
-         "../engine/shape.rkt"
+         "../engine/types.rkt"
          "pict3d-snip.rkt"
          "user-types.rkt"
          )
@@ -168,7 +168,7 @@
 
 (: shape->pict3d (-> Shape Pict3D))
 (define (shape->pict3d s)
-  (scene->pict3d (shape->flscene3 s)))
+  (scene->pict3d (shape->scene s)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
@@ -264,9 +264,9 @@
 (: freeze (-> Pict3D Pict3D))
 (define (freeze p)
   (define scene (pict3d-scene p))
-  (if (empty-flscene3? scene)
+  (if (empty-scene? scene)
       p
-      (pict3d (shape->flscene3 (make-frozen-scene-shape scene))
+      (pict3d (shape->scene (make-frozen-scene-shape scene))
               (pict3d-bases p))))
 
 ;; ===================================================================================================
@@ -276,7 +276,7 @@
 (define (pict3d-post-transform s t tinv)
   (define scene (pict3d-scene s))
   (define ps (pict3d-bases s))
-  (pict3d (flscene3-transform scene t tinv)
+  (pict3d (scene-transform scene t tinv)
           (bases-post-transform ps t tinv)))
 
 (: transform (case-> (-> Pict3D FlAffine3- Pict3D)
@@ -355,7 +355,7 @@
 
 (: combine* (-> (Listof Pict3D) Pict3D))
 (define (combine* ss)
-  (pict3d (flscene3-union* (map pict3d-scene ss))
+  (pict3d (scene-union* (map pict3d-scene ss))
           (for/fold ([ps : Bases  (make-immutable-hash)]) ([s  (in-list ss)])
             (hash-merge ps (pict3d-bases s)))))
 
@@ -374,6 +374,6 @@
   (define t (flt3compose t1 (flt3inverse t2)))
   (define tinv (flt3compose t2 (flt3inverse t1)))
   (pict3d
-   (flscene3-union scene1 (flscene3-transform scene2 t tinv))
+   (scene-union scene1 (scene-transform scene2 t tinv))
    (hash-merge (hash-remove (pict3d-bases s1) label1)
                (bases-post-transform (hash-remove (pict3d-bases s2) label2) t tinv))))

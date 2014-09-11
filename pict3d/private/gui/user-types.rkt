@@ -4,7 +4,7 @@
          typed/racket/class
          typed/racket/gui
          math/flonum
-         "../engine/shape.rkt")
+         "../engine/types.rkt")
 
 (provide User-Color
          User-Vector

@@ -7,9 +7,8 @@
          typed/racket/class
          typed/racket/async-channel
          "../math/flt3.rkt"
-         "../engine/flscene3.rkt"
+         "../engine/scene.rkt"
          "../engine/gl.rkt"
-         "../engine/shape.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
          "../utils.rkt"
@@ -81,7 +80,7 @@
      ;; Lock everything up for drawing
      (with-gl-context (send canvas get-managed-gl-context)
        ;; Extract draw passes from the scene
-       (define passes (list->vector (flscene3-draw-passes (send scene get-scene))))
+       (define passes (list->vector (scene-draw-passes (send scene get-scene))))
        ;; Draw them and swap buffers
        (draw-draw-passes passes width height view)
        (gl-swap-buffers))

@@ -3,8 +3,8 @@
 (require math/flonum
          math/base
          "../math/flt3.rkt"
-         "../engine/flscene3.rkt"
-         "../engine/shape.rkt")
+         "../engine/types.rkt"
+         "../engine/scene.rkt")
 
 (provide make-axis axes)
 
@@ -20,12 +20,12 @@
   (define (transform-norm v)
     (flv4->dir (flt3tapply tinv (dir->flv4 v))))
   
-  (flscene3-union*
+  (scene-union*
    (for/list : (Listof Scene) ([t  (in-range 0 360 45)])
      (define t0 (degrees->radians (fl t)))
      (define t1 (degrees->radians (+ (fl t) 45.0)))
      (define t1/2 (* 0.5 (+ t0 t1)))
-     (shape->flscene3
+     (shape->scene
       (make-triangle-shape
        (vector (transform-pos (flvector 0.024 (* 0.02 (sin t1)) (* 0.02 (cos t1))))
                (transform-pos (flvector 0.024 (* 0.02 (sin t0)) (* 0.02 (cos t0))))
@@ -57,9 +57,9 @@
              axis-material))
 
 (define axes
-  (flscene3-union*
+  (scene-union*
    (list
-    (shape->flscene3
+    (shape->scene
      (make-sphere-shape
       (scale-flt3 (flvector 0.03 0.03 0.03))
       (flvector 0.0 0.0 0.0 1.0)
