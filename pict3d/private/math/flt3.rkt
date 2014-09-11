@@ -19,8 +19,8 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
 (provide
  ;; Homogeneous coordinate vectors
  flv4? flv4-values
- pos->flv4 dir->flv4 flplane3->flv4
- flv4->pos flv4->dir flv4->flplane3
+ pos->flv4 norm->flv4 flplane3->flv4
+ flv4->pos flv4->norm flv4->flplane3
  ;; Types, basic constructors and basic accessors
  FlIdentity3
  flidentity3?
@@ -65,9 +65,12 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
  flt3inverse
  flt3apply
  flt3tapply
+ flt3apply/pos
+ flt3apply/norm
+ flt3apply/plane
  flt3compose
  flt3consistent?
-)
+ )
 
 (define-syntax-rule (define-make-fltype3 make-fltype3 fltype3 num)
   (begin
@@ -116,8 +119,8 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
   (define-values (x y z) (flv3-values v))
   (flvector x y z 1.0))
 
-(: dir->flv4 (-> FlVector FlVector))
-(define (dir->flv4 v)
+(: norm->flv4 (-> FlVector FlVector))
+(define (norm->flv4 v)
   (define-values (x y z) (flv3-values v))
   (flvector x y z 0.0))
 
@@ -132,8 +135,8 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
   (define-values (x y z w) (flv4-values v))
   (flvector (/ x w) (/ y w) (/ z w)))
 
-(: flv4->dir (-> FlVector FlVector))
-(define (flv4->dir v)
+(: flv4->norm (-> FlVector FlVector))
+(define (flv4->norm v)
   (define-values (x y z _) (flv4-values v))
   (flvector x y z))
 
@@ -582,6 +585,21 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
 (: flt3tapply-fun (-> FlTransform3 FlVector FlVector))
 (define (flt3tapply-fun m v)
   (flt3tapply m v))
+
+;; ===================================================================================================
+
+(: flt3apply/pos (-> FlTransform3 FlVector FlVector))
+(define (flt3apply/pos t v)
+  (flv4->pos (flt3apply t (pos->flv4 v))))
+
+(: flt3apply/norm (-> FlTransform3 FlVector FlVector))
+(define (flt3apply/norm tinv v)
+  (let ([v  (flv3normalize (flv4->norm (flt3tapply tinv (norm->flv4 v))))])
+    (if v v (flvector 0.0 0.0 0.0))))
+
+(: flt3apply/plane (-> FlTransform3 FlPlane3 (U #f FlPlane3)))
+(define (flt3apply/plane tinv p)
+  (flv4->flplane3 (flt3tapply tinv (flplane3->flv4 p))))
 
 ;; ===================================================================================================
 ;; Composition

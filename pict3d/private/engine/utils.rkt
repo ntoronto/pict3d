@@ -3,7 +3,6 @@
 (require (for-syntax racket/base)
          racket/list
          racket/unsafe/ops
-         typed/racket/async-channel
          typed/racket/gui
          typed/racket/class
          math/flonum
@@ -18,6 +17,9 @@
 (: next-pow2 (-> Natural Natural))
 (define (next-pow2 size)
   (arithmetic-shift 1 (integer-length (- size 1))))
+
+;; ===================================================================================================
+;; Utils for packing and unpacking vertex data
 
 (: byte->flonum (-> Byte Flonum))
 (define (byte->flonum b)
@@ -42,6 +44,44 @@
   (for ([i  (in-range n)])
     (unsafe-flvector-set! v i (byte->flonum (unsafe-bytes-ref bs i))))
   v)
+
+(: normal->rgb-bytes (-> FlVector Bytes))
+(define (normal->rgb-bytes v)
+  (define-values (x y z) (flv3-values v))
+  (: flonum->byte (-> Flonum Byte))
+  (define (flonum->byte x)
+    (assert (max 0 (min 255 (+ 127 (exact-ceiling (* x 127.0))))) byte?))
+  (bytes (flonum->byte x)
+         (flonum->byte y)
+         (flonum->byte z)))
+
+(: decode-normal (-> FlVector FlVector))
+(define (decode-normal v)
+  (define zero #i127/255)
+  (let ([v  (flv3normalize (flv3- v (flvector zero zero zero)))])
+    (if v v (flvector 0.0 0.0 0.0))))
+
+(: pack-emitted (-> FlVector Bytes))
+(define (pack-emitted c)
+  (define-values (h s v) (flv3-values (rgb->hsv c)))
+  (let* ([v  (max 0 (min 65535 (exact-floor (* v 255.0))))]
+         [v.hi  (quotient v 256)]
+         [v.lo  (- v (* v.hi 256))])
+    (bytes (flonum->byte h)
+           (flonum->byte s)
+           v.hi
+           v.lo)))
+
+(: decode-emitted (-> FlVector FlVector))
+(define (decode-emitted c)
+  (define h (flvector-ref c 0))
+  (define s (flvector-ref c 1))
+  (define v.hi (flvector-ref c 2))
+  (define v.lo (flvector-ref c 3))
+  (hsv->rgb (flvector h s (+ v.lo (* 256.0 v.hi)))))
+
+;; ===================================================================================================
+;; Shader analogues
 
 (: flfract (-> Flonum Flonum))
 (define (flfract x) (- x (floor x)))
@@ -83,6 +123,20 @@
   (flvector (* c.z (flmix 1.0 (flclamp (- p.x 1.0) 0.0 1.0) c.y))
             (* c.z (flmix 1.0 (flclamp (- p.y 1.0) 0.0 1.0) c.y))
             (* c.z (flmix 1.0 (flclamp (- p.z 1.0) 0.0 1.0) c.y))))
+
+;; ===================================================================================================
+;; Repeated memcpy (could also be called memset* I guess...)
+
+(: memcpy* (-> CPointer Nonnegative-Fixnum CPointer Nonnegative-Fixnum Nonnegative-Fixnum Void))
+(define (memcpy* dst-ptr dst-offset src-ptr src-size count)
+  (cond [(unsafe-fx< count 4)
+         (for ([j  (in-range count)])
+           (memcpy dst-ptr (unsafe-fx+ dst-offset (unsafe-fx* src-size j)) src-ptr src-size _byte))]
+        [else
+         (define count/2 (unsafe-fxrshift (unsafe-fx+ count 1) 1))
+         (memcpy* dst-ptr dst-offset src-ptr src-size count/2)
+         (memcpy dst-ptr (unsafe-fx+ dst-offset (unsafe-fx* count/2 src-size))
+                 dst-ptr dst-offset (unsafe-fx* (unsafe-fx- count count/2) src-size) _byte)]))
 
 ;; ===================================================================================================
 ;; Vector and matrix stuff
@@ -390,11 +444,11 @@
     
     (: rotate-direction (-> FlVector FlVector))
     (define/public (rotate-direction v)
-      (flv4->dir (flt3tapply (get-rotation-matrix) (dir->flv4 v))))
+      (flv4->norm (flt3tapply (get-rotation-matrix) (norm->flv4 v))))
     
     (: unrotate-direction (-> FlVector FlVector))
     (define/public (unrotate-direction v)
-      (flv4->dir (flt3apply (flt3inverse (get-rotation-matrix)) (dir->flv4 v))))
+      (flv4->norm (flt3apply (flt3inverse (get-rotation-matrix)) (norm->flv4 v))))
     
     (: change-angles (-> Flonum Flonum Void))
     (define/public (change-angles dy dp)

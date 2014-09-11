@@ -37,6 +37,7 @@
                   (light (list x y z)
                          (list r g b)
                          (* (random) 0.5))))))))
+
 (define frozen-spheres (freeze spheres))
 
 (define frame (new frame% [label "1"] [width 800] [height 800]))

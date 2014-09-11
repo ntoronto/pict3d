@@ -11,28 +11,19 @@
 (: make-axis (-> FlTransform3 FlVector FlVector material Scene))
 (define (make-axis t c e m)
   (define tinv (flt3inverse t))
-  
-  (: transform-pos (-> FlVector FlVector))
-  (define (transform-pos v)
-    (flv4->pos (flt3apply t (pos->flv4 v))))
-  
-  (: transform-norm (-> FlVector FlVector))
-  (define (transform-norm v)
-    (flv4->dir (flt3tapply tinv (dir->flv4 v))))
-  
   (scene-union*
-   (for/list : (Listof Scene) ([t  (in-range 0 360 45)])
-     (define t0 (degrees->radians (fl t)))
-     (define t1 (degrees->radians (+ (fl t) 45.0)))
-     (define t1/2 (* 0.5 (+ t0 t1)))
+   (for/list : (Listof Scene) ([a  (in-range 0 360 45)])
+     (define a0 (degrees->radians (fl a)))
+     (define a1 (degrees->radians (+ (fl a) 45.0)))
+     (define a1/2 (* 0.5 (+ a0 a1)))
      (shape->scene
       (make-triangle-shape
-       (vector (transform-pos (flvector 0.024 (* 0.02 (sin t1)) (* 0.02 (cos t1))))
-               (transform-pos (flvector 0.024 (* 0.02 (sin t0)) (* 0.02 (cos t0))))
-               (transform-pos (flvector 1.0 0.0 0.0)))
-       (vector (transform-norm (flvector 0.0 (sin t1) (cos t1)))
-               (transform-norm (flvector 0.0 (sin t0) (cos t0)))
-               (transform-norm (flvector 1.0 0.0 0.0)))
+       (vector (flt3apply/pos t (flvector 0.024 (* 0.02 (sin a1)) (* 0.02 (cos a1))))
+               (flt3apply/pos t (flvector 0.024 (* 0.02 (sin a0)) (* 0.02 (cos a0))))
+               (flt3apply/pos t (flvector 1.0 0.0 0.0)))
+       (vector (flt3apply/norm tinv (flvector 0.0 (sin a1) (cos a1)))
+               (flt3apply/norm tinv (flvector 0.0 (sin a0) (cos a0)))
+               (flt3apply/norm tinv (flvector 1.0 0.0 0.0)))
        c e m 'front)))))
 
 (define axis-material
