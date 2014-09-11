@@ -13,7 +13,6 @@
          "../math/flaabb3.rkt"
          "../types.rkt"
          "../utils.rkt"
-         "fltriangle3.rkt"
          "flscene3.rkt"
          "gl.rkt"
          "types.rkt"
@@ -42,7 +41,7 @@
 (struct solid-shape shape () #:transparent)
 
 (struct triangle-shape solid-shape
-  ([fltriangle3 : FlTriangle3]
+  ([vertices : (Vectorof FlVector)]
    [normals : (U FlVector (Vectorof FlVector))]
    [colors : (U FlVector (Vectorof FlVector))]
    [emitted-colors : (U FlVector (Vectorof FlVector))]
@@ -97,16 +96,6 @@
 ;; ===================================================================================================
 ;; Shape constructors
 
-(: make-triangle-shape* (-> FlTriangle3
-                            (U FlVector (Vectorof FlVector))
-                            (U FlVector (Vectorof FlVector))
-                            (U FlVector (Vectorof FlVector))
-                            (U material (Vectorof material))
-                            Face
-                            triangle-shape))
-(define (make-triangle-shape* t ns cs es ms face)
-  (triangle-shape (box 'lazy) t ns cs es ms face))
-
 (: well-formed-flvectors? (-> (U FlVector (Vectorof FlVector)) Index Index Boolean))
 (define (well-formed-flvectors? vs n i)
   (if (flvector? vs)
@@ -144,7 +133,7 @@
                                "material, or length-3 vector of materials"
                                4 vs ns cs es ms face)]
         [else
-         (make-triangle-shape* (fltriangle3 vs) ns cs es ms face)]))
+         (triangle-shape (box 'lazy) vs ns cs es ms face)]))
 
 (: make-quad-shape (-> (Vectorof FlVector)
                        (U FlVector (Vectorof FlVector))
@@ -224,7 +213,7 @@
 (define (shape-aabb s)
   (cond
     [(solid-shape? s)
-     (cond [(triangle-shape? s)  (fltriangle3-aabb (triangle-shape-fltriangle3 s))]
+     (cond [(triangle-shape? s)  (assert (flv3aabb (triangle-shape-vertices s)) values)]
            [(quad-shape? s)  (assert (flv3aabb (quad-shape-vertices s)) values)]
            [(rectangle-shape? s)  (rectangle-shape-aabb s)]
            [(sphere-shape? s)  sphere-aabb])]
@@ -259,11 +248,10 @@
        [(solid-shape? a)
         (cond
           [(triangle-shape? a)
-           (match-define (triangle-shape passes tri ns cs es ms face) a)
-           (define vs (fltriangle3-vertices tri))
+           (match-define (triangle-shape passes vs ns cs es ms face) a)
            (define new-vs (vector-map transform-pos vs))
            (define new-ns (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns)))
-           (list (triangle-shape (box 'lazy) (fltriangle3 new-vs) new-ns cs es ms
+           (list (triangle-shape (box 'lazy) new-vs new-ns cs es ms
                                  (if (flt3consistent? t) face (opposite-gl-face face))))]
           ;; Quad: transform vertices
           [(quad-shape? a)
@@ -1254,8 +1242,7 @@ code
 
 (: make-triangle-shape-passes (-> triangle-shape Passes))
 (define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ t ns cs es ms face) a)
-  (define vs (fltriangle3-vertices t))
+  (match-define (triangle-shape _ vs ns cs es ms face) a)
   (make-polygon-shape-passes GL_TRIANGLES 3 vs ns cs es ms face))
 
 (: make-quad-shape-passes (-> quad-shape Passes))

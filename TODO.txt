@@ -1,5 +1,7 @@
 Short-term (before RacketCon)
 
+Manually instantiate `flscene3` with `Shape` and rename to `scene`
+
 (: pict3d-render (-> Pict3D Integer Integer (Instance Bitmap%)))
 
 View frustum culling
@@ -10,6 +12,8 @@ pict3d%
  * Save/load pict3d% snips (needs snip admin)
  * Make pict3d% snips save and load drawing parameters (e.g. near and far plane distances)
  * Fix editor lock problem
+
+Fix "resizing sphere animation window creates garbage on borders"
 
 ======================================================================================================
 Medium-term (if time before RacketCon)
