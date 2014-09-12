@@ -51,7 +51,7 @@
 
 (: thread-loop (-> Void))
 (define (thread-loop)
-  (unless (send canvas is-shown?)
+  (unless (send frame is-shown?)
     (thread-suspend th))
   (define start-time (fl (current-inexact-milliseconds)))
   (define cx (cos (degrees->radians i)))

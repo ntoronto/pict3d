@@ -37,6 +37,7 @@
          empty-pict3d
          pict3d-scene
          pict3d-bases
+         pict3d-view-transform
          )
 
 ;; ===================================================================================================
@@ -104,25 +105,6 @@
 ;; ===================================================================================================
 ;; Rendering threads
 
-(require/typed
- racket/base
- [call-with-semaphore  (All (A) (-> Semaphore (-> A) A))])
-
-(: gl-snip-context (U #f gl-context))
-(define gl-snip-context #f)
-
-(define gl-snip-context-mutex (make-semaphore 1))
-
-(: get-gl-snip-context (-> gl-context))
-(define (get-gl-snip-context)
-  (call-with-semaphore
-   gl-snip-context-mutex
-   (λ ()
-     (define ctxt gl-snip-context)
-     (if ctxt ctxt (let ([ctxt  (managed-gl-context (get-master-gl-context))])
-                     (set! gl-snip-context ctxt)
-                     ctxt)))))
-
 (define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
 (define get-tmp-bytes (make-cached-vector 'get-tmp-bytes make-bytes bytes-length))
 
@@ -151,7 +133,7 @@
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
-     (with-gl-context (get-gl-snip-context)
+     (with-gl-context (get-master-gl-context)
        ;; Draw the scene and all its little extra bits (bases, etc.)
        (draw-draw-passes (send snip get-draw-passes view proj) width height view proj)
        
@@ -510,3 +492,12 @@
 
 (: pict3d-bases (-> Pict3D Bases))
 (define (pict3d-bases s) (send s get-bases))
+
+(: pict3d-view-transform (->* [Pict3D] [FlAffine3-] FlAffine3-))
+(define (pict3d-view-transform s [default (scale-flt3 (flvector 1.0 -1.0 -1.0))])
+  (define bases (pict3d-bases s))
+  (define camera-basis (hash-ref bases "camera" #f))
+  (if camera-basis
+      (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
+                   (Basis-inverse camera-basis))
+      default))

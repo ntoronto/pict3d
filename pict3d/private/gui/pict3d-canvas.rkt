@@ -16,7 +16,8 @@
          "pict3d-snip.rkt"
          )
 
-(provide (all-defined-out))
+(provide Pict3D-Canvas%
+         pict3d-canvas%)
 
 (define-type Pict3D-Canvas%
   (Class #:implements Canvas%
@@ -68,17 +69,9 @@
     ;(profile
     (time
      (match-define (render-command pict width height) cmd)
-     
-     (: view FlAffine3-)
-     (define view
-       (let ([bases  (send pict get-bases)])
-         (define camera-basis (hash-ref bases "camera" #f))
-         (if camera-basis
-             (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                          (basis-inverse camera-basis))
-             (scale-flt3 (flvector 1.0 -1.0 -1.0)))))
-     
-     ;; Compute a projection matrix
+     ;; Get the view matrix
+     (define view (pict3d-view-transform pict))
+     ;; Compute the projection matrix
      (define znear (z-near-distance))
      (define zfar (z-far-distance))
      (define fov-radians (degrees->radians (fl (fov-degrees))))
@@ -114,7 +107,7 @@
     
     (define config (new gl-config%))
     (send config set-legacy? #f)
-    (send config set-share-context (get-master-gl-context))
+    (send config set-share-context (get-gl-context (get-master-gl-context)))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
