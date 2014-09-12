@@ -4,13 +4,10 @@
 TODO
 
 Higher precision (try to guarantee 2.5 ulps?)
-
-rotate-flt3 (rotate around axis)
-
-extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
 |#
 
 (require (for-syntax racket/base)
+         racket/list
          racket/match
          racket/unsafe/ops
          math/flonum
@@ -70,6 +67,17 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
  flt3apply/plane
  flt3compose
  flt3consistent?
+ ;; Frustum utils
+ clip-frustum-plane-x-
+ clip-frustum-plane-x+
+ clip-frustum-plane-y-
+ clip-frustum-plane-y+
+ clip-frustum-plane-z-
+ clip-frustum-plane-z+
+ clip-frustum-planes
+ flprojective3-z-near
+ flprojective3-z-far
+ flprojective3-frustum-planes
  )
 
 (define-syntax-rule (define-make-fltype3 make-fltype3 fltype3 num)
@@ -693,3 +701,35 @@ extract frustum planes (xleft, xright, ybot, ytop, znear, zfar)
   (cond [(flidentity3? m)  #t]
         [(fllinear3? m)  (fllinear3-consistent? m)]
         [else  (flaffine3-consistent? m)]))
+
+;; ===================================================================================================
+;; Frustum utils
+
+(define clip-frustum-plane-x- (assert (flplane3 (flvector +1.0 0.0 0.0) 1.0) values))
+(define clip-frustum-plane-x+ (assert (flplane3 (flvector -1.0 0.0 0.0) 1.0) values))
+(define clip-frustum-plane-y- (assert (flplane3 (flvector 0.0 +1.0 0.0) 1.0) values))
+(define clip-frustum-plane-y+ (assert (flplane3 (flvector 0.0 -1.0 0.0) 1.0) values))
+(define clip-frustum-plane-z- (assert (flplane3 (flvector 0.0 0.0 +1.0) 1.0) values))
+(define clip-frustum-plane-z+ (assert (flplane3 (flvector 0.0 0.0 -1.0) 1.0) values))
+(define clip-frustum-planes
+  (list clip-frustum-plane-x- clip-frustum-plane-x+
+        clip-frustum-plane-y- clip-frustum-plane-y+
+        clip-frustum-plane-z- clip-frustum-plane-z+))
+
+(: flprojective3-z-near (-> flprojective3 Flonum))
+(define (flprojective3-z-near t)
+  (define p (flt3apply/plane t clip-frustum-plane-z-))
+  (cond [p  (- (flplane3-distance p))]
+        [else  (error 'flprojective3-z-near "cannot get z-near distance from ~a" t)]))
+
+(: flprojective3-z-far (-> flprojective3 Flonum))
+(define (flprojective3-z-far t)
+  (define p (flt3apply/plane t clip-frustum-plane-z+))
+  (cond [p  (flplane3-distance p)]
+        [else  (error 'flprojective3-z-far "cannot get z-far distance from ~a" t)]))
+
+(: flprojective3-frustum-planes (-> flprojective3 (Listof FlPlane3)))
+(define (flprojective3-frustum-planes t)
+  (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list clip-frustum-planes)])
+    (let ([p  (flt3apply/plane t p)])
+      (if p (cons p planes) planes))))

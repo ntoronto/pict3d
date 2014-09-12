@@ -50,7 +50,14 @@
 ;; ===================================================================================================
 ;; Rendering threads
 
-(struct render-command ([pict3d : Pict3D] [width : Index] [height : Index]) #:transparent)
+(struct render-command ([pict3d : Pict3D]
+                        [width : Index]
+                        [height : Index]
+                        [z-near : Positive-Flonum]
+                        [z-far : Positive-Flonum]
+                        [fov-degrees : Positive-Flonum]
+                        [ambient : FlVector]
+                        ) #:transparent)
 
 (: make-canvas-render-thread (-> (Instance Pict3D-Canvas%) (Async-Channelof render-command) Thread))
 (define (make-canvas-render-thread canvas ch)
@@ -68,19 +75,17 @@
     ;(values
     ;(profile
     (time
-     (match-define (render-command pict width height) cmd)
+     (match-define (render-command pict width height znear zfar fov-degrees ambient) cmd)
      ;; Get the view matrix
      (define view (pict3d-view-transform pict))
      ;; Compute the projection matrix
-     (define znear (z-near-distance))
-     (define zfar (z-far-distance))
-     (define fov-radians (degrees->radians (fl (fov-degrees))))
+     (define fov-radians (degrees->radians fov-degrees))
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
      (with-gl-context (send canvas get-managed-gl-context)
        ;; Draw the scene and swap buffers
-       (draw-scene (send pict get-scene) width height view proj)
+       (draw-scene (send pict get-scene) width height view proj ambient)
        (gl-swap-buffers))
      )
     (render-thread-loop))
@@ -138,12 +143,27 @@
       (values (assert (exact-floor w) index?)
               (assert (exact-floor h) index?)))
     
+    (: z-near Positive-Flonum)
+    (: z-far Positive-Flonum)
+    (: fov-degrees Positive-Flonum)
+    (: ambient FlVector)
+    (define z-near (current-z-near))
+    (define z-far (current-z-far))
+    (define fov-degrees (current-fov-degrees))
+    (define ambient (current-ambient))
+    
     (define/public (set-pict3d new-pict)
       (set! pict new-pict)
       (define-values (width height) (get-gl-window-size))
       (set! last-width width)
       (set! last-height height)
-      (async-channel-put render-queue (render-command new-pict width height)))
+      (set! z-near (current-z-near))
+      (set! z-far (current-z-far))
+      (set! fov-degrees (current-fov-degrees))
+      (set! ambient (current-ambient))
+      (async-channel-put
+       render-queue
+       (render-command new-pict width height z-near z-far fov-degrees ambient)))
     
     (define/public (get-pict3d) pict)
     
@@ -169,6 +189,8 @@
                       (equal? height last-height)))
         (set! last-width width)
         (set! last-height height)
-        (async-channel-put render-queue (render-command pict width height))))
+        (async-channel-put
+         render-queue
+         (render-command pict width height z-near z-far fov-degrees ambient))))
 
     ))

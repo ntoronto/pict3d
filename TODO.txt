@@ -17,6 +17,8 @@ Fix "resizing sphere animation window creates garbage on borders"
 ======================================================================================================
 Medium-term (if time before RacketCon)
 
+Speed up vector operations (settle for < 4 ulps error!)
+
 Fix `send-multi-vertices`
  * Make it send a per-vertex model transformation
  * Check for > 1M vertexes and split drawing (like `send-single-vertices` does)

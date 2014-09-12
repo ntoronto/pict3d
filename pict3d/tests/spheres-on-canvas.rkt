@@ -41,7 +41,7 @@
                          (* (random) 0.5))))))))
 
 (define frozen-spheres (freeze spheres))
-
+#|
 (define frame (new frame% [label "1"] [width 800] [height 800]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
@@ -74,7 +74,27 @@
   (set! i (+ i 1))
   (define end-time (fl (current-inexact-milliseconds)))
   (sleep/yield (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
+  (sleep 1)
   (thread-loop))
 
 (define th
   (thread thread-loop))
+|#
+
+(define i 0)
+(define cx (cos (degrees->radians i)))
+(define sx (sin (degrees->radians i)))
+(define cx2 (cos (* 2 (degrees->radians i))))
+(define sx2 (sin (* 2 (degrees->radians i))))
+
+(define camera-basis
+  (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
+                (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+
+(define pict
+  (combine
+   (set-basis frozen-spheres "camera" camera-basis)
+   (with-color "black"
+     (with-emitted '(4 4 4)
+       (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
+   (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))

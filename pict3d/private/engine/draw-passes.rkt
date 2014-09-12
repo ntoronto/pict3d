@@ -11,26 +11,8 @@
          "shader-lib.rkt"
          "draw-pass.rkt")
 
-(provide z-near-distance
-         z-far-distance
-         fov-degrees
-         bloom-buffer-size
+(provide bloom-buffer-size
          draw-draw-passes)
-
-;; ===================================================================================================
-;; Parameters
-
-(: ambient-intensity (Parameterof FlVector))
-(define ambient-intensity (make-parameter (flvector 1.0 1.0 1.0)))
-
-(: z-near-distance (Parameterof Flonum))
-(define z-near-distance (make-parameter (flexpt 2.0 -10.0)))
-
-(: z-far-distance (Parameterof Flonum))
-(define z-far-distance (make-parameter (flexpt 2.0 30.0)))
-
-(: fov-degrees (Parameterof Real))
-(define fov-degrees (make-parameter 90))
 
 (: bloom-buffer-size (Parameterof Positive-Integer))
 (define bloom-buffer-size (make-parameter 256))
@@ -281,8 +263,12 @@ code
   (glDepthMask write?)
   (glClearDepth 0.0))
 
-(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural FlProjective3 FlProjective3 Void))
-(define (draw-draw-passes* passes width height view proj)
+(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural FlProjective3 FlProjective3 FlVector
+                         Void))
+(define (draw-draw-passes* passes width height view proj ambient)
+  (define znear (flprojective3-z-near proj))
+  (define zfar  (flprojective3-z-far  proj))
+  
   (glEnable GL_TEXTURE_2D)
   
   (define-values (bloom-width bloom-height)
@@ -312,11 +298,11 @@ code
            (cons 'unproj (uniform-mat (flprojective3-entries (flt3inverse proj)) 4))
            (cons 'unproj0 (uniform-mat (fllinear3-entries (flt3->unproj0 proj)) 3))
            (cons 'unproj1 (uniform-mat (fllinear3-entries (flt3->unproj1 proj)) 3))
-           (cons 'znear (uniform-float (z-near-distance)))
-           (cons 'zfar (uniform-float (z-far-distance)))
+           (cons 'znear (uniform-float znear))
+           (cons 'zfar (uniform-float zfar))
            (cons 'width (uniform-int width))
            (cons 'height (uniform-int height))
-           (cons 'ambient (uniform-float (ambient-intensity))))))
+           (cons 'ambient (uniform-float ambient)))))
   
   (define fullscreen-width (fl (/ width (gl-framebuffer-width draw-fbo))))
   (define fullscreen-height (fl (/ height (gl-framebuffer-height draw-fbo))))
@@ -606,6 +592,6 @@ code
   |#
   )
 
-(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlAffine3- FlTransform3 Void))
-(define (draw-draw-passes passes width height view proj)
-  (draw-draw-passes* passes width height (->flprojective3 view) (->flprojective3 proj)))
+(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlAffine3- FlTransform3 FlVector Void))
+(define (draw-draw-passes passes width height view proj ambient)
+  (draw-draw-passes* passes width height (->flprojective3 view) (->flprojective3 proj) ambient))

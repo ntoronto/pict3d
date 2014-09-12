@@ -20,6 +20,7 @@
          "../engine/draw-passes.rkt"
          "../engine/affine.rkt"
          "../utils.rkt"
+         "../gui/user-types.rkt"
          "axes-scene.rkt"
          )
 
@@ -31,8 +32,18 @@
          Basis-Label
          Bases
          Pict3D
-         current-pict3d-projection-width
-         current-pict3d-projection-height
+         default-pict3d-width
+         default-pict3d-height
+         default-ambient
+         default-z-near
+         default-z-far
+         default-fov-degrees
+         current-pict3d-width
+         current-pict3d-height
+         current-ambient
+         current-z-near
+         current-z-far
+         current-fov-degrees
          pict3d
          empty-pict3d
          pict3d-scene
@@ -43,11 +54,44 @@
 ;; ===================================================================================================
 ;; Parameters
 
-(: current-pict3d-projection-width (Parameterof Positive-Integer))
-(define current-pict3d-projection-width (make-parameter 256))
+(define default-pict3d-width 256)
+(define default-pict3d-height 256)
+(define default-ambient (flvector 1.0 1.0 1.0))
+(define default-z-near (assert (flexpt 2.0 -10.0) positive?))
+(define default-z-far (assert (flexpt 2.0 30.0) positive?))
+(define default-fov-degrees 90.0)
 
-(: current-pict3d-projection-height (Parameterof Positive-Integer))
-(define current-pict3d-projection-height (make-parameter 256))
+(: current-pict3d-width (Parameterof Integer Positive-Index))
+(define current-pict3d-width
+  (make-parameter default-pict3d-width
+                  (λ ([n : Integer]) (assert (min 32768 (max 1 n)) index?))))
+
+(: current-pict3d-height (Parameterof Integer Positive-Index))
+(define current-pict3d-height
+  (make-parameter default-pict3d-height
+                  (λ ([n : Integer]) (assert (min 32768 (max 1 n)) index?))))
+
+(: current-ambient (Parameterof User-Color FlVector))
+(define current-ambient
+  (make-parameter (->flcolor3 default-ambient) ->flcolor3))
+
+(: current-z-near (Parameterof Positive-Real Positive-Flonum))
+(define current-z-near
+  (make-parameter default-z-near
+                  (λ ([z : Positive-Real])
+                    (max default-z-near (min default-z-far (fl z))))))
+
+(: current-z-far (Parameterof Positive-Real Positive-Flonum))
+(define current-z-far
+  (make-parameter default-z-far
+                  (λ ([z : Positive-Real])
+                    (max default-z-near (min default-z-far (fl z))))))
+
+(: current-fov-degrees (Parameterof Positive-Real Positive-Flonum))
+(define current-fov-degrees
+  (make-parameter default-fov-degrees
+                  (λ ([z : Positive-Real])
+                    (max 1.0 (min 179.0 (fl z))))))
 
 (define physics-delay 16)
 (define physics-timeout 500)
@@ -85,8 +129,12 @@
          (init-field [scene  Scene]
                      [bases  Bases]
                      [width   Positive-Index]
-                     [height  Positive-Index])
-         [get-size  (-> (Values Positive-Index Positive-Index))]
+                     [height  Positive-Index]
+                     [z-near  Flonum]
+                     [z-far   Flonum]
+                     [fov-degrees  Flonum]
+                     [ambient  FlVector])
+         [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum FlVector))]
          [get-scene  (-> Scene)]
          [get-bases  (-> Bases)]
          [get-draw-passes (-> FlAffine3- FlTransform3 (Vectorof draw-passes))]
@@ -126,16 +174,14 @@
     ;(profile
     (time
      ;; Compute a projection matrix
-     (define-values (width height) (send snip get-size))
-     (define znear (z-near-distance))
-     (define zfar (z-far-distance))
-     (define fov-radians (degrees->radians (fl (fov-degrees))))
+     (define-values (width height znear zfar fov-degrees ambient) (send snip get-init-params))
+     (define fov-radians (degrees->radians (fl fov-degrees)))
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
      (with-gl-context (get-master-gl-context)
        ;; Draw the scene and all its little extra bits (bases, etc.)
-       (draw-draw-passes (send snip get-draw-passes view proj) width height view proj)
+       (draw-draw-passes (send snip get-draw-passes view proj) width height view proj ambient)
        
        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
        (define row-size (* width 4))
@@ -365,7 +411,11 @@
     (init-field scene
                 bases
                 width
-                height)
+                height
+                z-near
+                z-far
+                fov-degrees
+                ambient)
     
     (super-make-object)
     
@@ -381,7 +431,8 @@
             (set! the-bitmap the-bitmap-val)
             the-bitmap-val)))
     
-    (define/public (get-size) (values width height))
+    (define/public (get-init-params)
+      (values width height z-near z-far fov-degrees ambient))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -402,11 +453,7 @@
     
     (define/public (get-draw-passes view proj)
       (define t (flt3compose proj view))
-      (define planes
-        (filter flplane3? (map (λ ([p : FlPlane3])
-                                 (flt3apply/plane t p))
-                               clip-frustum-planes)))
-      
+      (define planes (flprojective3-frustum-planes (->flprojective3 t)))
       (define scene-val scene)
       (if scene-val
           (list->vector
@@ -422,7 +469,7 @@
     
     (: copy (-> Pict3D))
     (define/override (copy)
-      (make-object pict3d% scene bases width height))
+      (make-object pict3d% scene bases width height z-near z-far fov-degrees ambient))
     
     (: gui (U #f (Instance Scene-GUI%)))
     (define gui #f)
@@ -436,7 +483,6 @@
     
     #;; Can't use this because of an error in TR
     (define/override (get-extent dc x y [w #f] [h #f] [descent #f] [space #f] [lspace #f] [rspace #f])
-      (define-values (width height) (get-size))
       (when (box? w) (set-box! w width))
       (when (box? h) (set-box! h height))
       (when (box? descent) (set-box! descent 0))
@@ -447,7 +493,6 @@
     ;; This works around it
     (define/override (get-extent dc x y . #{args : (Listof (U #f (Boxof Nonnegative-Real)))})
       (match-define (list w h descent space lspace rspace) args)
-      (define-values (width height) (get-size))
       (when (box? w) (set-box! w width))
       (when (box? h) (set-box! h height))
       (when (box? descent) (set-box! descent 0))
@@ -482,8 +527,12 @@
   (make-object pict3d%
     s
     ps
-    (assert (current-pict3d-projection-width) index?)
-    (assert (current-pict3d-projection-height) index?)))
+    (current-pict3d-width)
+    (current-pict3d-height)
+    (current-z-near)
+    (current-z-far)
+    (current-fov-degrees)
+    (current-ambient)))
 
 (define empty-pict3d (pict3d empty-scene (make-immutable-hash)))
 

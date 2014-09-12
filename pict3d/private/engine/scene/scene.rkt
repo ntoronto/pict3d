@@ -331,26 +331,11 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Scene frustum culling
 
-(define dist (+ 1.0 (flexpt 2.0 -32.0)))
-
-(define clip-frustum-plane-x- (assert (flplane3 (flvector +1.0 0.0 0.0) dist) values))
-(define clip-frustum-plane-x+ (assert (flplane3 (flvector -1.0 0.0 0.0) dist) values))
-(define clip-frustum-plane-y- (assert (flplane3 (flvector 0.0 +1.0 0.0) dist) values))
-(define clip-frustum-plane-y+ (assert (flplane3 (flvector 0.0 -1.0 0.0) dist) values))
-(define clip-frustum-plane-z- (assert (flplane3 (flvector 0.0 0.0 +1.0) dist) values))
-(define clip-frustum-plane-z+ (assert (flplane3 (flvector 0.0 0.0 -1.0) dist) values))
-(define clip-frustum-planes
-  (list clip-frustum-plane-x- clip-frustum-plane-x+
-        clip-frustum-plane-y- clip-frustum-plane-y+
-        clip-frustum-plane-z- clip-frustum-plane-z+))
-
 (: scene-frustum-cull (-> Scene FlTransform3 Scene))
 (define (scene-frustum-cull s t)
-  (for/fold ([s : Scene  s]) ([p  (in-list clip-frustum-planes)])
-    (let ([p  (flt3apply/plane t p)])
-      (if (not p)
-          empty-scene
-          (scene-plane-cull s p)))))
+  (define planes (flprojective3-frustum-planes (->flprojective3 t)))
+  (for/fold ([s : Scene  s]) ([p  (in-list planes)])
+    (scene-plane-cull s p)))
 
 ;; ===================================================================================================
 ;; Shape and scene transformation (forced, not lazy)
@@ -420,14 +405,11 @@ for `Scene`.
    (λ ([a : Shape] [m : affine])
      (draw-passes (shape-passes a) m))))
 
-(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 Void))
-(define (draw-scene s width height view proj)
+(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector Void))
+(define (draw-scene s width height view proj ambient)
   (define t (flt3compose proj view))
-  (define planes
-    (filter flplane3? (map (λ ([p : FlPlane3])
-                             (flt3apply/plane t p))
-                           clip-frustum-planes)))
-  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height view proj))
+  (define planes (flprojective3-frustum-planes (->flprojective3 t)))
+  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height view proj ambient))
 
 ;; ≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡
 ;; Frozen scene shape

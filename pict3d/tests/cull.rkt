@@ -29,6 +29,12 @@
      (for/list ([v  (in-list sphere-vs)])
        (sphere v #i1/16)))))
 
+(define wacky-spheres
+  (rotate-z (move (scale-y (rotate-x spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
+
+(define wacky-blue-spheres
+  (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
+
 (: do-culls (-> Pict3D (Listof Pict3D)))
 (define (do-culls spheres)
   (list
@@ -47,16 +53,13 @@
       (rectangle '(-2 0.5 -2) '(2 2 2))))
    ))
 
-;(do-culls spheres)
-;(do-culls (scale-z (move-y (rotate-x spheres 30) 0.25) 0.75))
-
 (: frustum (-> FlTransform3 Pict3D))
 (define (frustum t)
   (define tinv (flt3inverse t))
   (match-define (list v1 v2 v4 v3 v5 v6 v8 v7)
-    (for*/list : (Listof FlVector) ([z  (list (- dist) dist)]
-                                    [y  (list (- dist) dist)]
-                                    [x  (list (- dist) dist)])
+    (for*/list : (Listof FlVector) ([z  (list -1.0 1.0)]
+                                    [y  (list -1.0 1.0)]
+                                    [x  (list -1.0 1.0)])
       (flt3apply/pos tinv (flvector x y z))))
   
   (combine
@@ -81,12 +84,6 @@
   (with-color '(0.75 0 0 0.5)
     (with-emitted '(0.25 0 0)
       (frustum t))))
-
-(define wacky-spheres
-  (rotate-z (move (scale-y (rotate-x spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
-
-(define wacky-blue-spheres
-  (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
 
 (combine
  (set-basis t-frustum camera-basis)

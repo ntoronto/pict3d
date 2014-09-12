@@ -1,19 +1,15 @@
 #lang typed/racket/base
 
-(require racket/match
+(require racket/fixnum
          racket/math
          math/flonum
          typed/racket/gui
          typed/racket/class
-         typed/racket/async-channel
-         "../math/flv3.rkt"
+         typed/opengl
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../engine/gl.rkt"
          "../engine/utils.rkt"
-         "../engine/draw-pass.rkt"
-         "../engine/draw-passes.rkt"
-         "../utils.rkt"
          "pict3d-snip.rkt"
          )
 
@@ -32,14 +28,15 @@
     [else
      (define view (pict3d-view-transform pict))
      ;; Compute a projection matrix
-     (define znear (z-near-distance))
-     (define zfar (z-far-distance))
-     (define fov-radians (degrees->radians (fl (fov-degrees))))
+     (define znear (current-z-near))
+     (define zfar (current-z-far))
+     (define fov-radians (degrees->radians (fl (current-fov-degrees))))
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+     (define bm (make-bitmap width height))
      ;; Lock everything up for drawing
-     (with-gl-context (get-gl-snip-context)
+     (with-gl-context (get-master-gl-context)
        ;; Draw the scene
-       (draw-scene (send pict get-scene) width height view proj)
+       (draw-scene (send pict get-scene) width height view proj (current-ambient))
        
        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
        (define row-size (* width 4))
@@ -55,6 +52,5 @@
          (bytes-copy! bs i0 bs i1 (+ i1 row-size))
          (bytes-copy! bs i1 tmp 0 row-size))
        
-       (define bm (make-bitmap width height))
-       (send bm set-argb-pixels 0 0 width height #f #t)
-       )]))
+       (send bm set-argb-pixels 0 0 width height bs #f #f))
+     bm]))
