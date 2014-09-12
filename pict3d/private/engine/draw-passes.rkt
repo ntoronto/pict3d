@@ -273,8 +273,6 @@ code
 ;; ===================================================================================================
 ;; Draw a frame with OpenGL
 
-(define frame-count 0)
-
 (: gl-log-depth (-> Boolean Boolean Any))
 ;; Prep depth for logarithmic read/write
 (define (gl-log-depth write? strict?)
@@ -283,21 +281,8 @@ code
   (glDepthMask write?)
   (glClearDepth 0.0))
 
-(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural FlProjective3 Void))
-(define (draw-draw-passes* passes width height model->view)
-  (define znear (z-near-distance))
-  (define zfar (z-far-distance))
-  
-  (set! frame-count (+ 1 frame-count))
-  
-  (define fov-radians (degrees->radians (fl (fov-degrees))))
-  (define view->clip (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
-  (define view->model (flt3inverse model->view))
-  (define clip->view (flt3inverse view->clip))
-  
-  (define unproj0 (flt3->unproj0 view->clip))
-  (define unproj1 (flt3->unproj1 view->clip))
-  
+(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural FlProjective3 FlProjective3 Void))
+(define (draw-draw-passes* passes width height view proj)
   (glEnable GL_TEXTURE_2D)
   
   (define-values (bloom-width bloom-height)
@@ -321,14 +306,14 @@ code
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
     (make-immutable-hasheq
-     (list (cons 'view (uniform-mat (flprojective3-entries model->view) 4))
-           (cons 'unview (uniform-mat (flprojective3-entries view->model) 4))
-           (cons 'proj (uniform-mat (flprojective3-entries view->clip) 4))
-           (cons 'unproj (uniform-mat (flprojective3-entries clip->view) 4))
-           (cons 'unproj0 (uniform-mat (fllinear3-entries unproj0) 3))
-           (cons 'unproj1 (uniform-mat (fllinear3-entries unproj1) 3))
-           (cons 'znear (uniform-float znear))
-           (cons 'zfar (uniform-float zfar))
+     (list (cons 'view (uniform-mat (flprojective3-entries view) 4))
+           (cons 'unview (uniform-mat (flprojective3-entries (flt3inverse view)) 4))
+           (cons 'proj (uniform-mat (flprojective3-entries proj) 4))
+           (cons 'unproj (uniform-mat (flprojective3-entries (flt3inverse proj)) 4))
+           (cons 'unproj0 (uniform-mat (fllinear3-entries (flt3->unproj0 proj)) 3))
+           (cons 'unproj1 (uniform-mat (fllinear3-entries (flt3->unproj1 proj)) 3))
+           (cons 'znear (uniform-float (z-near-distance)))
+           (cons 'zfar (uniform-float (z-far-distance)))
            (cons 'width (uniform-int width))
            (cons 'height (uniform-int height))
            (cons 'ambient (uniform-float (ambient-intensity))))))
@@ -621,7 +606,6 @@ code
   |#
   )
 
-(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlTransform3 Void))
-(define (draw-draw-passes passes width height model->view)
-  (values ;time
-   (draw-draw-passes* passes width height (->flprojective3 model->view))))
+(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlAffine3- FlTransform3 Void))
+(define (draw-draw-passes passes width height view proj)
+  (draw-draw-passes* passes width height (->flprojective3 view) (->flprojective3 proj)))

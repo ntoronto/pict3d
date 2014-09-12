@@ -26,10 +26,12 @@ for `Scene`.
          racket/list
          racket/fixnum
          (except-in typed/opengl/ffi -> cast)
+         "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../utils.rkt"
          "../draw-pass.rkt"
+         "../draw-passes.rkt"
          "../affine.rkt"
          "../gl.rkt"
          "../types.rkt"
@@ -60,7 +62,7 @@ for `Scene`.
 
 (: make-nonempty-scene-tran (-> FlAffine3- FlAffine3- Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-scene-tran t tinv s)
-  (if (scene-tran? s)
+  (if #f ;(scene-tran? s)
       (make-nonempty-scene-tran (flt3compose t (scene-tran-transform s))
                                 (flt3compose (scene-tran-inverse s) tinv)
                                 (scene-tran-scene s))
@@ -198,17 +200,41 @@ for `Scene`.
              [(empty-scene? new-s0)  new-s0]
              [else  (make-nonempty-scene-tran t0 tinv0 new-s0)])])))
 
-(: scene-extract (All (B T) (-> Scene T (-> T FlAffine3- T) (-> Shape T B) (Listof B))))
-(define (scene-extract s t-id t-compose f)
-  (let loop ([s s] [t : T  t-id])
-    (match s
-      [(? empty-scene? s)  empty]
-      [(scene-leaf b c a)
-       (list (f a t))]
-      [(scene-node b c s1 s2)
-       (append (loop s1 t) (loop s2 t))]
-      [(scene-tran b c t0 tinv0 s0)
-       (loop s0 (t-compose t t0))])))
+(: nonempty-scene-extract (All (B C) (-> Nonempty-Scene
+                                         C (-> C FlAffine3- C)
+                                         (Listof FlPlane3)
+                                         (-> Shape C B)
+                                         (Listof B))))
+(define (nonempty-scene-extract s c-id c-compose planes f)
+  (let loop ([s s] [c : C  c-id] [planes : (Listof FlPlane3)  planes] [parent-inside? : Boolean  #f])
+    (: side (U 'inside 'outside 'both))
+    (define side
+      (cond [parent-inside?  'inside]
+            [(< (scene-count s) 4)  'inside]
+            [else  (flrect3-classify/planes (scene-rect s) planes)]))
+    (define inside? (eq? side 'inside))
+    (cond
+      [(eq? side 'outside)   empty]
+      [(scene-leaf? s)
+       (list (f (scene-leaf-shape s) c))]
+      [(scene-node? s)
+       (append (loop (scene-node-neg s) c planes inside?)
+               (loop (scene-node-pos s) c planes inside?))]
+      [(scene-tran? s)
+       (match-define (scene-tran _ _ t0 tinv0 s0) s)
+       (define new-c (c-compose c t0))
+       (define new-planes
+         (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
+           (define new-p (flt3apply/plane t0 p))
+           (if new-p (cons new-p planes) planes)))
+       (loop s0 new-c new-planes inside?)])))
+
+(: scene-extract (All (B C) (-> Scene C (-> C FlAffine3- C) (Listof FlPlane3) (-> Shape C B)
+                                (Listof B))))
+(define (scene-extract s c-id c-compose planes f)
+  (if (empty-scene? s)
+      empty
+      (nonempty-scene-extract s c-id c-compose planes f)))
 
 ;; ===================================================================================================
 ;; Shape bounding box
@@ -230,7 +256,104 @@ for `Scene`.
      (frozen-scene-shape-rect a)]))
 
 ;; ===================================================================================================
-;; Shape and scene (forced) transformation
+;; Scene plane culling
+
+(: nonempty-scene-plane-cull (-> Nonempty-Scene FlPlane3 Scene))
+(define (nonempty-scene-plane-cull s p)
+  (let loop ([s s] [p p])
+    (define side (flrect3-plane-side (scene-rect s) p))
+    (cond
+      [(or (eq? side 'pos) (eq? side 'poszero) (eq? side 'zero))  s]
+      [(eq? side 'neg)  empty-scene]
+      ;; side is either 'negzero or 'both
+      [(scene-leaf? s)  s]
+      [(scene-node? s)
+       (match-define (scene-node b c s1 s2) s)
+       (define new-s1 (loop s1 p))
+       (define new-s2 (loop s2 p))
+       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+             [(empty-scene? new-s1)  new-s2]
+             [(empty-scene? new-s2)  new-s1]
+             [else  (make-nonempty-scene-node new-s1 new-s2)])]
+      [(scene-tran? s)
+       (match-define (scene-tran b c t tinv s0) s)
+       (define new-p (flt3apply/plane t p))
+       (cond [new-p
+              (define new-s0 (loop s0 new-p))
+              (cond [(eq? new-s0 s0)  s]
+                    [(empty-scene? new-s0)  new-s0]
+                    [else  (make-nonempty-scene-tran t tinv new-s0)])]
+             [else
+              empty-scene])])))
+
+(: scene-plane-cull (-> Scene FlPlane3 Scene))
+(define (scene-plane-cull s p)
+  (if (empty-scene? s)
+      s
+      (nonempty-scene-plane-cull s p)))
+
+;; ===================================================================================================
+;; Scene rect culling
+
+(: nonempty-scene-rect-cull (-> Nonempty-Scene FlRect3 Scene))
+(define (nonempty-scene-rect-cull s orig-b)
+  (let loop ([s s] [t : FlAffine3-  identity-flt3] [b orig-b])
+    (cond
+      [(flrect3-contains-rect? b (scene-rect s))  s]
+      [(flrect3-disjoint? b (scene-rect s))  empty-scene]
+      ;; The shape's bounding box is partly inside and partly outside
+      [(scene-leaf? s)  s]
+      [(scene-node? s)
+       (match-define (scene-node b0 c0 s1 s2) s)
+       (define new-s1 (loop s1 t b))
+       (define new-s2 (loop s2 t b))
+       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+             [(empty-scene? new-s1)  new-s2]
+             [(empty-scene? new-s2)  new-s1]
+             [else  (make-nonempty-scene-node new-s1 new-s2)])]
+      [(scene-tran? s)
+       (match-define (scene-tran b0 c0 t0 tinv0 s0) s)
+       (define new-t (flt3compose tinv0 t))
+       (define new-b (flrect3-transform orig-b new-t))
+       (define new-s0 (loop s0 new-t new-b))
+       (cond [(eq? new-s0 s0)  s]
+             [(empty-scene? new-s0)  new-s0]
+             [else  (make-nonempty-scene-tran t0 tinv0 new-s0)])])))
+
+(: scene-rect-cull (-> Scene FlRect3 Scene))
+(define (scene-rect-cull s b)
+  (if (empty-scene? s)
+      empty-scene
+      (for/fold ([s : Scene  (nonempty-scene-rect-cull s b)]
+                 ) ([p  (in-list (flrect3-inside-planes b))])
+        (scene-plane-cull s p))))
+
+;; ===================================================================================================
+;; Scene frustum culling
+
+(define dist (+ 1.0 (flexpt 2.0 -32.0)))
+
+(define clip-frustum-plane-x- (assert (flplane3 (flvector +1.0 0.0 0.0) dist) values))
+(define clip-frustum-plane-x+ (assert (flplane3 (flvector -1.0 0.0 0.0) dist) values))
+(define clip-frustum-plane-y- (assert (flplane3 (flvector 0.0 +1.0 0.0) dist) values))
+(define clip-frustum-plane-y+ (assert (flplane3 (flvector 0.0 -1.0 0.0) dist) values))
+(define clip-frustum-plane-z- (assert (flplane3 (flvector 0.0 0.0 +1.0) dist) values))
+(define clip-frustum-plane-z+ (assert (flplane3 (flvector 0.0 0.0 -1.0) dist) values))
+(define clip-frustum-planes
+  (list clip-frustum-plane-x- clip-frustum-plane-x+
+        clip-frustum-plane-y- clip-frustum-plane-y+
+        clip-frustum-plane-z- clip-frustum-plane-z+))
+
+(: scene-frustum-cull (-> Scene FlTransform3 Scene))
+(define (scene-frustum-cull s t)
+  (for/fold ([s : Scene  s]) ([p  (in-list clip-frustum-planes)])
+    (let ([p  (flt3apply/plane t p)])
+      (if (not p)
+          empty-scene
+          (scene-plane-cull s p)))))
+
+;; ===================================================================================================
+;; Shape and scene transformation (forced, not lazy)
 
 (: shape-transform (-> Shape FlAffine3- FlAffine3- (Listof Shape)))
 (define (shape-transform a t tinv)
@@ -266,7 +389,7 @@ for `Scene`.
   (if (empty-scene? s) s (nonempty-transform-shapes s t tinv)))
 
 ;; ===================================================================================================
-;; Shape and scene passes
+;; Scene drawing
 
 (: shape-passes (-> Shape Passes))
 (define (shape-passes a)
@@ -287,14 +410,24 @@ for `Scene`.
        [(frozen-scene-shape? a)
         (make-frozen-scene-shape-passes a)]))))
 
-(: scene-draw-passes (-> Scene (Listof draw-passes)))
-(define (scene-draw-passes s)
+(: scene-draw-passes (-> Scene (Listof FlPlane3) (Listof draw-passes)))
+(define (scene-draw-passes s planes)
   ((inst scene-extract draw-passes affine)
    s
    identity-affine
    affine-compose
+   planes
    (λ ([a : Shape] [m : affine])
      (draw-passes (shape-passes a) m))))
+
+(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 Void))
+(define (draw-scene s width height view proj)
+  (define t (flt3compose proj view))
+  (define planes
+    (filter flplane3? (map (λ ([p : FlPlane3])
+                             (flt3apply/plane t p))
+                           clip-frustum-planes)))
+  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height view proj))
 
 ;; ≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡
 ;; Frozen scene shape
@@ -443,6 +576,7 @@ for `Scene`.
   (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3 identity-flt3)
                                      identity-flt3
                                      flt3compose
+                                     empty
                                      transformed-passes)))
   (define num-passes (apply max (map vector-length ps)))
   
@@ -492,5 +626,6 @@ for `Scene`.
    (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t tinv)
                   identity-flt3
                   flt3compose
+                  empty
                   (λ ([s : Shape] [t : FlAffine3-])
                     (shape-transform s t (flt3inverse t))))))

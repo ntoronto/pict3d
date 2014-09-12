@@ -34,11 +34,15 @@
  flrect3-join
  flrect3-meet
  flrect3-separating-plane
+ flrect3-inside-planes
+ flrect3-classify/planes
  flrect3-center
+ flrect3-corners
  flrect3-volume
  flrect3-plane-side
  flrect3-contains-point?
  flrect3-contains-rect?
+ flrect3-disjoint?
  flrect3-longest-axis/center
  flrect3-transform
  )
@@ -158,6 +162,20 @@
            [(<= zmax2 zmin1)  (flplane3 (flvector 0.0 0.0 -1.0) (* +0.5 (+ zmax2 zmin1)))]
            [else  #f])]))
 
+(: flrect3-inside-planes (-> FlRect3 (Listof FlPlane3)))
+(define (flrect3-inside-planes b)
+  (cond
+    [(empty-flrect3? b)  empty]
+    [else
+     (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
+     (define p1 (flplane3 (flvector +1.0 0.0 0.0) (- xmin)))
+     (define p2 (flplane3 (flvector -1.0 0.0 0.0) xmax))
+     (define p3 (flplane3 (flvector 0.0 +1.0 0.0) (- ymin)))
+     (define p4 (flplane3 (flvector 0.0 -1.0 0.0) ymax))
+     (define p5 (flplane3 (flvector 0.0 0.0 +1.0) (- zmin)))
+     (define p6 (flplane3 (flvector 0.0 0.0 -1.0) zmax))
+     (filter flplane3? (list p1 p2 p3 p4 p5 p6))]))
+
 (: nonempty-flrect3-center (-> Nonempty-FlRect3 FlVector))
 (define (nonempty-flrect3-center bb)
   (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values bb))
@@ -172,6 +190,41 @@
       #f
       (nonempty-flrect3-center bb)))
 
+(: nonempty-flrect3-corners (-> Nonempty-FlRect3 (Vectorof FlVector)))
+(define (nonempty-flrect3-corners b)
+  (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values b))
+  (vector (flvector xmin ymin zmin)
+          (flvector xmin ymin zmax)
+          (flvector xmin ymax zmin)
+          (flvector xmin ymax zmax)
+          (flvector xmax ymin zmin)
+          (flvector xmax ymin zmax)
+          (flvector xmax ymax zmin)
+          (flvector xmax ymax zmax)))
+
+(: nonempty-flrect3-classify/planes (-> Nonempty-FlRect3 (Listof FlPlane3)
+                                        (U 'inside 'outside 'both)))
+(define (nonempty-flrect3-classify/planes b planes)
+  (let loop ([planes planes])
+    (cond [(empty? planes)  'inside]
+          [else
+           (define side (flrect3-plane-side b (first planes)))
+           (cond [(eq? side 'neg)  'outside]
+                 [(or (eq? 'poszero side) (eq? 'pos side) (eq? 'zero side))  (loop (rest planes))]
+                 [else  'both])])))
+
+(: flrect3-classify/planes (-> FlRect3 (Listof FlPlane3) (U 'inside 'outside 'both)))
+(define (flrect3-classify/planes b planes)
+  (if (empty-flrect3? b)
+      'inside
+      (nonempty-flrect3-classify/planes b planes)))
+
+(: flrect3-corners (-> Nonempty-FlRect3 (Vectorof FlVector)))
+(define (flrect3-corners b)
+  (if (empty-flrect3? b)
+      (vector)
+      (nonempty-flrect3-corners b)))
+
 (: nonempty-flrect3-volume (-> Nonempty-FlRect3 Flonum))
 (define (nonempty-flrect3-volume bb)
   (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values bb))
@@ -185,12 +238,47 @@
       0.0
       (nonempty-flrect3-volume bb)))
 
-(: nonempty-flrect3-plane-side (-> Nonempty-FlRect3 FlPlane3 Box-Plane-Sides))
-(define (nonempty-flrect3-plane-side b p)
-  'both)
+(define +max-dist.0 (* 16.0 epsilon.0))
+(define -max-dist.0 (- +max-dist.0))
 
-(: flrect3-plane-side (case-> (-> Nonempty-FlRect3 FlPlane3 Box-Plane-Sides)
-                              (-> FlRect3 FlPlane3 (U #f Box-Plane-Sides))))
+(: nonempty-flrect3-plane-side (-> Nonempty-FlRect3 FlPlane3 Rect-Plane-Sides))
+(define (nonempty-flrect3-plane-side b p)
+  ;; Fast, approximate test: fit a sphere, and see if the distance to its center is less than radius
+  (define c (nonempty-flrect3-center b))
+  (define r (* 0.5 (flv3mag (flv3- (nonempty-flrect3-max b)
+                                   (nonempty-flrect3-min b)))))
+  (define d (flplane3-point-dist p c))
+  (cond
+    ;; If r is subnormal, the relativization below could overflow
+    [(<= r +max-subnormal.0)
+     (cond [(< d -max-dist.0)  'neg]
+           [(< +max-dist.0 d)  'pos]
+           [else  'both])]
+    ;; Compare relativized
+    [(< (/ (- r d) (max r (abs d))) -max-dist.0)  'pos]
+    [(< (/ (+ r d) (max r (abs d))) -max-dist.0)  'neg]
+    [else
+     ;; It's close enough for the slower test, using signed relative distances to all 8 corners
+     (define vs (nonempty-flrect3-corners b))
+     (define ds (flplane3-relative-dists p vs))
+     (cond
+       [(not ds)  'both]
+       [else
+        (define-values (min-d max-d)
+          (for/fold ([min-d : Flonum  +inf.0] [max-d : Flonum  -inf.0]) ([d  (in-flvector ds)])
+            (values (min min-d d) (max max-d d))))
+        (define all-nonpositive? (<= max-d +max-dist.0))
+        (define all-nonnegative? (>= min-d -max-dist.0))
+        ;; Return the most precise answer possible
+        (cond [(and all-nonpositive? all-nonnegative?)  'zero]
+              [(< max-d -max-dist.0)  'neg]  ; all corners on negative side
+              [(> min-d +max-dist.0)  'pos]  ; all corners on positive side
+              [all-nonpositive?  'negzero]
+              [all-nonnegative?  'poszero]
+              [else  'both])])]))
+
+(: flrect3-plane-side (case-> (-> Nonempty-FlRect3 FlPlane3 Rect-Plane-Sides)
+                              (-> FlRect3 FlPlane3 (U #f Rect-Plane-Sides))))
 (define (flrect3-plane-side b p)
   (if (empty-flrect3? b)
       #f
@@ -219,6 +307,18 @@
           (<= ymin1 ymin2) (<= ymax2 ymax1)
           (<= zmin1 zmin2) (<= zmax2 zmax1))]))
 
+(: flrect3-disjoint? (-> FlRect3 FlRect3 Boolean))
+(define (flrect3-disjoint? bb1 bb2)
+  (cond
+    [(empty-flrect3? bb1)  #t]
+    [(empty-flrect3? bb2)  #t]
+    [else
+     (define-values (xmin1 ymin1 zmin1 xmax1 ymax1 zmax1) (nonempty-flrect3-values bb1))
+     (define-values (xmin2 ymin2 zmin2 xmax2 ymax2 zmax2) (nonempty-flrect3-values bb2))
+     (or (< (min xmax1 xmax2) (max xmin1 xmin2))
+         (< (min ymax1 ymax2) (max ymin1 ymin2))
+         (< (min zmax1 zmax2) (max zmin1 zmin2)))]))
+
 (: flrect3-longest-axis/center (-> Nonempty-FlRect3 (Values Index Flonum)))
 (define (flrect3-longest-axis/center b)
   (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values b))
@@ -228,8 +328,8 @@
   (cond [(>= xsize (max ysize zsize))  (values 0 (* 0.5 (+ xmin xmax)))]
         [(>= ysize (max xsize zsize))  (values 1 (* 0.5 (+ ymin ymax)))]
         [else                          (values 2 (* 0.5 (+ zmin zmax)))]))
-
-(: nonempty-flrect3-transform (-> Nonempty-FlRect3 FlTransform3 Nonempty-FlRect3))
+  
+(: nonempty-flrect3-transform (-> Nonempty-FlRect3 FlAffine3- Nonempty-FlRect3))
 (define (nonempty-flrect3-transform b t)
   (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values b))
   (assert
@@ -243,9 +343,9 @@
                      (flv4->pos (flt3apply t (flvector xmax ymax zmax 1.0)))))
    nonempty-flrect3?))
 
-(: flrect3-transform (case-> (-> Nonempty-FlRect3 FlTransform3 Nonempty-FlRect3)
-                             (-> FlRect3 FlTransform3 FlRect3)))
+(: flrect3-transform (case-> (-> Nonempty-FlRect3 FlAffine3- Nonempty-FlRect3)
+                             (-> FlRect3 FlAffine3- FlRect3)))
 (define (flrect3-transform b t)
-  (if (empty-flrect3? b)
-      b
-      (nonempty-flrect3-transform b t)))
+  (cond [(flidentity3? t)  b]
+        [(empty-flrect3? b)  b]
+        [else  (nonempty-flrect3-transform b t)]))

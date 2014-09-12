@@ -1,11 +1,12 @@
 #lang typed/racket/base
 
 (require racket/match
-         racket/flonum
          racket/math
+         math/flonum
          typed/racket/gui
          typed/racket/class
          typed/racket/async-channel
+         "../math/flv3.rkt"
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../engine/gl.rkt"
@@ -63,26 +64,30 @@
           (define new-cmd (async-channel-try-get ch))
           (if new-cmd (loop new-cmd) cmd))))
     
-    (match-define (render-command scene width height) cmd)
-    
-    (: view FlAffine3-)
-    (define view
-      (let ([bases  (send scene get-bases)])
-        (define camera-basis (hash-ref bases "camera" #f))
-        (if camera-basis
-            (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                         (basis-inverse camera-basis))
-            (scale-flt3 (flvector 1.0 -1.0 -1.0)))))
-    
     ;(values
     ;(profile
     (time
+     (match-define (render-command pict width height) cmd)
+     
+     (: view FlAffine3-)
+     (define view
+       (let ([bases  (send pict get-bases)])
+         (define camera-basis (hash-ref bases "camera" #f))
+         (if camera-basis
+             (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
+                          (basis-inverse camera-basis))
+             (scale-flt3 (flvector 1.0 -1.0 -1.0)))))
+     
+     ;; Compute a projection matrix
+     (define znear (z-near-distance))
+     (define zfar (z-far-distance))
+     (define fov-radians (degrees->radians (fl (fov-degrees))))
+     (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+     
      ;; Lock everything up for drawing
      (with-gl-context (send canvas get-managed-gl-context)
-       ;; Extract draw passes from the scene
-       (define passes (list->vector (scene-draw-passes (send scene get-scene))))
-       ;; Draw them and swap buffers
-       (draw-draw-passes passes width height view)
+       ;; Draw the scene and swap buffers
+       (draw-scene (send pict get-scene) width height view proj)
        (gl-swap-buffers))
      )
     (render-thread-loop))

@@ -458,10 +458,12 @@
 
 (: make-flplane3 (-> FlVector Flonum (U #f FlPlane3)))
 (define (make-flplane3 norm d)
-  (and (not (flv3zero? norm))
-       (flv3rational? norm)
-       (flrational? d)
-       (flplane3 norm d)))
+  (let ([m     (flv3mag norm)]
+        [norm  (flv3normalize norm)])
+    (and norm
+         (let ([d  (/ d m)])
+           (and (flrational? d)
+                (flplane3 norm d))))))
 
 (define-match-expander flplane3*
   (λ (stx)

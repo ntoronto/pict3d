@@ -33,6 +33,7 @@
  columns->basis
  ;; Combinators
  triangle
+ quad
  rectangle
  sphere
  ellipsoid
@@ -55,6 +56,9 @@
  combine
  combine*
  pin
+ plane-cull
+ rect-cull
+ frustum-cull
  )
 
 ;; ===================================================================================================
@@ -173,8 +177,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (-> User-Vector User-Vector User-Vector Pict3D))
-(define (triangle v1 v2 v3)
+(: triangle (->* [User-Vector User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
+(define (triangle v1 v2 v3 [face 'front])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3)))
   (define norm (flv3polygon-normal vs))
   (shape->pict3d
@@ -183,7 +187,22 @@
                         (current-color)
                         (current-emitted)
                         (current-material)
-                        'front)))
+                        face)))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Quad
+
+(: quad (->* [User-Vector User-Vector User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
+(define (quad v1 v2 v3 v4 [face 'front])
+  (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3) (->flv3 v4)))
+  (define norm (flv3polygon-normal vs))
+  (shape->pict3d
+   (make-quad-shape vs
+                    (if norm norm (flvector 0.0 0.0 0.0))
+                    (current-color)
+                    (current-emitted)
+                    (current-material)
+                    face)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
@@ -377,3 +396,21 @@
    (scene-union scene1 (scene-transform scene2 t tinv))
    (hash-merge (hash-remove (pict3d-bases s1) label1)
                (bases-post-transform (hash-remove (pict3d-bases s2) label2) t tinv))))
+
+;; ===================================================================================================
+;; Testing combinators
+
+(: plane-cull (-> Pict3D FlPlane3 Pict3D))
+(define (plane-cull s p)
+  (pict3d (scene-plane-cull (pict3d-scene s) p)
+          (pict3d-bases s)))
+
+(: rect-cull (-> Pict3D FlRect3 Pict3D))
+(define (rect-cull s b)
+  (pict3d (scene-rect-cull (pict3d-scene s) b)
+          (pict3d-bases s)))
+
+(: frustum-cull (-> Pict3D FlTransform3 Pict3D))
+(define (frustum-cull s t)
+  (pict3d (scene-frustum-cull (pict3d-scene s) t)
+          (pict3d-bases s)))

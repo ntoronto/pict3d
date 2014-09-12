@@ -1,8 +1,6 @@
 ======================================================================================================
 Short-term (before RacketCon)
 
-View frustum culling
-
 (: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
@@ -13,6 +11,8 @@ pict3d%
  * Fix editor lock problem
 
 Fix "resizing sphere animation window creates garbage on borders"
+
+? Put initial camera at "camera" in snips
 
 ======================================================================================================
 Medium-term (if time before RacketCon)

@@ -4,7 +4,9 @@
          typed/racket/class
          pict3d
          racket/math
-         math/flonum)
+         math/flonum
+         pict3d/private/math/flt3
+         pict3d/private/engine/draw-passes)
 
 (current-material '(0.05 0.75 0.25 0.1))
 
@@ -56,10 +58,14 @@
   (define sx (sin (degrees->radians i)))
   (define cx2 (cos (* 2 (degrees->radians i))))
   (define sx2 (sin (* 2 (degrees->radians i))))
+  
+  (define camera-basis
+    (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
+                  (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+  
   (define pict
     (combine
-     (set-basis frozen-spheres "camera" (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                                                      (list (* 6 cx) (* 6 sx) (- (* 0.5 sx)))))
+     (set-basis frozen-spheres "camera" camera-basis)
      (with-color "black"
        (with-emitted '(4 4 4)
          (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
@@ -72,5 +78,3 @@
 
 (define th
   (thread thread-loop))
-
-

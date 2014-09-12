@@ -88,7 +88,7 @@
          [get-size  (-> (Values Positive-Index Positive-Index))]
          [get-scene  (-> Scene)]
          [get-bases  (-> Bases)]
-         [get-draw-passes (-> (Vectorof draw-passes))]
+         [get-draw-passes (-> FlAffine3- FlTransform3 (Vectorof draw-passes))]
          [set-argb-pixels  (-> Bytes Void)]
          ))
 
@@ -126,12 +126,12 @@
 (define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
 (define get-tmp-bytes (make-cached-vector 'get-tmp-bytes make-bytes bytes-length))
 
-(: make-snip-render-thread (-> Pict3D (Async-Channelof FlTransform3) Thread))
+(: make-snip-render-thread (-> Pict3D (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread snip ch)
   (: render-thread-loop (-> Void))
   (define (render-thread-loop)
     ;; Wait for a view matrix
-    (: view FlTransform3)
+    (: view FlAffine3-)
     (define view
       (let ([view  (async-channel-get ch)])
         ;; Empty the queue looking for the lastest one
@@ -143,16 +143,24 @@
     ;(values
     ;(profile
     (time
+     ;; Compute a projection matrix
+     (define-values (width height) (send snip get-size))
+     (define znear (z-near-distance))
+     (define zfar (z-far-distance))
+     (define fov-radians (degrees->radians (fl (fov-degrees))))
+     (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+     
      ;; Lock everything up for drawing
      (with-gl-context (get-gl-snip-context)
-       (define-values (width height) (send snip get-size))
-       (draw-draw-passes (send snip get-draw-passes) width height view)
+       ;; Draw the scene and all its little extra bits (bases, etc.)
+       (draw-draw-passes (send snip get-draw-passes view proj) width height view proj)
        
+       ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
        (define row-size (* width 4))
        (define bs (get-the-bytes (assert (* row-size height) index?)))
        (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
        
-       ;; Flip right-side-up (OpenGL origin is lower-left; everything else is upper-left)
+       ;; Flip right-side-up
        (define tmp (get-tmp-bytes row-size))
        (for ([row  (in-range (fxquotient height 2))])
          (define i0 (* row row-size))
@@ -177,7 +185,7 @@
     
     (super-new)
     
-    (define render-queue ((inst make-async-channel FlTransform3)))
+    (define render-queue ((inst make-async-channel FlAffine3-)))
     
     (: render-thread Thread)
     (define render-thread (make-snip-render-thread scene render-queue))
@@ -410,22 +418,24 @@
     (: passes (Lazy-Box (Vectorof draw-passes)))
     (define passes (lazy-box (Vectorof draw-passes)))
     
-    (define/public (get-draw-passes)
-      (lazy-box-ref!
-       passes
-       (λ ()
-         (define scene-val scene)
-         (if scene-val
-             (list->vector
-              (append (scene-draw-passes scene-val)
-                      (scene-draw-passes axes)
-                      (list (draw-passes (shape-passes standard-over-light) identity-affine)
-                            (draw-passes (shape-passes standard-under-light) identity-affine))
-                      (append*
-                       (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
-                         (scene-draw-passes (force (Basis-scene p)))))))
-             (vector))
-         ))
+    (define/public (get-draw-passes view proj)
+      (define t (flt3compose proj view))
+      (define planes
+        (filter flplane3? (map (λ ([p : FlPlane3])
+                                 (flt3apply/plane t p))
+                               clip-frustum-planes)))
+      
+      (define scene-val scene)
+      (if scene-val
+          (list->vector
+           (append (scene-draw-passes scene-val planes)
+                   (scene-draw-passes axes planes)
+                   (list (draw-passes (shape-passes standard-over-light) identity-affine)
+                         (draw-passes (shape-passes standard-under-light) identity-affine))
+                   (append*
+                    (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
+                      (scene-draw-passes (force (Basis-scene p)) planes)))))
+          (vector))
       )
     
     (: copy (-> Pict3D))
