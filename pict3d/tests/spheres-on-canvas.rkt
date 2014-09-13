@@ -65,7 +65,7 @@
   
   (define pict
     (combine
-     (set-basis frozen-spheres "camera" camera-basis)
+     (set-basis frozen-spheres 'camera camera-basis)
      (with-color "black"
        (with-emitted '(4 4 4)
          (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
@@ -93,7 +93,7 @@
 
 (define pict
   (combine
-   (set-basis frozen-spheres "camera" camera-basis)
+   (set-basis frozen-spheres 'camera camera-basis)
    (with-color "black"
      (with-emitted '(4 4 4)
        (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))

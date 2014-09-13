@@ -57,19 +57,19 @@
 (define default-pict3d-width 256)
 (define default-pict3d-height 256)
 (define default-ambient (flvector 1.0 1.0 1.0))
-(define default-z-near (assert (flexpt 2.0 -20.0) positive?))
-(define default-z-far  (assert (flexpt 2.0 +32.0) positive?))
+(define default-z-near (assert (flexpt 2.0 -10.0) positive?))
+(define default-z-far  (assert (flexpt 2.0 +20.0) positive?))
 (define default-fov-degrees 90.0)
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width
   (make-parameter default-pict3d-width
-                  (λ ([n : Integer]) (assert (min 32768 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
 
 (: current-pict3d-height (Parameterof Integer Positive-Index))
 (define current-pict3d-height
   (make-parameter default-pict3d-height
-                  (λ ([n : Integer]) (assert (min 32768 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
 
 (: current-ambient (Parameterof User-Color FlVector))
 (define current-ambient
@@ -143,8 +143,8 @@
 
 (define-type Pict3D (Instance Pict3D%))
 
-(define-type Scene-GUI%
-  (Class (init-field [scene Pict3D])
+(define-type Pict3D-GUI%
+  (Class (init-field [pict Pict3D])
          [is-capturing?  (-> Boolean)]
          [own-caret  (-> Any Void)]
          [on-event  (-> (Instance Mouse-Event%) Void)]
@@ -206,30 +206,44 @@
 ;; ===================================================================================================
 ;; The snip's GUI
 
-(: scene-gui% Scene-GUI%)
-(define scene-gui%
+(: pict3d-gui% Pict3D-GUI%)
+(define pict3d-gui%
   (class object%
-    (init-field scene)
+    (init-field pict)
     
     (super-new)
     
     (define render-queue ((inst make-async-channel FlAffine3-)))
     
     (: render-thread Thread)
-    (define render-thread (make-snip-render-thread scene render-queue))
+    (define render-thread (make-snip-render-thread pict render-queue))
     
     (: camera (Instance Camera%))
     (define camera
-      (let* ([s  (send scene get-scene)]
-             [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-             [b  (and (not (empty-scene? s)) (scene-rect s))]
-             [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
-             [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
-        (new camera%
-             [position  (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0))))]
-             [velocity  (flvector 0.0 0.0 0.0)]
-             [yaw  (degrees->radians 135.0)]
-             [pitch  (degrees->radians -35.264389682754654)])))
+      (let ([camera  (hash-ref (pict3d-bases pict) 'camera #f)])
+        (cond
+          [camera
+           (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+             (flaffine3-values (->flaffine3 (Basis-forward camera))))
+           (define position (flvector m03 m13 m23))
+           (define yaw (- (atan m12 m02) (/ pi 2.0)))
+           (define pitch (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))
+           (new camera%
+                [position  position]
+                [velocity  (flvector 0.0 0.0 0.0)]
+                [yaw  yaw]
+                [pitch  pitch])]
+          [else
+           (let* ([s  (pict3d-scene pict)]
+                  [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
+                  [b  (and (not (empty-scene? s)) (scene-rect s))]
+                  [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
+                  [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
+             (new camera%
+                  [position  (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0))))]
+                  [velocity  (flvector 0.0 0.0 0.0)]
+                  [yaw  (degrees->radians 135.0)]
+                  [pitch  (degrees->radians -35.264389682754654)]))])))
     
     (: last-view-matrix (U #f FlTransform3))
     (define last-view-matrix #f)
@@ -286,11 +300,11 @@
     (define pitch-vel 0.0)
     
     (define/public (on-event e)
-      (define admin (send scene get-admin))
+      (define admin (send pict get-admin))
       (define editor (and admin (send admin get-editor)))
       (case (send e get-event-type)
         [(left-down)
-         (define-values (x y) (snip-center-pointer scene))
+         (define-values (x y) (snip-center-pointer pict))
          (cond [capturing?
                 (cond [editor  (send editor set-caret-owner #f)]
                       [else    (set! capturing? #f)
@@ -315,7 +329,7 @@
            (unless (and (= dx 0) (= dy 0))
              (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
              (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
-             (define-values (x y) (snip-center-pointer scene))
+             (define-values (x y) (snip-center-pointer pict))
              (cond [(and x y)  (set! home-mouse-x x)
                                (set! home-mouse-y y)
                                (start-frame-timer)]
@@ -471,13 +485,13 @@
     (define/override (copy)
       (make-object pict3d% scene bases width height z-near z-far fov-degrees ambient))
     
-    (: gui (U #f (Instance Scene-GUI%)))
+    (: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
     
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (unless gui
         (send this set-flags (list* 'handles-events 'handles-all-mouse-events (send this get-flags)))
-        (set! gui (make-object scene-gui% this)))
+        (set! gui (make-object pict3d-gui% this)))
       (send dc draw-bitmap (get-the-bitmap) x y)
       (super draw dc x y left top right bottom dx dy draw-caret))
     
@@ -545,7 +559,7 @@
 (: pict3d-view-transform (->* [Pict3D] [FlAffine3-] FlAffine3-))
 (define (pict3d-view-transform s [default (scale-flt3 (flvector 1.0 -1.0 -1.0))])
   (define bases (pict3d-bases s))
-  (define camera-basis (hash-ref bases "camera" #f))
+  (define camera-basis (hash-ref bases 'camera #f))
   (if camera-basis
       (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
                    (Basis-inverse camera-basis))

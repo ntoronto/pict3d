@@ -157,7 +157,7 @@
        (match-define (planetoid pict pos axis speed) p)
        (move (rotate pict axis (* speed (* 2 pi (random)))) pos)))
     sun)
-   "camera"
+   'camera
    (normal-basis '(0 -40 0) '(0 1 0))))
 
 (define spheres
@@ -179,7 +179,7 @@
                    '(0 0 1)
                    (* angle 0.01))))
         sun)
-       "camera"
+       'camera
        (normal-basis '(0 -40 0) '(0 1 0))))
     (send canvas set-pict3d pict)
     (sleep/yield (/ 16 1000))))
