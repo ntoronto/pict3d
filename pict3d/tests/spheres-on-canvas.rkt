@@ -41,8 +41,8 @@
                          (* (random) 0.5))))))))
 
 (define frozen-spheres (freeze spheres))
-#|
-(define frame (new frame% [label "1"] [width 800] [height 800]))
+
+(define frame (new frame% [label "1"] [width 400] [height 400]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
 
@@ -74,13 +74,13 @@
   (set! i (+ i 1))
   (define end-time (fl (current-inexact-milliseconds)))
   (sleep/yield (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
-  (sleep 1)
+  ;(thread-suspend th)
   (thread-loop))
 
 (define th
   (thread thread-loop))
-|#
 
+#|
 (define i 0)
 (define cx (cos (degrees->radians i)))
 (define sx (sin (degrees->radians i)))
@@ -98,3 +98,7 @@
      (with-emitted '(4 4 4)
        (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
    (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
+
+(current-ambient '(0 0 0))
+(pict3d->bitmap pict 400 400)
+|#

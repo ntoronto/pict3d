@@ -156,42 +156,35 @@ code
         (cons GL_TEXTURE_MIN_FILTER GL_NEAREST)
         (cons GL_TEXTURE_MAG_FILTER GL_NEAREST)))
 
-(: size-lte (-> (List Natural Natural)
-                (List Natural Natural)
-                (U (List Natural Natural) Boolean)))
-(define (size-lte s1 s2)
-  (match-define (list w1 h1) s1)
-  (match-define (list w2 h2) s2)
-  (define new-w (* (quotient (+ w1 63) 64) 64))
-  (define new-h (* (quotient (+ h1 63) 64) 64))
-  (cond [(and (= new-w w2) (= new-h h2))  #t]
-        [else  (list new-w new-h)]))
+(: dimension-ceiling (-> Natural Natural))
+(define (dimension-ceiling w)
+  (* (quotient (+ w 63) 64) 64))
 
-(define-singleton/context (get-depth-buffer [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-depth-buffer [width : Natural] [height : Natural])
   (printf "new ~a × ~a depth-buffer~n" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
-(define-singleton/context (get-tran-depth-buffer [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-tran-depth-buffer [width : Natural] [height : Natural])
   (printf "new ~a × ~a tran-depth-buffer~n" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
-(define-singleton/context (get-mat-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-mat-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a mat-fbo~n" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-depth-buffer width height)))))
 
-(define-singleton/context (get-tran-mat-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-tran-mat-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a tran-mat-fbo~n" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-tran-depth-buffer width height)))))
 
-(define-singleton/context (get-light-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-light-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a light-fbo~n" width height)
   (define diff (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define spec (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
@@ -203,7 +196,7 @@ code
     (glDrawBuffers 2 (s32vector GL_COLOR_ATTACHMENT0 GL_COLOR_ATTACHMENT1)))
   fbo)
 
-(define-singleton/context (get-tran-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-tran-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a tran-fbo~n" width height)
   (define rgbv (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define alpha (make-gl-texture-2d width height GL_R16F GL_RED GL_FLOAT texture-params))
@@ -216,7 +209,7 @@ code
     (glDrawBuffers 2 (s32vector GL_COLOR_ATTACHMENT0 GL_COLOR_ATTACHMENT1)))
   fbo)
 
-(define-singleton/context (get-draw-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-draw-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a draw-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define fbo
@@ -227,7 +220,7 @@ code
   (glClear GL_COLOR_BUFFER_BIT)
   fbo)
 
-(define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a reduce-fbo~n" width height)
   (define color (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT
                                     (list (cons GL_TEXTURE_WRAP_S GL_CLAMP_TO_EDGE)
@@ -242,12 +235,12 @@ code
         (cons GL_TEXTURE_MIN_FILTER GL_LINEAR)
         (cons GL_TEXTURE_MAG_FILTER GL_LINEAR)))
 
-(define-singleton/context (get-bloom-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-bloom-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a bloom-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 
-(define-singleton/context (get-blur-fbo [width : Natural] [height : Natural]) #:lte size-lte
+(define-singleton/context (get-blur-fbo [width : Natural] [height : Natural])
   (printf "new ~a × ~a blur-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
@@ -277,17 +270,36 @@ code
           (values s (min (* 2 s) (max 1 (round (* height (/ s width))))))
           (values (min (* 2 s) (max 1 (round (* width (/ s height))))) s))))
   
+  (define dwidth (dimension-ceiling width))
+  (define dheight (dimension-ceiling height))
+  (define bloom-dwidth (dimension-ceiling bloom-width))
+  (define bloom-dheight (dimension-ceiling bloom-height))
+  
   ;; Set up framebuffer objects for the different passes
-  (define depth-buffer (get-depth-buffer width height))
-  (define tran-depth-buffer (get-tran-depth-buffer width height))
-  (define mat-fbo (get-mat-fbo width height))
-  (define tran-mat-fbo (get-tran-mat-fbo width height))
-  (define light-fbo (get-light-fbo width height))
-  (define tran-fbo (get-tran-fbo width height))
-  (define draw-fbo (get-draw-fbo width height))
-  (define reduce-fbo (get-reduce-fbo width height))
-  (define bloom-fbo (get-bloom-fbo bloom-width bloom-height))
-  (define blur-fbo (get-blur-fbo bloom-width bloom-height))
+  (define depth-buffer (get-depth-buffer dwidth dheight))
+  (define tran-depth-buffer (get-tran-depth-buffer dwidth dheight))
+  (define mat-fbo (get-mat-fbo dwidth dheight))
+  (define tran-mat-fbo (get-tran-mat-fbo dwidth dheight))
+  (define light-fbo (get-light-fbo dwidth dheight))
+  (define tran-fbo (get-tran-fbo dwidth dheight))
+  (define draw-fbo (get-draw-fbo dwidth dheight))
+  (define reduce-fbo (get-reduce-fbo dwidth dheight))
+  (define bloom-fbo (get-bloom-fbo bloom-dwidth bloom-dheight))
+  (define blur-fbo (get-blur-fbo bloom-dwidth bloom-dheight))
+  
+  (define tex-width (fl (/ width dwidth)))
+  (define tex-height (fl (/ height dheight)))
+  (define bloom-tex-width (fl (/ bloom-width bloom-dwidth)))
+  (define bloom-tex-height (fl (/ bloom-height bloom-dheight)))
+  
+  (: draw-fullscreen-quad (-> Flonum Flonum Void))
+  (define (draw-fullscreen-quad tex-w tex-h)
+    (glBegin GL_TRIANGLE_STRIP)
+    (glTexCoord2f  0.0   0.0)  (glVertex2f -1.0 -1.0)
+    (glTexCoord2f tex-w  0.0)  (glVertex2f +1.0 -1.0)
+    (glTexCoord2f  0.0  tex-h) (glVertex2f -1.0 +1.0)
+    (glTexCoord2f tex-w tex-h) (glVertex2f +1.0 +1.0)
+    (glEnd))
   
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
@@ -303,9 +315,6 @@ code
            (cons 'width (uniform-int width))
            (cons 'height (uniform-int height))
            (cons 'ambient (uniform-float ambient)))))
-  
-  (define fullscreen-width (fl (/ width (gl-framebuffer-width draw-fbo))))
-  (define fullscreen-height (fl (/ height (gl-framebuffer-height draw-fbo))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 1 (pre-light): Compute nearest opaque geometry depth, normals and specular powers
@@ -467,7 +476,7 @@ code
                                      (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1))))
       (glActiveTexture GL_TEXTURE0)
       
-      (gl-fullscreen-quad fullscreen-width fullscreen-height)))
+      (draw-fullscreen-quad tex-width tex-height)))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Extract overbright values and blur
@@ -478,7 +487,7 @@ code
     (glDisable GL_DEPTH_TEST)
     (with-gl-program (bloom-extract-program)
       (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
-        (gl-fullscreen-quad fullscreen-width fullscreen-height))))
+        (draw-fullscreen-quad tex-width tex-height))))
   
   (with-gl-texture-2d (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
     (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST)
@@ -501,11 +510,11 @@ code
     (glColorMask #t #t #t #t)
     
     (with-gl-framebuffer bloom-fbo
-      (glViewport 0 0 bloom-width bloom-height)
+      (glViewport 0 0 bloom-dwidth bloom-dheight)
       (glClear GL_COLOR_BUFFER_BIT))
     
     (with-gl-framebuffer blur-fbo
-      (glViewport 0 0 bloom-width bloom-height)
+      (glViewport 0 0 bloom-dwidth bloom-dheight)
       (glClear GL_COLOR_BUFFER_BIT))
     
     (glColorMask #t #t #t #f)
@@ -513,7 +522,7 @@ code
     (with-gl-framebuffer bloom-fbo
       (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
       (with-gl-texture-2d (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
-        (gl-fullscreen-quad fullscreen-width fullscreen-height)))
+        (draw-fullscreen-quad tex-width tex-height)))
     
     (define fullscreen-bloom-width (fl (/ (quotient bloom-width denom)
                                           (gl-framebuffer-width bloom-fbo))))
@@ -531,7 +540,7 @@ code
           (gl-program-uniform horz-program "width" (uniform-int (gl-framebuffer-width blur-fbo)))
           ;; Read from bloom-fbo
           (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-            (gl-fullscreen-quad fullscreen-bloom-width fullscreen-bloom-height))))
+            (draw-fullscreen-quad bloom-tex-width bloom-tex-height))))
       
       (with-gl-program vert-program
         ;; Write to bloom-fbo
@@ -541,14 +550,14 @@ code
           (gl-program-uniform vert-program "height" (uniform-int (gl-framebuffer-height bloom-fbo)))
           ;; Read from blur-fbo
           (with-gl-texture-2d (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
-            (gl-fullscreen-quad fullscreen-bloom-width fullscreen-bloom-height)))))
+            (draw-fullscreen-quad bloom-tex-width bloom-tex-height)))))
     
     (glEnable GL_BLEND)
     (glBlendFunc GL_SRC_ALPHA GL_ONE)
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
       (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-        (gl-fullscreen-quad fullscreen-bloom-width fullscreen-bloom-height)))
+        (draw-fullscreen-quad bloom-tex-width bloom-tex-height)))
     )
   
   (glColorMask #t #t #t #t)
@@ -579,7 +588,7 @@ code
                                    (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0))))
     (glActiveTexture GL_TEXTURE0)
     
-    (gl-fullscreen-quad fullscreen-width fullscreen-height))
+    (draw-fullscreen-quad tex-width tex-height))
   #|
   (glViewport 0 0 width height)
   (glClearColor 0.0 0.0 0.0 1.0)
@@ -587,9 +596,9 @@ code
   (glEnable GL_TEXTURE_2D)
   (glDisable GL_BLEND)
   (glDisable GL_DEPTH_TEST)
-  (with-gl-texture-2d (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-    (gl-fullscreen-quad))
-  |#
+  (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+    (draw-fullscreen-quad tex-width tex-height))
+|#
   )
 
 (: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlAffine3- FlTransform3 FlVector Void))

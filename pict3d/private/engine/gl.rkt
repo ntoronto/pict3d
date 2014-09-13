@@ -78,6 +78,9 @@
 ;; ===================================================================================================
 ;; Master GL context
 
+(define master-context-max-width 4096)
+(define master-context-max-height 4096)
+
 (define master-gl-context-mutex (make-semaphore 1))
 
 (: master-frame (U #f (Instance Frame%)))
@@ -96,7 +99,14 @@
            [else
             (define config (new gl-config%))
             (send config set-legacy? #f)
-            (define frame (new frame% [label "Master GL context frame"] [width 512] [height 512]))
+            (define frame (new frame%
+                               [label "Master GL context frame"]
+                               [width   master-context-max-width]
+                               [height  master-context-max-height]
+                               [min-width   master-context-max-width]
+                               [min-height  master-context-max-height]
+                               [stretchable-width #f]
+                               [stretchable-height #f]))
             (define canvas (new canvas% [parent frame] [style '(gl no-autoclear)] [gl-config config]))
             (send frame show #t)
             (send frame show #f)
@@ -697,18 +707,6 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
 (: gl-program-uniform (-> gl-object String Uniform Void))
 (define (gl-program-uniform prog name u)
   (gl-uniform (glGetUniformLocation (gl-object-handle prog) name) u))
-
-;; ===================================================================================================
-;; Misc. convenience
-
-(: gl-fullscreen-quad (->* [] [Flonum Flonum] Void))
-(define (gl-fullscreen-quad [w 1.0] [h 1.0])
-  (glBegin GL_TRIANGLE_STRIP)
-  (glTexCoord2f 0.0 0.0) (glVertex2f -1.0 -1.0)
-  (glTexCoord2f  w  0.0) (glVertex2f +1.0 -1.0)
-  (glTexCoord2f 0.0  h ) (glVertex2f -1.0 +1.0)
-  (glTexCoord2f  w   h ) (glVertex2f +1.0 +1.0)
-  (glEnd))
 
 ;; ===================================================================================================
 
