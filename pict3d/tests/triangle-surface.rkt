@@ -9,8 +9,8 @@
          pict3d/private/math/flv3
          )
 
-(current-pict3d-projection-width 512)
-(current-pict3d-projection-height 384)
+(current-pict3d-width 512)
+(current-pict3d-height 384)
 
 (: xyz-fun (-> Flonum Flonum FlVector))
 (define (xyz-fun x y)

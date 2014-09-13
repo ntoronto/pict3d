@@ -5,32 +5,33 @@
          math/flonum
          math/bigfloat)
 
-;(current-z-far 1e38)
+(current-pict3d-width 512)
+(current-pict3d-height 512)
+
+(current-material '(0.1 0.4 0.5 0.1))
 
 (define shapes
   (combine
-   (with-color "lightblue"
-     (rectangle '(-1 -1 -1) '(1 1 1))
-     ;(sphere '(0 0 0) 1)
+   (with-color "crimson"
+     (sphere '(1/2 0 0) 1/2)
      )
-   (with-color "pink"
-     (rectangle '(-1.8 -1.8 -0.5) '(0.2 0.2 1.5))
-     ;(sphere '(-0.8 -0.8 0.5) 1)
-     )))
+   (with-color "chartreuse"
+     (sphere '(0 1/2 0) 1/2)
+     )
+   (with-color "dodgerblue"
+     (sphere '(0 0 1/2) 1/2))
+   ))
 
 (define pict
   (combine
    (scale
     (set-basis
-     (combine
-      (sunlight '(-1 -1/2 -1/4) "azure" 1)
-      ;(light '(2 1.5 1.5) "white" 5)
-      shapes)
+     shapes
      'camera
-     (normal-basis '(1.25 1.25 2) '(-1 -1 -1)))
-    (make-list 3 (flexpt 2.0 0.0)))
+     (normal-basis '(1/2 1 2) '(-1/2 -1 -1.25)))
+    (make-list 3 (flexpt 2.0 -19.0)))
    (scale
     (move shapes '(-1.25 -1.25 -1.25))
-    (make-list 3 (flexpt 2.0 2.0)))))
+    (make-list 3 (flexpt 2.0 31.0)))))
 
-(pict3d->bitmap pict 512 512)
+pict

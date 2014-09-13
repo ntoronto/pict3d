@@ -39,27 +39,6 @@ float get_view_depth(float logz) {
 code
    "\n\n"))
 
-(define get-view-position-fragment-code
-  (string-append
-   depth-fragment-code
-   #<<code
-vec3 get_view_position(sampler2D depthTex, int width, int height, mat3 unproj0, mat3 unproj1) {
-  // compute view z from depth buffer
-  float depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r;
-  if (depth == 0.0) discard;
-  float z = get_view_depth(depth);
-  
-  // clip xy
-  vec3 cpos = vec3((gl_FragCoord.xy / vec2(width,height) - vec2(0.5)) * 2.0, 1.0);
-  
-  // compute view position from clip xy and view z
-  vec3 p0 = unproj0 * cpos;
-  vec3 p1 = unproj1 * cpos;
-  return (p0*z+p1) / p0.z;
-}
-code
-   "\n\n"))
-
 (define get-surface-fragment-code
   (string-append
    pack-unpack-normal-code
@@ -71,7 +50,8 @@ struct surface {
 
 surface get_surface(sampler2D matTex) {
   vec4 mat = texelFetch(matTex, ivec2(gl_FragCoord.xy), 0);
-  return surface(unpack_normal(mat.rg), mat.a);
+  //return surface(unpack_normal(mat.rg), mat.a);
+  return surface(mat.rgb, mat.a);
 }
 code
    "\n\n"))
@@ -226,7 +206,8 @@ code
    #<<code
 void output_mat(vec3 dir, float roughness, float z) {
   gl_FragDepth = get_frag_depth(z);
-  gl_FragColor = vec4(pack_normal(normalize(dir)), 1.0, roughness);
+  //gl_FragColor = vec4(pack_normal(normalize(dir)), 1.0, roughness);
+  gl_FragColor = vec4(normalize(dir), roughness);
 }
 code
    "\n\n"))
@@ -259,8 +240,21 @@ code
 
 (define light-fragment-code
   (string-append
+   depth-fragment-code
    get-surface-fragment-code
    #<<code
+vec3 frag_coord_to_position(vec4 frag_coord, sampler2D depth, mat4 unproj, int width, int height) {
+  // compute view z from depth buffer
+  float d = texelFetch(depth, ivec2(frag_coord.xy), 0).r;
+  if (d == 0.0) discard;
+  float z = get_view_depth(d);
+
+  // compute direction
+  vec2 clip_xy = (frag_coord.xy / vec2(width,height) - vec2(0.5)) * 2.0;
+  vec4 vpos = unproj * vec4(clip_xy, 0.0, 1.0);
+  return vpos.xyz / vpos.z * z;
+}
+
 vec3 attenuate_invsqr(vec3 light_color, float dist) {
   return max(vec3(0.0), (light_color/(dist*dist) - 0.05) / 0.95);
 }
@@ -281,11 +275,15 @@ float specular(vec3 N, vec3 L, vec3 V, float dotLN, float dotVN, float m) {
 
 void output_light(vec3 light, surface s, vec3 L, vec3 V) {
   vec3 N = s.normal;
+
+  // Diffuse
   float dotNL = dot(N,L);
   if (dotNL < 1e-7) discard;
+  gl_FragData[0] = vec4(light * dotNL, 0.0);
+
+  // Specular
   float dotNV = dot(N,V);
   if (dotNV < 1e-7) discard;
-  gl_FragData[0] = vec4(light * dotNL, 0.0);
   gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,s.roughness), 0.0);
 }
 code

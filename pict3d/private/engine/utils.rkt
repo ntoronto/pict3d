@@ -141,24 +141,6 @@
 ;; ===================================================================================================
 ;; Vector and matrix stuff
 
-(: flt3->unproj0 (-> FlProjective3 FlLinear3))
-(define (flt3->unproj0 m)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
-    (flprojective3-values m))
-  (fllinear3
-   (flvector (- (* m12 m31) (* m11 m32)) (- (* m01 m32) (* m02 m31)) (- (* m02 m11) (* m01 m12))
-             (- (* m10 m32) (* m12 m30)) (- (* m02 m30) (* m00 m32)) (- (* m00 m12) (* m02 m10))
-             (- (* m11 m30) (* m10 m31)) (- (* m00 m31) (* m01 m30)) (- (* m01 m10) (* m00 m11)))))
-
-(: flt3->unproj1 (-> FlProjective3 FlLinear3))
-(define (flt3->unproj1 m)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
-    (flprojective3-values m))
-  (fllinear3
-   (flvector (- (* m13 m31) (* m11 m33)) (- (* m01 m33) (* m03 m31)) (- (* m03 m11) (* m01 m13))
-             (- (* m10 m33) (* m13 m30)) (- (* m03 m30) (* m00 m33)) (- (* m00 m13) (* m03 m10))
-             0.0 0.0 0.0)))
-
 (: flvector->f32vector (-> FlVector F32Vector))
 (define (flvector->f32vector v)
   (define n (flvector-length v))

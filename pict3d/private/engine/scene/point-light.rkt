@@ -69,13 +69,11 @@ code
 (define point-light-fragment-code
   (string-append
    "#version 130\n\n"
-   get-view-position-fragment-code
    light-fragment-code
    #<<code
 uniform int width;
 uniform int height;
-uniform mat3 unproj0;
-uniform mat3 unproj1;
+uniform mat4 unproj;
 
 uniform sampler2D depth;
 uniform sampler2D material;
@@ -89,13 +87,13 @@ void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vpos = get_view_position(depth, width, height, unproj0, unproj1);
+  vec3 vpos = frag_coord_to_position(gl_FragCoord, depth, unproj, width, height);
   vec3 D = frag_position - vpos;
   float dist = length(D);
-  if (dist > frag_radius) discard;
-  
+  if (dist > frag_radius) discard;  
   vec3 L = normalize(D);
   vec3 V = normalize(-vpos);
+
   vec3 light = attenuate_invsqr(frag_intensity, dist);
   //vec3 light = attenuate_linear(frag_intensity, frag_radius, dist);
   output_light(light, get_surface(material), L, V);
@@ -119,8 +117,7 @@ code
           (cons "proj" 'proj)
           (cons "width" 'width)
           (cons "height" 'height)
-          (cons "unproj0" 'unproj0)
-          (cons "unproj1" 'unproj1)
+          (cons "unproj" 'unproj)
           (cons "depth" 'depth)
           (cons "material" 'material)))
   

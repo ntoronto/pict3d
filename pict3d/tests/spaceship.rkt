@@ -185,7 +185,7 @@
     (sleep/yield (/ 16 1000))))
 
 
-#|
+
 (current-material '(0.05 0.75 0.25 0.1))
 
 (define body
@@ -252,4 +252,3 @@
    -90))
 
 ship
-|#

@@ -1,8 +1,6 @@
 ======================================================================================================
 Short-term (before RacketCon)
 
-(: pict3d->pict (-> Pict3D Integer Integer Pict))
-
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
 
 pict3d%
@@ -10,20 +8,14 @@ pict3d%
  * Make pict3d% snips save and load drawing parameters (e.g. near and far plane distances)
  * Fix editor lock problem
 
-Rename "camera" to 'camera
-
-? Put initial camera at "camera" in snips
-
 ======================================================================================================
 Medium-term (if time before RacketCon)
 
-Speed up vector operations (settle for < 4 ulps error!)
+Speed up vector operations (settle for < 4 ulps error)
 
 Fix `send-multi-vertices`
  * Make it send a per-vertex model transformation
  * Check for > 1M vertexes and split drawing (like `send-single-vertices` does)
-
-Fix specular highlight seam
 
 Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
@@ -73,7 +65,7 @@ Shadow mapping
 ======================================================================================================
 
 Deprecated stuff I use
- * glBegin/glEnd (in `gl-fullscreen-quad`)
+ * glBegin/glEnd (in `draw-fullscreen-quad`)
  * gl_TexCoord
  * default vertex shader
  * gl_FragData

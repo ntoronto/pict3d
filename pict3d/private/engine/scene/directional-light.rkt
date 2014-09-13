@@ -60,12 +60,10 @@ code
 (define directional-light-fragment-code
   (string-append
    "#version 130\n\n"
-   get-view-position-fragment-code
    light-fragment-code
    #<<code
 uniform mat4 unview;
-uniform mat3 unproj0;
-uniform mat3 unproj1;
+uniform mat4 unproj;
 uniform int width;
 uniform int height;
 
@@ -77,7 +75,7 @@ uniform vec3 light_dir;
 uniform vec3 light_color;
 
 void main() {
-  vec3 pos = get_view_position(depth, width, height, unproj0, unproj1);
+  vec3 pos = frag_coord_to_position(gl_FragCoord, depth, unproj, width, height);
   vec3 L = normalize(-light_dir * mat3(unview));
   vec3 V = normalize(-pos);
   output_light(light_color, get_surface(material), L, V);
@@ -95,8 +93,7 @@ code
   
   (define uniforms
     (list (cons "unview" 'unview)
-          (cons "unproj0" 'unproj0)
-          (cons "unproj1" 'unproj1)
+          (cons "unproj" 'unproj)
           (cons "width" 'width)
           (cons "height" 'height)
           (cons "depth" 'depth)
