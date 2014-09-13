@@ -155,15 +155,12 @@ code
    "#version 130\n\n"
    output-mat-fragment-code
    #<<code
-uniform float znear;
-uniform float zfar;
-
 smooth in vec4 frag_position;
 smooth in vec3 frag_normal;
 smooth in float frag_roughness;
 
 void main() {
-  output_mat(frag_normal, frag_roughness, frag_position.z, znear, zfar);
+  output_mat(frag_normal, frag_roughness, frag_position.z);
 }
 code
    ))
@@ -183,9 +180,7 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "unview" 'unview)
-          (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)))
+          (cons "proj" 'proj)))
   
   (program-spec program uniforms struct))
 
@@ -232,9 +227,6 @@ code
    "#version 130\n\n"
    output-opaq-fragment-code
    #<<code
-uniform float znear;
-uniform float zfar;
-
 uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
@@ -251,7 +243,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_opaq(color, frag_rcolor.a, frag_position.z, znear, zfar);
+  output_opaq(color, frag_rcolor.a, frag_position.z);
 }
 code
    ))
@@ -261,9 +253,6 @@ code
    "#version 130\n\n"
    output-tran-fragment-code
    #<<code
-uniform float znear;
-uniform float zfar;
-
 uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
@@ -280,7 +269,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_tran(color, frag_rcolor.a, frag_position.z, znear, zfar);
+  output_tran(color, frag_rcolor.a, frag_position.z);
 }
 code
    ))
@@ -301,8 +290,6 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "ambient" 'ambient)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
@@ -325,8 +312,6 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   

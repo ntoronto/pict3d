@@ -72,8 +72,6 @@ code
    get-view-position-fragment-code
    light-fragment-code
    #<<code
-uniform float znear;
-uniform float zfar;
 uniform int width;
 uniform int height;
 uniform mat3 unproj0;
@@ -91,7 +89,7 @@ void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vpos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar);
+  vec3 vpos = get_view_position(depth, width, height, unproj0, unproj1);
   vec3 D = frag_position - vpos;
   float dist = length(D);
   if (dist > frag_radius) discard;
@@ -119,8 +117,6 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)
           (cons "unproj0" 'unproj0)

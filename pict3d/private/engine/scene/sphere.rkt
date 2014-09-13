@@ -85,8 +85,6 @@ code
    #<<code
 uniform mat4 proj;
 uniform mat4 unproj;
-uniform float znear;
-uniform float zfar;
 uniform int width;
 uniform int height;
 
@@ -111,7 +109,7 @@ void main() {
   vec3 pos = start + dir * t;
   vec3 vpos = frag_trans * vec4(pos, 1.0);
   vec3 vnorm = pos * mat3(frag_untrans);
-  output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos.z, znear, zfar);
+  output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos.z);
 }
 code
    ))
@@ -134,8 +132,6 @@ code
           (cons "unview" 'unview)
           (cons "proj" 'proj)
           (cons "unproj" 'unproj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)))
   
@@ -200,8 +196,6 @@ code
    #<<code
 uniform mat4 proj;
 uniform mat4 unproj;
-uniform float znear;
-uniform float zfar;
 uniform int width;
 uniform int height;
 
@@ -238,7 +232,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_opaq(color, frag_rcolor.a, vpos.z, znear, zfar);
+  output_opaq(color, frag_rcolor.a, vpos.z);
 }
 code
    ))
@@ -251,8 +245,6 @@ code
    #<<code
 uniform mat4 proj;
 uniform mat4 unproj;
-uniform float znear;
-uniform float zfar;
 uniform int width;
 uniform int height;
 
@@ -289,7 +281,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_tran(color, frag_rcolor.a, vpos.z, znear, zfar);
+  output_tran(color, frag_rcolor.a, vpos.z);
 }
 code
    ))
@@ -314,8 +306,6 @@ code
           (cons "proj" 'proj)
           (cons "unview" 'unview)
           (cons "unproj" 'unproj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)
           (cons "ambient" 'ambient)
@@ -344,8 +334,6 @@ code
           (cons "proj" 'proj)
           (cons "unview" 'unview)
           (cons "unproj" 'unproj)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)
           (cons "ambient" 'ambient)

@@ -26,12 +26,15 @@ code
 (define depth-fragment-code
   (string-append
    #<<code
-float frag_depth(float znear, float zfar, float z) {
-  return log2(-z/zfar) / log2(znear/zfar);
+uniform float zfar;
+uniform float log2_znear_zfar;
+
+float get_frag_depth(float z) {
+  return log2(-z/zfar) / log2_znear_zfar;
 }
 
-float unfrag_depth(float znear, float zfar, float logz) {
-  return -exp2(logz * log2(znear/zfar)) * zfar;
+float get_view_depth(float logz) {
+  return -exp2(logz * log2_znear_zfar) * zfar;
 }
 code
    "\n\n"))
@@ -40,12 +43,11 @@ code
   (string-append
    depth-fragment-code
    #<<code
-vec3 get_view_position(sampler2D depthTex, int width, int height, mat3 unproj0, mat3 unproj1,
-                       float znear, float zfar) {
+vec3 get_view_position(sampler2D depthTex, int width, int height, mat3 unproj0, mat3 unproj1) {
   // compute view z from depth buffer
   float depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r;
   if (depth == 0.0) discard;
-  float z = unfrag_depth(znear, zfar, depth);
+  float z = get_view_depth(depth);
   
   // clip xy
   vec3 cpos = vec3((gl_FragCoord.xy / vec2(width,height) - vec2(0.5)) * 2.0, 1.0);
@@ -222,8 +224,8 @@ code
    depth-fragment-code
    pack-unpack-normal-code
    #<<code
-void output_mat(vec3 dir, float roughness, float z, float znear, float zfar) {
-  gl_FragDepth = frag_depth(znear, zfar, z);
+void output_mat(vec3 dir, float roughness, float z) {
+  gl_FragDepth = get_frag_depth(z);
   gl_FragColor = vec4(pack_normal(normalize(dir)), 1.0, roughness);
 }
 code
@@ -233,8 +235,8 @@ code
   (string-append
    depth-fragment-code
    #<<code
-void output_opaq(vec3 color, float a, float z, float znear, float zfar) {
-  gl_FragDepth = frag_depth(znear, zfar, z);
+void output_opaq(vec3 color, float a, float z) {
+  gl_FragDepth = get_frag_depth(z);
   gl_FragColor = vec4(color, a);
 }
 code
@@ -244,8 +246,8 @@ code
   (string-append
    depth-fragment-code
    #<<code
-void output_tran(vec3 color, float a, float z, float znear, float zfar) {
-  float depth = frag_depth(znear, zfar, z);
+void output_tran(vec3 color, float a, float z) {
+  float depth = get_frag_depth(z);
   float d = 1 - depth;
   float weight = a * clamp(1 / (d*d*d) - 1, 0.001953125, 32768.0);
   gl_FragDepth = depth;

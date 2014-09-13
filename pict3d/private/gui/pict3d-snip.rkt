@@ -57,8 +57,8 @@
 (define default-pict3d-width 256)
 (define default-pict3d-height 256)
 (define default-ambient (flvector 1.0 1.0 1.0))
-(define default-z-near (assert (flexpt 2.0 -10.0) positive?))
-(define default-z-far (assert (flexpt 2.0 30.0) positive?))
+(define default-z-near (assert (flexpt 2.0 -20.0) positive?))
+(define default-z-far  (assert (flexpt 2.0 +32.0) positive?))
 (define default-fov-degrees 90.0)
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))

@@ -66,8 +66,6 @@ code
 uniform mat4 unview;
 uniform mat3 unproj0;
 uniform mat3 unproj1;
-uniform float znear;
-uniform float zfar;
 uniform int width;
 uniform int height;
 
@@ -79,7 +77,7 @@ uniform vec3 light_dir;
 uniform vec3 light_color;
 
 void main() {
-  vec3 pos = get_view_position(depth, width, height, unproj0, unproj1, znear, zfar);
+  vec3 pos = get_view_position(depth, width, height, unproj0, unproj1);
   vec3 L = normalize(-light_dir * mat3(unview));
   vec3 V = normalize(-pos);
   output_light(light_color, get_surface(material), L, V);
@@ -99,8 +97,6 @@ code
     (list (cons "unview" 'unview)
           (cons "unproj0" 'unproj0)
           (cons "unproj1" 'unproj1)
-          (cons "znear" 'znear)
-          (cons "zfar" 'zfar)
           (cons "width" 'width)
           (cons "height" 'height)
           (cons "depth" 'depth)

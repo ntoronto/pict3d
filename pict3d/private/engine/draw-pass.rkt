@@ -406,6 +406,8 @@
     (define struct (program-spec-struct pd))
     (with-gl-program program
       (send-uniforms program uniforms standard-uniforms)
+      (gl-program-uniform program "zfar" (hash-ref standard-uniforms 'zfar))
+      (gl-program-uniform program "log2_znear_zfar" (hash-ref standard-uniforms 'log2_znear_zfar))
       ;; For each set of shape uniforms...
       (for ([s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
                                         (λ ([ts : draw-params])

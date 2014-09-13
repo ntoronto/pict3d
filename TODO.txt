@@ -1,7 +1,7 @@
 ======================================================================================================
 Short-term (before RacketCon)
 
-(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
+(: pict3d->pict (-> Pict3D Integer Integer Pict))
 
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
 
@@ -10,7 +10,7 @@ pict3d%
  * Make pict3d% snips save and load drawing parameters (e.g. near and far plane distances)
  * Fix editor lock problem
 
-Fix "resizing sphere animation window creates garbage on borders"
+Rename "camera" to 'camera
 
 ? Put initial camera at "camera" in snips
 
