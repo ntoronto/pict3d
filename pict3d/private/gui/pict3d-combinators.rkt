@@ -59,6 +59,7 @@
  plane-cull
  rect-cull
  frustum-cull
+ arrow
  )
 
 ;; ===================================================================================================
@@ -411,3 +412,47 @@
 (define (frustum-cull s t)
   (pict3d (scene-frustum-cull (pict3d-scene s) t)
           (pict3d-bases s)))
+
+;; ===================================================================================================
+;; Arrows
+
+(define (make-up-arrow)
+  (freeze
+   (combine
+    (rectangle '(-1/64 -1/64 0)
+               '(1/64 1/64 56/64))
+    (let ([p  (triangle '(2/64 2/64 56/64)
+                        '(-2/64 2/64 56/64)
+                        '(0 0 1))])
+      (combine p (rotate-z p 90) (rotate-z p 180) (rotate-z p 270)))
+    (quad '(2/64 2/64 56/64)
+          '(2/64 -2/64 56/64)
+          '(-2/64 -2/64 56/64)
+          '(-2/64 2/64 56/64)))))
+
+(: direction-basis (-> User-Vector User-Vector Basis))
+(define (direction-basis origin z-axis)
+  (let* ([origin  (->flv3 origin)]
+         [z-axis  (->flv3 z-axis)])
+    (define x-axis (flv3normalize (flv3cross z-axis (flvector 0.0 0.0 1.0))))
+    (cond
+      [x-axis
+       (define y-axis (assert (flv3normalize (flv3cross z-axis x-axis)) values))
+       (columns->basis x-axis y-axis z-axis origin)]
+      [(>= (flvector-ref z-axis 2) 0.0)
+       (columns->basis (flvector 1.0 0.0 0.0)
+                       (flvector 0.0 1.0 0.0)
+                       (flvector 0.0 0.0 1.0)
+                       origin)]
+      [else
+       (columns->basis (flvector -1.0 0.0  0.0)
+                       (flvector  0.0 1.0  0.0)
+                       (flvector  0.0 0.0 -1.0)
+                       origin)])))
+
+(: arrow (case-> (-> User-Vector Pict3D)
+                 (-> User-Vector User-Vector Pict3D)))
+(define arrow
+  (case-lambda
+    [(end)  (arrow '(0 0 0) end)]
+    [(v0 v1)  (transform (make-up-arrow) (basis-forward (direction-basis v0 v1)))]))

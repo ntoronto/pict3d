@@ -130,7 +130,7 @@
   (Basis t
          tinv
          (delay (scene-transform
-                 axes
+                 axes-scene
                  (flt3compose t smaller-flt3)
                  (flt3compose bigger-flt3 tinv)))))
 
@@ -500,7 +500,7 @@
       (if scene-val
           (list->vector
            (append (scene-draw-passes scene-val planes)
-                   (scene-draw-passes axes planes)
+                   (scene-draw-passes axes-scene planes)
                    (list (draw-passes (shape-passes standard-over-light) identity-affine)
                          (draw-passes (shape-passes standard-under-light) identity-affine))
                    (append*
