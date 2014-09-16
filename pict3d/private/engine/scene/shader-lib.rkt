@@ -284,7 +284,7 @@ void output_light(vec3 light, surface s, vec3 L, vec3 V) {
   // Specular
   float dotNV = dot(N,V);
   if (dotNV < 1e-7) discard;
-  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,max(0.01,s.roughness)), 1.0);
+  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,max(0.03125,s.roughness)), 1.0);
 }
 code
    "\n\n"))

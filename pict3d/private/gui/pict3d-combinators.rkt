@@ -320,9 +320,13 @@
                    (-> Basis Real Basis)))
 (define (scale-z s v) (scale s (flvector 1.0 1.0 (fl v))))
 
-(: scale (case-> (-> Pict3D User-Vector Pict3D)
-                 (-> Basis User-Vector Basis)))
-(define (scale s v) (transform s (scale-flt3 (->flv3 v))))
+(: scale (case-> (-> Pict3D (U Real User-Vector) Pict3D)
+                 (-> Basis (U Real User-Vector) Basis)))
+(define (scale s v)
+  (let ([v  (cond [(real? v)  (let ([v  (fl v)])
+                                (flvector v v v))]
+                  [else  (->flv3 v)])])
+    (transform s (scale-flt3 v))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Translate
