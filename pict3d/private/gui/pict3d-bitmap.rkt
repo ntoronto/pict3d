@@ -28,15 +28,19 @@
     [else
      (define view (pict3d-view-transform pict))
      ;; Compute a projection matrix
-     (define znear (current-z-near))
-     (define zfar (current-z-far))
-     (define fov-radians (degrees->radians (fl (current-fov-degrees))))
+     (define znear (current-pict3d-z-near))
+     (define zfar (current-pict3d-z-far))
+     (define fov-radians (degrees->radians (fl (current-pict3d-fov-degrees))))
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      (define bm (make-bitmap width height))
      ;; Lock everything up for drawing
      (with-gl-context (get-master-gl-context)
        ;; Draw the scene
-       (draw-scene (send pict get-scene) width height view proj (current-ambient))
+       (draw-scene (send pict get-scene) width height
+                   view proj
+                   (current-pict3d-background)
+                   (current-pict3d-ambient-color)
+                   (current-pict3d-ambient-intensity))
        
        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
        (define row-size (* width 4))

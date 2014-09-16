@@ -34,16 +34,20 @@
          Pict3D
          default-pict3d-width
          default-pict3d-height
-         default-ambient
-         default-z-near
-         default-z-far
-         default-fov-degrees
+         default-pict3d-z-near
+         default-pict3d-z-far
+         default-pict3d-fov-degrees
+         default-pict3d-background
+         default-pict3d-ambient-color
+         default-pict3d-ambient-intensity
          current-pict3d-width
          current-pict3d-height
-         current-ambient
-         current-z-near
-         current-z-far
-         current-fov-degrees
+         current-pict3d-z-near
+         current-pict3d-z-far
+         current-pict3d-fov-degrees
+         current-pict3d-background
+         current-pict3d-ambient-color
+         current-pict3d-ambient-intensity
          pict3d
          empty-pict3d
          pict3d-scene
@@ -56,10 +60,12 @@
 
 (define default-pict3d-width 256)
 (define default-pict3d-height 256)
-(define default-ambient (flvector 1.0 1.0 1.0))
-(define default-z-near (assert (flexpt 2.0 -20.0) positive?))
-(define default-z-far  (assert (flexpt 2.0 +32.0) positive?))
-(define default-fov-degrees 90.0)
+(define default-pict3d-z-near (assert (flexpt 2.0 -20.0) positive?))
+(define default-pict3d-z-far  (assert (flexpt 2.0 +32.0) positive?))
+(define default-pict3d-fov-degrees 90.0)
+(define default-pict3d-background "black")
+(define default-pict3d-ambient-color "white")
+(define default-pict3d-ambient-intensity 1)
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width
@@ -71,27 +77,35 @@
   (make-parameter default-pict3d-height
                   (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
 
-(: current-ambient (Parameterof User-Color FlVector))
-(define current-ambient
-  (make-parameter (->flcolor3 default-ambient) ->flcolor3))
-
-(: current-z-near (Parameterof Positive-Real Positive-Flonum))
-(define current-z-near
-  (make-parameter default-z-near
+(: current-pict3d-z-near (Parameterof Positive-Real Positive-Flonum))
+(define current-pict3d-z-near
+  (make-parameter default-pict3d-z-near
                   (λ ([z : Positive-Real])
-                    (max default-z-near (min default-z-far (fl z))))))
+                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
 
-(: current-z-far (Parameterof Positive-Real Positive-Flonum))
-(define current-z-far
-  (make-parameter default-z-far
+(: current-pict3d-z-far (Parameterof Positive-Real Positive-Flonum))
+(define current-pict3d-z-far
+  (make-parameter default-pict3d-z-far
                   (λ ([z : Positive-Real])
-                    (max default-z-near (min default-z-far (fl z))))))
+                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
 
-(: current-fov-degrees (Parameterof Positive-Real Positive-Flonum))
-(define current-fov-degrees
-  (make-parameter default-fov-degrees
+(: current-pict3d-fov-degrees (Parameterof Positive-Real Positive-Flonum))
+(define current-pict3d-fov-degrees
+  (make-parameter default-pict3d-fov-degrees
                   (λ ([z : Positive-Real])
                     (max 1.0 (min 179.0 (fl z))))))
+
+(: current-pict3d-background (Parameterof User-Color FlVector))
+(define current-pict3d-background
+  (make-parameter (->flcolor4 default-pict3d-background) ->flcolor4))
+
+(: current-pict3d-ambient-color (Parameterof User-Color FlVector))
+(define current-pict3d-ambient-color
+  (make-parameter (->flcolor3 default-pict3d-ambient-color) ->flcolor3))
+
+(: current-pict3d-ambient-intensity (Parameterof Nonnegative-Real Nonnegative-Flonum))
+(define current-pict3d-ambient-intensity
+  (make-parameter (fl default-pict3d-ambient-intensity) fl))
 
 (define physics-delay 16)
 (define physics-timeout 500)
@@ -133,8 +147,11 @@
                      [z-near  Flonum]
                      [z-far   Flonum]
                      [fov-degrees  Flonum]
-                     [ambient  FlVector])
-         [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum FlVector))]
+                     [background  FlVector]
+                     [ambient-color  FlVector]
+                     [ambient-intensity  Flonum])
+         [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum
+                                       FlVector FlVector Flonum))]
          [get-scene  (-> Scene)]
          [get-bases  (-> Bases)]
          [get-draw-passes (-> FlAffine3- FlTransform3 (Vectorof draw-passes))]
@@ -174,14 +191,18 @@
     ;(profile
     (time
      ;; Compute a projection matrix
-     (define-values (width height znear zfar fov-degrees ambient) (send snip get-init-params))
+     (define-values (width height znear zfar fov-degrees background ambient-color ambient-intensity)
+       (send snip get-init-params))
      (define fov-radians (degrees->radians (fl fov-degrees)))
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
      (with-gl-context (get-master-gl-context)
        ;; Draw the scene and all its little extra bits (bases, etc.)
-       (draw-draw-passes (send snip get-draw-passes view proj) width height view proj ambient)
+       (draw-draw-passes (send snip get-draw-passes view proj)
+                         width height
+                         view proj
+                         background ambient-color ambient-intensity)
        
        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
        (define row-size (* width 4))
@@ -434,7 +455,9 @@
                 z-near
                 z-far
                 fov-degrees
-                ambient)
+                background
+                ambient-color
+                ambient-intensity)
     
     (super-make-object)
     
@@ -451,7 +474,7 @@
             the-bitmap-val)))
     
     (define/public (get-init-params)
-      (values width height z-near z-far fov-degrees ambient))
+      (values width height z-near z-far fov-degrees background ambient-color ambient-intensity))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -488,7 +511,8 @@
     
     (: copy (-> Pict3D))
     (define/override (copy)
-      (make-object pict3d% scene bases width height z-near z-far fov-degrees ambient))
+      (make-object pict3d% scene bases
+        width height z-near z-far fov-degrees background ambient-color ambient-intensity))
     
     (: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
@@ -553,10 +577,12 @@
     ps
     (current-pict3d-width)
     (current-pict3d-height)
-    (current-z-near)
-    (current-z-far)
-    (current-fov-degrees)
-    (current-ambient)))
+    (current-pict3d-z-near)
+    (current-pict3d-z-far)
+    (current-pict3d-fov-degrees)
+    (current-pict3d-background)
+    (current-pict3d-ambient-color)
+    (current-pict3d-ambient-intensity)))
 
 (define empty-pict3d (pict3d empty-scene (make-immutable-hash)))
 

@@ -405,11 +405,13 @@ for `Scene`.
    (λ ([a : Shape] [m : affine])
      (draw-passes (shape-passes a) m))))
 
-(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector Void))
-(define (draw-scene s width height view proj ambient)
+(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
+(define (draw-scene s width height view proj background ambient-color ambient-intensity)
   (define t (flt3compose proj view))
   (define planes (flprojective3-frustum-planes (->flprojective3 t)))
-  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height view proj ambient))
+  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height
+                    view proj
+                    background ambient-color ambient-intensity))
 
 ;; ≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡
 ;; Frozen scene shape

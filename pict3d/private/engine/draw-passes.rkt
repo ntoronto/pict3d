@@ -255,9 +255,18 @@ code
   (glDepthMask write?)
   (glClearDepth 0.0))
 
-(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural FlProjective3 FlProjective3 FlVector
-                         Void))
-(define (draw-draw-passes* passes width height view proj ambient)
+(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural
+                        FlAffine3- FlTransform3
+                        FlVector FlVector Flonum
+                        Void))
+(define (draw-draw-passes passes width height view* proj* background ambient-color ambient-intensity)
+  (define view (->flprojective3 view*))
+  (define proj (->flprojective3 proj*))
+  ;; Gamma-correct the ambient color and multiply by its intensity
+  (define ambient (flvector (* (flexpt (flvector-ref ambient-color 0) 2.2) ambient-intensity)
+                            (* (flexpt (flvector-ref ambient-color 1) 2.2) ambient-intensity)
+                            (* (flexpt (flvector-ref ambient-color 2) 2.2) ambient-intensity)))
+  
   (define znear (flprojective3-z-near proj))
   (define zfar  (flprojective3-z-far  proj))
   
@@ -555,14 +564,19 @@ code
   ;; Compositing: Draw image and bloom onto system-provided framebuffer
   
   (glViewport 0 0 width height)
-  (glClearColor 0.0 0.0 0.0 0.0)
+  (define alpha (flvector-ref background 3))
+  (glClearColor (* (flvector-ref background 0) alpha)
+                (* (flvector-ref background 1) alpha)
+                (* (flvector-ref background 2) alpha)
+                alpha)
   (glClear GL_COLOR_BUFFER_BIT)
   
   (glEnable GL_TEXTURE_2D)
   (define program (bloom-combine-program))
   (with-gl-program program
     (glDisable GL_DEPTH_TEST)
-    (glDisable GL_BLEND)
+    (glEnable GL_BLEND)
+    (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
     
     (gl-program-uniform program "bloom_frac" (uniform-float (/ 1.0 (fl (length bloom-levels)))))
     
@@ -592,7 +606,3 @@ code
     (draw-fullscreen-quad tex-width tex-height))
 |#
   )
-
-(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural FlAffine3- FlTransform3 FlVector Void))
-(define (draw-draw-passes passes width height view proj ambient)
-  (draw-draw-passes* passes width height (->flprojective3 view) (->flprojective3 proj) ambient))
