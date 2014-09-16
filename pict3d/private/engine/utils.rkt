@@ -45,6 +45,17 @@
     (unsafe-flvector-set! v i (byte->flonum (unsafe-bytes-ref bs i))))
   v)
 
+(: pack-emitted (-> FlVector (Values Bytes Byte)))
+(define (pack-emitted e)
+  (define r (flvector-ref e 0))
+  (define g (flvector-ref e 1))
+  (define b (flvector-ref e 2))
+  (define i (flvector-ref e 3))
+  (define i.hi (exact-floor i))
+  (define i.lo (- i i.hi))
+  (values (bytes (flonum->byte r) (flonum->byte g) (flonum->byte b) (max 0 (min 255 i.hi)))
+          (flonum->byte i.lo)))
+
 (: normal->rgb-bytes (-> FlVector Bytes))
 (define (normal->rgb-bytes v)
   (define-values (x y z) (flv3-values v))
@@ -60,25 +71,6 @@
   (define zero #i127/255)
   (let ([v  (flv3normalize (flv3- v (flvector zero zero zero)))])
     (if v v (flvector 0.0 0.0 0.0))))
-
-(: pack-emitted (-> FlVector Bytes))
-(define (pack-emitted c)
-  (define-values (h s v) (flv3-values (rgb->hsv c)))
-  (let* ([v  (max 0 (min 65535 (exact-floor (* v 255.0))))]
-         [v.hi  (quotient v 256)]
-         [v.lo  (- v (* v.hi 256))])
-    (bytes (flonum->byte h)
-           (flonum->byte s)
-           v.hi
-           v.lo)))
-
-(: decode-emitted (-> FlVector FlVector))
-(define (decode-emitted c)
-  (define h (flvector-ref c 0))
-  (define s (flvector-ref c 1))
-  (define v.hi (flvector-ref c 2))
-  (define v.lo (flvector-ref c 3))
-  (hsv->rgb (flvector h s (+ v.lo (* 256.0 v.hi)))))
 
 ;; ===================================================================================================
 ;; Shader analogues

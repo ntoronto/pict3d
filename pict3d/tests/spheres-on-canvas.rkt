@@ -8,7 +8,7 @@
          pict3d/private/math/flt3
          pict3d/private/engine/draw-passes)
 
-(current-material '(0.05 0.75 0.25 0.1))
+(current-material '(0.05 0.70 0.25 0.1))
 
 (define spheres
   (combine
@@ -34,7 +34,7 @@
                       [z  (* (- (random) 0.5) 40)])
                  (combine
                   (with-color "black"
-                    (with-emitted (list (* 16 r) (* 16 g) (* 16 b))
+                    (with-emitted (list r g b 16)
                       (sphere (list x y z) #i1/16)))
                   (light (list x y z)
                          (list r g b)
@@ -67,7 +67,7 @@
     (combine
      (set-basis frozen-spheres 'camera camera-basis)
      (with-color "black"
-       (with-emitted '(4 4 4)
+       (with-emitted '(1 1 1 4)
          (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
      (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
   (send canvas set-pict3d pict)
@@ -95,7 +95,7 @@
   (combine
    (set-basis frozen-spheres 'camera camera-basis)
    (with-color "black"
-     (with-emitted '(4 4 4)
+     (with-emitted '(1 1 1 4)
        (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
    (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
 

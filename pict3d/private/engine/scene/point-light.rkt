@@ -27,9 +27,16 @@
 ;; ===================================================================================================
 ;; Constructor
 
-(: make-point-light-shape (-> FlVector FlVector Flonum point-light-shape))
-(define (make-point-light-shape intensity position radius)
-  (point-light-shape (box 'lazy) intensity position radius))
+(: make-point-light-shape (-> FlVector Flonum FlVector Flonum point-light-shape))
+(define (make-point-light-shape color intensity position radius)
+  (cond [(not (= 3 (flvector-length color)))
+         (raise-argument-error 'make-point-light-shape "length-3 flvector"
+                               0 color intensity position radius)]
+        [(not (= 3 (flvector-length position)))
+         (raise-argument-error 'make-point-light-shape "length-3 flvector"
+                               2 color intensity position radius)]
+        [else
+         (point-light-shape (box 'lazy) color intensity position radius)]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -43,8 +50,9 @@
 uniform mat4 view;
 uniform mat4 proj;
 
-in vec4 vert_position_radius;
-in vec3 vert_intensity;
+in vec3 vert_position;
+in vec2 vert_intensity_radius;
+in vec3 vert_color;
 
 flat out vec3 frag_position;
 flat out float frag_radius;
@@ -54,13 +62,13 @@ smooth out float frag_is_degenerate;
 void main() {
   mat4x3 model = get_model_transform();
   mat4 trans = view * a2p(model);
-  vec3 position = vert_position_radius.xyz;
-  float radius = vert_position_radius.w;
-  vec3 wmin = position - vec3(radius);
-  vec3 wmax = position + vec3(radius);
-  frag_position = (trans * vec4(position.xyz,1)).xyz;
+
+  float radius = vert_intensity_radius.y;
+  vec3 wmin = vert_position - vec3(radius);
+  vec3 wmax = vert_position + vec3(radius);
+  frag_position = (trans * vec4(vert_position,1)).xyz;
   frag_radius = radius;
-  frag_intensity = vert_intensity;
+  frag_intensity = pow(vert_color / 255, vec3(2.2)) * vert_intensity_radius.x;
   frag_is_degenerate = output_impostor_quad(trans, proj, wmin, wmax);
 }
 code
@@ -104,8 +112,9 @@ code
 (define-singleton (point-light-program-spec)
   (define struct
     (make-vao-struct
-     (make-vao-field "vert_position_radius" 4 GL_FLOAT)
-     (make-vao-field "vert_intensity" 3 GL_FLOAT)))
+     (make-vao-field "vert_position" 3 GL_FLOAT)
+     (make-vao-field "vert_intensity_radius" 2 GL_FLOAT)
+     (make-vao-field "vert_color" 3 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
@@ -128,14 +137,14 @@ code
 
 (: make-point-light-shape-passes (-> point-light-shape Passes))
 (define (make-point-light-shape-passes a)
-  (match-define (point-light-shape _ intensity position radius) a)
+  (match-define (point-light-shape _ color intensity position radius) a)
   
   (: datum GL-Data)
   (define datum
     (gl-data->bytes
      (list (flvector->f32vector position)
-           (f32vector radius)
-           (flvector->f32vector intensity))))
+           (f32vector intensity radius)
+           (pack-color color))))
   
   (define data (gl-data->bytes ((inst make-list GL-Data) 4 datum)))
   
@@ -164,5 +173,5 @@ code
 
 (: point-light-shape-transform (-> point-light-shape FlAffine3- FlAffine3- (List point-light-shape)))
 (define (point-light-shape-transform a t tinv)
-  (match-define (point-light-shape passes intensity position radius) a)
-  (list (point-light-shape (box 'lazy) intensity (flt3apply/pos t position) radius)))
+  (match-define (point-light-shape passes color intensity position radius) a)
+  (list (point-light-shape (box 'lazy) color intensity (flt3apply/pos t position) radius)))

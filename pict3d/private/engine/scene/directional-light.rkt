@@ -25,9 +25,16 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-directional-light-shape (-> FlVector FlVector directional-light-shape))
-(define (make-directional-light-shape intensity direction)
-  (directional-light-shape (box 'lazy) intensity direction))
+(: make-directional-light-shape (-> FlVector Flonum FlVector directional-light-shape))
+(define (make-directional-light-shape color intensity direction)
+  (cond [(not (= 3 (flvector-length color)))
+         (raise-argument-error 'make-directional-light-shape "length-3 flvector"
+                               0 color intensity direction)]
+        [(not (= 3 (flvector-length direction)))
+         (raise-argument-error 'make-directional-light-shape "length-3 flvector"
+                               2 color intensity direction)]
+        [else
+         (directional-light-shape (box 'lazy) color intensity direction)]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -39,7 +46,7 @@
 
 void main() {
     // output the right vertices for a triangle strip
-  switch (gl_VertexID) {
+  switch (gl_VertexID % 4) {
   case 0:
     gl_Position = vec4(-1.0, -1.0, 0.0, 1.0);
     break;
@@ -73,12 +80,13 @@ uniform sampler2D material;
 // Per-light attributes
 uniform vec3 light_dir;
 uniform vec3 light_color;
+uniform float light_intensity;
 
 void main() {
   vec3 pos = frag_coord_to_position(gl_FragCoord, depth, unproj, width, height);
   vec3 L = normalize(-light_dir * mat3(unview));
   vec3 V = normalize(-pos);
-  output_light(light_color, get_surface(material), L, V);
+  output_light(pow(light_color, vec3(2.2)) * light_intensity, get_surface(material), L, V);
 }
 code
    ))
@@ -106,11 +114,12 @@ code
 
 (: make-directional-light-shape-passes (-> directional-light-shape Passes))
 (define (make-directional-light-shape-passes a)
-  (match-define (directional-light-shape _ intensity direction) a)
+  (match-define (directional-light-shape _ color intensity direction) a)
   
   (define uniforms
     (list (cons "light_dir" (uniform-float direction 3))
-          (cons "light_color" (uniform-float intensity 3))))
+          (cons "light_color" (uniform-float color 3))
+          (cons "light_intensity" (uniform-float intensity 1))))
   
   (: passes Passes)
   (define passes

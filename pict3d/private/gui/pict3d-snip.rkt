@@ -412,12 +412,17 @@
 
 (define-values (standard-over-light standard-under-light)
   (let ([direction  (flvector -0.25 -0.5 -1.0)]
-        [intensity  (flvector 1.0 1.0 1.0)])
+        [color  (flvector 1.0 1.0 1.0)]
+        [intensity  1.0])
     (values
-     (make-directional-light-shape intensity direction)
-     (make-directional-light-shape (flv3* intensity 0.5) (flv3neg direction)))))
+     (make-directional-light-shape color intensity direction)
+     (make-directional-light-shape color (* intensity 0.5) (flv3neg direction)))))
 
 (define blank-cursor (make-object cursor% 'blank))
+
+(define black-pen (make-object pen% "black" 1 'solid))
+(define white-pen (make-object pen% "white" 1 'solid))
+(define trans-brush (make-object brush% "black" 'transparent))
 
 (: pict3d% Pict3D%)
 (define pict3d%
@@ -454,10 +459,10 @@
         (raise-argument-error 'set-argb-pixels
                               (format "bytes of length at least ~a" len)
                               (bytes-length bs)))
-      (send (get-the-bitmap) set-argb-pixels 0 0 width height bs #f #f)
+      (send (get-the-bitmap) set-argb-pixels 0 0 width height bs #f #t)
       (define admin (send this get-admin))
       (when admin
-        (send admin needs-update this 0 0 width height)))
+        (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
     
     (define/public (get-scene) scene)
     (define/public (get-bases) bases)
@@ -492,13 +497,18 @@
       (unless gui
         (send this set-flags (list* 'handles-events 'handles-all-mouse-events (send this get-flags)))
         (set! gui (make-object pict3d-gui% this)))
-      (send dc draw-bitmap (get-the-bitmap) x y)
+      (send dc set-brush trans-brush)
+      (send dc set-pen black-pen)
+      (send dc draw-rectangle (+ x 0.5) (+ y 0.5) (+ width 4) (+ height 4))
+      (send dc set-pen white-pen)
+      (send dc draw-rectangle (+ x 1.5) (+ y 1.5) (+ width 2) (+ height 2))
+      (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
       (super draw dc x y left top right bottom dx dy draw-caret))
     
     #;; Can't use this because of an error in TR
     (define/override (get-extent dc x y [w #f] [h #f] [descent #f] [space #f] [lspace #f] [rspace #f])
-      (when (box? w) (set-box! w width))
-      (when (box? h) (set-box! h height))
+      (when (box? w) (set-box! w (+ width 4)))
+      (when (box? h) (set-box! h (+ height 4)))
       (when (box? descent) (set-box! descent 0))
       (when (box? space) (set-box! space 0))
       (when (box? lspace) (set-box! lspace 0))
@@ -507,8 +517,8 @@
     ;; This works around it
     (define/override (get-extent dc x y . #{args : (Listof (U #f (Boxof Nonnegative-Real)))})
       (match-define (list w h descent space lspace rspace) args)
-      (when (box? w) (set-box! w width))
-      (when (box? h) (set-box! h height))
+      (when (box? w) (set-box! w (+ width 4)))
+      (when (box? h) (set-box! h (+ height 4)))
       (when (box? descent) (set-box! descent 0))
       (when (box? space) (set-box! space 0))
       (when (box? lspace) (set-box! lspace 0))

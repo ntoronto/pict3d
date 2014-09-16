@@ -145,7 +145,7 @@
 (define sun
   (combine
    (with-color "black"
-     (with-emitted '(4.0 3.2 2.4)
+     (with-emitted '(1 0.8 0.6 4)
        (sphere '(0 0 0) 1)))
    (light '(0 0 0) '(2.0 1.6 1.2) 50)))
 
@@ -192,11 +192,12 @@
   (let* ([body  (combine
                  (rectangle '(-1/4 -1/8 -1) '(1/4 1/8 2))
                  (with-color '(1/4 1/2 1 1/2)
-                   (with-emitted '(2 4 8)
+                   (with-emitted '(1/4 1/2 1 8)
                      (rectangle '(-1/8 -1/16 -1.125) '(1/8 1/16 2.25))))
                  (scale
-                  (with-color '(1/2 1 1/2 1/2)
-                    (sphere '(0 0 0) 1/4))
+                  (with-color '(1/4 1/2 1 1/2)
+                    (with-emitted '(1/4 1/2 1 8)
+                      (sphere '(0 0 0) 1/4)))
                   '(1 1 2)))]
          [body  (set-basis body "right-wing" (normal-basis '(3/16 0 0) '(1 1/3 0)))]
          [body  (set-basis body "left-wing" (scale (normal-basis '(-3/16 0 0) '(-1 1/3 0))
@@ -211,7 +212,7 @@
      (combine
       (rectangle '(-2 -1/16 -1/8) '(-1 1/16 1/8))
       (with-color '(1 3/4 1/4 1/2)
-        (with-emitted '(4 3 1)
+        (with-emitted '(1 3/4 1/4 4)
           (rectangle (list (+ -2 1/32) (+ -1/16 1/32) (- -1/8 1/32))
                      (list (- -1 1/32) (-  1/16 1/32) (+  1/8 1/16)))))
       (combine*
@@ -223,19 +224,20 @@
      (combine
       (rectangle '(-1/16 -1/16 -1/2) '(1/16 1/16 2))
       (with-color '(1 3/4 1/4 1/2)
-        (with-emitted '(16 12 4)
+        (with-emitted '(1 12/16 1/16 16)
           (rectangle '(-1/32 -1/32 2) '(1/32 1/32 2.5))))
       (light '(0 0 2.25) '(1 3/4 1/4) 1))
      (rotate-y (scale (rotate-y
                        (combine
                         (rectangle '(-1 -1/8 -1) '(0 1/8 1/2))
-                        (with-color '(1/2 1 1/2 1/2)
-                          (move (scale (sphere '(0 0 0) 1)
-                                       '(1/2 1/4 3/4))
-                                '(-1/2 0 -1/4)))
+                        (with-color '(1/4 1/2 1 1/2)
+                          (with-emitted '(1/4 1/2 1 8)
+                            (move (scale (sphere '(0 0 0) 1)
+                                         '(1/2 1/4 3/4))
+                                  '(-1/2 0 -1/4))))
                         ;; Engines
                         (with-color '(1 1/2 1/2 1/2)
-                          (with-emitted '(8 0.5 0.5)
+                          (with-emitted '(1 1/16 1/16 8)
                             (rectangle (list (+ -1 1/8) (+ -1/8 1/16) (- -1 1/16))
                                        (list (-  0 1/8) (-  1/8 1/16) (+ 1/2 1/16))))))
                        30)

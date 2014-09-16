@@ -65,7 +65,7 @@
 ;; Parameters
 
 (define default-color "white")
-(define default-emitted "black")
+(define default-emitted '(0 0 0 0))
 (define default-material '(0.25 0.5 0.25 0.4))
 
 (: current-color (Parameterof User-Color FlVector))
@@ -74,7 +74,7 @@
 
 (: current-emitted (Parameterof User-Color FlVector))
 (define current-emitted
-  (make-parameter (->flcolor3 default-emitted) ->flcolor3))
+  (make-parameter (->flcolor4 default-emitted) ->flcolor4))
 
 (: current-material (Parameterof (U material (List Real Real Real Real)) material))
 (define current-material 
@@ -251,19 +251,16 @@
 (define (sunlight direction color intensity)
   (define dir (flv3normalize (->flv3 direction)))
   (shape->pict3d
-   (make-directional-light-shape (flv3* (->flcolor3 color) (fl intensity))
+   (make-directional-light-shape (->flcolor3 color)
+                                 (fl intensity)
                                  (if dir dir (flvector 0.0 0.0 0.0)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
 
-(: default-light-radius (-> FlVector Flonum Flonum))
-(define (default-light-radius color intensity)
-  (flsqrt
-   (* 20.0
-      intensity
-      (for/fold ([mx : Flonum  0.0]) ([c  (in-flvector color)])
-        (max mx c)))))
+(: default-light-radius (-> Flonum Flonum))
+(define (default-light-radius intensity)
+  (flsqrt (* 20.0 intensity)))
 
 (: light (->* [User-Vector] [User-Color Real Real] Pict3D))
 (define (light position
@@ -273,9 +270,9 @@
   (let* ([position  (->flv3 position)]
          [color  (->flcolor3 color)]
          [intensity  (fl intensity)]
-         [radius  (if radius (fl radius) (default-light-radius color intensity))])
+         [radius  (if radius (fl radius) (default-light-radius intensity))])
     (shape->pict3d
-     (make-point-light-shape (flv3* color intensity) position radius))))
+     (make-point-light-shape color intensity position radius))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Efficiency

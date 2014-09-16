@@ -24,7 +24,7 @@
      (sphere v #i1/16))))
 
 (define blue-spheres
-  (with-color '(1/4 1/2 1 1/4)
+  (with-color '(1/4 1/2 1 3/4)
     (combine*
      (for/list ([v  (in-list sphere-vs)])
        (sphere v #i1/16)))))
@@ -34,24 +34,6 @@
 
 (define wacky-blue-spheres
   (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
-
-(: do-culls (-> Pict3D (Listof Pict3D)))
-(define (do-culls spheres)
-  (list
-   spheres
-   
-   (combine
-    (plane-cull spheres
-                (assert (flplane3 (flvector 1.0 0.0 0.0) -0.5)))
-    (with-color '(1 0 0 0.5)
-      (rectangle '(0.5 -2 -2) '(2 2 2))))
-   
-   (combine
-    (plane-cull spheres
-                (assert (flplane3 (flvector 0.0 1.0 0.0) -0.5)))
-    (with-color '(1 0 0 0.5)
-      (rectangle '(-2 0.5 -2) '(2 2 2))))
-   ))
 
 (: frustum (-> FlTransform3 Pict3D))
 (define (frustum t)
@@ -81,8 +63,8 @@
 (define t (flt3compose proj view))
 
 (define t-frustum
-  (with-color '(0.75 0 0 0.5)
-    (with-emitted '(0.25 0 0)
+  (with-color '(0.75 0 0 0.75)
+    (with-emitted '(0.5 0 0)
       (frustum t))))
 
 (combine

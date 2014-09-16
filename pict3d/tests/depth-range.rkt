@@ -1,9 +1,11 @@
 #lang typed/racket
 
 (require pict3d
-         plot/typed
+         (except-in plot/typed Font-Family)
          math/flonum
-         math/bigfloat)
+         math/bigfloat
+         typed/racket/gui
+         typed/racket/class)
 
 (current-pict3d-width 512)
 (current-pict3d-height 512)
@@ -13,14 +15,11 @@
 (define shapes
   (combine
    (with-color "crimson"
-     (sphere '(1/2 0 0) 1/2)
-     )
+     (sphere '(1/2 0 0) 1/2))
    (with-color "chartreuse"
-     (sphere '(0 1/2 0) 1/2)
-     )
+     (sphere '(0 1/2 0) 1/2))
    (with-color "dodgerblue"
-     (sphere '(0 0 1/2) 1/2))
-   ))
+     (sphere '(0 0 1/2) 1/2))))
 
 (define pict
   (combine

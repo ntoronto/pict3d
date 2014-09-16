@@ -17,6 +17,8 @@
 (: bloom-buffer-size (Parameterof Positive-Integer))
 (define bloom-buffer-size (make-parameter 256))
 
+(define bloom-levels '(1 2 4 8))
+
 ;; ===================================================================================================
 ;; Fragment shaders for transparency blending and bloom
 
@@ -24,15 +26,15 @@
   #<<code
 #version 130
 
-uniform sampler2D rgbv;
-uniform sampler2D alpha;
+uniform sampler2D rgba;
+uniform sampler2D weight;
 
 void main() {
   vec2 st = gl_TexCoord[0].st;
-  vec4 accum = texture(rgbv, st);
-  float reveal = accum.a;
-  accum.a = texture(alpha, st).r;
-  gl_FragColor = vec4(accum.rgb / max(accum.a, 1e-5), reveal);
+  float w = texture(weight, st).r;
+  if (w == 0.0) discard;
+  vec4 accum = texture(rgba, st);
+  gl_FragColor = accum / w;
 }
 code
   )
@@ -46,12 +48,10 @@ uniform sampler2D rgba;
 
 void main() {
   vec2 st = gl_TexCoord[0].st;
-  //vec4 p = texture(rgba, st) - vec4(1.0, 1.0, 1.0, 0.0);
-  //gl_FragColor = vec4(max(vec3(0.0), p.rgb), p.a);
   vec4 color = texture(rgba, st);
   vec3 hsv = rgb_to_hsv(color.rgb);
-  vec3 bloom = vec3(hsv.xy, max(0.0, hsv.z - 1.0));  // keep intensity >= 1.0
-  gl_FragColor = vec4(hsv_to_rgb(bloom), 1.0);
+  vec3 bloom = vec3(hsv.xy, max(hsv.z - color.a, 0));  // keep intensity >= alpha
+  gl_FragColor = vec4(hsv_to_rgb(bloom), 0.0);
 }
 code
   ))
@@ -63,24 +63,23 @@ code
    #<<code
 uniform sampler2D color_tex;
 uniform sampler2D bloom_tex;
+uniform float bloom_frac;
 
-vec3 tone_map(vec3 rgb) {
-  return pow(clamp(rgb,vec3(0.0),vec3(1.0)), vec3(1.0/2.2));
+vec3 tone_map(vec3 color) {
+  return pow(color, vec3(1/2.2));
 }
-
-//vec3 tone_map(vec3 rgb) {
-//  vec3 color = rgb * 1.0; // TODO: replace constant by exposure constant
-//  vec3 x = max(vec3(0.0), color - vec3(0.004));
-//  return (x * (6.2*x + vec3(0.5))) / (x * (6.2*x + vec3(1.7)) + vec3(0.06));
-//}
 
 void main() {
   vec2 st = gl_TexCoord[0].st;
   vec4 color = texture(color_tex, st);
-  vec4 bloom = texture(bloom_tex, st);
   vec3 hsv = rgb_to_hsv(color.rgb);
-  vec3 rgb = hsv_to_rgb(vec3(hsv.xy, min(1.0, hsv.z)));
-  gl_FragColor = vec4(tone_map(rgb + bloom.rgb), 1.0);
+  vec3 rgb = hsv_to_rgb(vec3(hsv.xy, min(color.a, hsv.z)));
+  vec4 bloom = texture(bloom_tex, st) * bloom_frac;
+  color = vec4(rgb + bloom.rgb, color.a);
+  color = clamp(color, vec4(0), vec4(1));
+  color = vec4(tone_map(color.rgb), color.a);
+  color = vec4(color.rgb, max(max(color.a, color.r), max(color.g, color.b)));
+  gl_FragColor = color;
 }
 code
    ))
@@ -95,13 +94,13 @@ uniform int height;
 void main() {
     vec2 xy = gl_TexCoord[0].st;
     float s = 1.0/height;
-    gl_FragColor = texture(rgba, xy)*1.5
-                 + texture(rgba, xy + vec2(0,-1.5*s))*2.0
-                 + texture(rgba, xy + vec2(0,+1.5*s))*2.0
-                 + texture(rgba, xy + vec2(0,-3.5*s))*1.0
-                 + texture(rgba, xy + vec2(0,+3.5*s))*1.0
-                 ;
-    gl_FragColor /= 7.5;
+    vec4 color = texture(rgba, xy)*1.5
+               + texture(rgba, xy + vec2(0,-1.5*s))*2.0
+               + texture(rgba, xy + vec2(0,+1.5*s))*2.0
+               + texture(rgba, xy + vec2(0,-3.5*s))*1.0
+               + texture(rgba, xy + vec2(0,+3.5*s))*1.0
+               ;
+    gl_FragColor = color / 7.5;
 }
 code
   )
@@ -116,13 +115,13 @@ uniform int width;
 void main() {
     vec2 xy = gl_TexCoord[0].st;
     float s = 1.0/width;
-    gl_FragColor = texture(rgba, xy)*1.5
-                 + texture(rgba, xy + vec2(-1.5*s,0))*2.0
-                 + texture(rgba, xy + vec2(+1.5*s,0))*2.0
-                 + texture(rgba, xy + vec2(-3.5*s,0))*1.0
-                 + texture(rgba, xy + vec2(+3.5*s,0))*1.0
-                 ;
-    gl_FragColor /= 7.5;
+    vec4 color = texture(rgba, xy)*1.5
+               + texture(rgba, xy + vec2(-1.5*s,0))*2.0
+               + texture(rgba, xy + vec2(+1.5*s,0))*2.0
+               + texture(rgba, xy + vec2(-3.5*s,0))*1.0
+               + texture(rgba, xy + vec2(+3.5*s,0))*1.0
+               ;
+    gl_FragColor = color / 7.5;
 }
 code
   )
@@ -363,7 +362,7 @@ code
     (gl-log-depth #f #f)
     ;; Opaque geometry occludes
     (glDisable GL_BLEND)
-    (glClearColor 0.0 0.0 0.0 1.0)
+    (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT)
     ;; Load diffuse and specular buffers into texture units 0 and 1
     (glActiveTexture GL_TEXTURE0)
@@ -428,10 +427,10 @@ code
     ;; Don't write to depth buffer, and only draw in front of the nearest z
     (gl-log-depth #f #t)
     ;; Set up for order-independent, weighted transparency w/out per-render-target blending
-    (glClearColor 0.0 0.0 0.0 1.0)
+    (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT)
     (glEnable GL_BLEND)
-    (glBlendFuncSeparate GL_ONE GL_ONE GL_ZERO GL_ONE_MINUS_SRC_ALPHA)
+    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
     ;; Load diffuse and specular buffers into texture units 0 and 1
     (glActiveTexture GL_TEXTURE0)
     (glBindTexture GL_TEXTURE_2D (gl-object-handle
@@ -459,15 +458,15 @@ code
     (with-gl-program program
       (glDisable GL_DEPTH_TEST)
       (glEnable GL_BLEND)
-      (glBlendFunc GL_ONE_MINUS_SRC_ALPHA GL_SRC_ALPHA)
+      (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
       
-      (gl-program-uniform program "rgbv" (uniform-int 0))
+      (gl-program-uniform program "rgba" (uniform-int 0))
       (glActiveTexture GL_TEXTURE0)
       (glBindTexture GL_TEXTURE_2D (gl-object-handle
                                     (gl-texture-2d-object
                                      (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0))))
       
-      (gl-program-uniform program "alpha" (uniform-int 1))
+      (gl-program-uniform program "weight" (uniform-int 1))
       (glActiveTexture GL_TEXTURE1)
       (glBindTexture GL_TEXTURE_2D (gl-object-handle
                                     (gl-texture-2d-object
@@ -483,7 +482,9 @@ code
     (glViewport 0 0 width height)
     (glDisable GL_BLEND)
     (glDisable GL_DEPTH_TEST)
-    (with-gl-program (bloom-extract-program)
+    (define program (bloom-extract-program))
+    (with-gl-program program
+      (gl-program-uniform program "rgba" (uniform-int 0))
       (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad tex-width tex-height))))
   
@@ -494,18 +495,17 @@ code
     (glGenerateMipmap GL_TEXTURE_2D))
   
   (with-gl-framebuffer mat-fbo
+    (glViewport 0 0 width height)
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT))
   
   (define horz-program (blur-horz-program))
   (define vert-program (blur-vert-program))
   
-  (glClearColor 0.0 0.0 0.0 0.25)
+  (glClearColor 0.0 0.0 0.0 0.0)
   
-  (for ([denom  (in-list '(1 2 4 8))])
+  (for ([denom  (in-list bloom-levels)])
     (glDisable GL_BLEND)
-    
-    (glColorMask #t #t #t #t)
     
     (with-gl-framebuffer bloom-fbo
       (glViewport 0 0 bloom-dwidth bloom-dheight)
@@ -515,17 +515,10 @@ code
       (glViewport 0 0 bloom-dwidth bloom-dheight)
       (glClear GL_COLOR_BUFFER_BIT))
     
-    (glColorMask #t #t #t #f)
-    
     (with-gl-framebuffer bloom-fbo
       (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
       (with-gl-texture-2d (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad tex-width tex-height)))
-    
-    (define fullscreen-bloom-width (fl (/ (quotient bloom-width denom)
-                                          (gl-framebuffer-width bloom-fbo))))
-    (define fullscreen-bloom-height (fl (/ (quotient bloom-height denom)
-                                           (gl-framebuffer-height bloom-fbo))))
     
     ;; Ping-pong horizontal and vertical blur, alternating between "bloom-fbo => blur-fbo"
     ;; and "blur-fbo => bloom-fbo"
@@ -538,7 +531,7 @@ code
           (gl-program-uniform horz-program "width" (uniform-int (gl-framebuffer-width blur-fbo)))
           ;; Read from bloom-fbo
           (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad bloom-tex-width bloom-tex-height))))
+            (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom)))))
       
       (with-gl-program vert-program
         ;; Write to bloom-fbo
@@ -548,23 +541,21 @@ code
           (gl-program-uniform vert-program "height" (uniform-int (gl-framebuffer-height bloom-fbo)))
           ;; Read from blur-fbo
           (with-gl-texture-2d (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad bloom-tex-width bloom-tex-height)))))
+            (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))))
     
     (glEnable GL_BLEND)
-    (glBlendFunc GL_SRC_ALPHA GL_ONE)
+    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
       (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-        (draw-fullscreen-quad bloom-tex-width bloom-tex-height)))
+        (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))
     )
-  
-  (glColorMask #t #t #t #t)
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Draw image and bloom onto system-provided framebuffer
   
   (glViewport 0 0 width height)
-  (glClearColor 0.0 0.0 0.0 1.0)
+  (glClearColor 0.0 0.0 0.0 0.0)
   (glClear GL_COLOR_BUFFER_BIT)
   
   (glEnable GL_TEXTURE_2D)
@@ -572,6 +563,8 @@ code
   (with-gl-program program
     (glDisable GL_DEPTH_TEST)
     (glDisable GL_BLEND)
+    
+    (gl-program-uniform program "bloom_frac" (uniform-float (/ 1.0 (fl (length bloom-levels)))))
     
     (gl-program-uniform program "color_tex" (uniform-int 0))
     (glActiveTexture GL_TEXTURE0)
@@ -587,15 +580,15 @@ code
     (glActiveTexture GL_TEXTURE0)
     
     (draw-fullscreen-quad tex-width tex-height))
-
-#|
+  
+  #|
   (glViewport 0 0 width height)
-  (glClearColor 0.0 0.0 0.0 1.0)
+  (glClearColor 0.0 0.0 0.0 0.0)
   (glClear GL_COLOR_BUFFER_BIT)
   (glEnable GL_TEXTURE_2D)
   (glDisable GL_BLEND)
   (glDisable GL_DEPTH_TEST)
-  (with-gl-texture-2d (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+  (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
     (draw-fullscreen-quad tex-width tex-height))
 |#
   )

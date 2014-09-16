@@ -66,9 +66,9 @@
          (raise-argument-error 'make-triangle-shape
                                "length-4 flvector, or length-3 vector of length-4 flvectors"
                                2 vs ns cs es ms face)]
-        [(not (well-formed-flvectors? es 3 3))
+        [(not (well-formed-flvectors? es 3 4))
          (raise-argument-error 'make-triangle-shape
-                               "length-3 flvector, or length-3 vector of length-3 flvectors"
+                               "length-3 flvector, or length-3 vector of length-4 flvectors"
                                3 vs ns cs es ms face)]
         [(not (or (material? ms) (= 3 (vector-length ms))))
          (raise-argument-error 'make-triangle-shape
@@ -97,9 +97,9 @@
          (raise-argument-error 'make-quad-shape
                                "length-4 flvector, or length-4 vector of length-4 flvectors"
                                2 vs ns cs es ms face)]
-        [(not (well-formed-flvectors? es 4 3))
+        [(not (well-formed-flvectors? es 4 4))
          (raise-argument-error 'make-quad-shape
-                               "length-3 flvector, or length-4 vector of length-3 flvectors"
+                               "length-3 flvector, or length-4 vector of length-4 flvectors"
                                3 vs ns cs es ms face)]
         [(not (or (material? ms) (= 4 (vector-length ms))))
          (raise-argument-error 'make-quad-shape
@@ -112,8 +112,8 @@
 (define (make-rectangle-shape b c e m face)
   (cond [(not (= 4 (flvector-length c)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 b c e m face)]
-        [(not (= 3 (flvector-length e)))
-         (raise-argument-error 'make-rectangle-shape "length-3 flvector" 2 b c e m face)]
+        [(not (= 4 (flvector-length e)))
+         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m face)]
         [else
          (rectangle-shape (box 'lazy) b c e m face)]))
 
@@ -141,11 +141,11 @@ void main() {
   mat4x3 unmodel = affine_inverse(model);
   vec4 position = view * (a2p(model) * vec4(vert_position,1));
   gl_Position = proj * position;
-  vec3 normal = normalize(vert_normal_roughness.xyz - vec3(127.0/255.0));
+  vec3 normal = normalize(vert_normal_roughness.xyz - vec3(127.0));
   vec4 norm = (vec4(normal,0) * a2p(unmodel)) * unview;
   frag_position = position;
   frag_normal = normalize(norm.xyz);
-  frag_roughness = vert_normal_roughness.w;
+  frag_roughness = vert_normal_roughness.w / 255;
 }
 code
    ))
@@ -196,14 +196,15 @@ code
 uniform mat4 view;
 uniform mat4 proj;
 
-in vec4 vert_rcolor;
-in vec4 vert_ecolor;    // vec4(hue, saturation, value.hi, value.lo)
-in vec4 vert_material;  // vec4(ambient, diffuse, specular, 0)
+in vec4 vert_rcolor;    // vec4(r, g, b, a)
+in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
+in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
 in vec3 vert_position;
 
 smooth out vec4 frag_position;
-smooth out vec4 frag_rcolor;
+smooth out vec3 frag_rcolor;
 smooth out vec3 frag_ecolor;
+smooth out float frag_alpha;
 smooth out float frag_ambient;
 smooth out float frag_diffuse;
 smooth out float frag_specular;
@@ -213,11 +214,13 @@ void main() {
   vec4 position = view * (a2p(model) * vec4(vert_position,1));
   gl_Position = proj * position;
   frag_position = position;
-  frag_rcolor = vert_rcolor;
-  frag_ecolor = hsv_to_rgb(vec3(vert_ecolor.xy, vert_ecolor.w + 256.0 * vert_ecolor.z));
-  frag_ambient = vert_material.x;
-  frag_diffuse = vert_material.y;
-  frag_specular = vert_material.z;
+  frag_rcolor = pow(vert_rcolor.rgb / 255, vec3(2.2));
+  frag_alpha = vert_rcolor.a / 255;
+  float intensity = (vert_ecolor.a * 256 + vert_material.w) / 255;
+  frag_ecolor = pow(vert_ecolor.rgb / 255, vec3(2.2)) * intensity;
+  frag_ambient = vert_material.x / 255;
+  frag_diffuse = vert_material.y / 255;
+  frag_specular = vert_material.z / 255;
 }
 code
    ))
@@ -232,8 +235,9 @@ uniform sampler2D diffuse;
 uniform sampler2D specular;
 
 smooth in vec4 frag_position;
-smooth in vec4 frag_rcolor;
+smooth in vec3 frag_rcolor;
 smooth in vec3 frag_ecolor;
+smooth in float frag_alpha;
 smooth in float frag_ambient;
 smooth in float frag_diffuse;
 smooth in float frag_specular;
@@ -242,8 +246,8 @@ void main() {
   vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_opaq(color, frag_rcolor.a, frag_position.z);
+  vec3 color = frag_ecolor + frag_rcolor * light;
+  output_opaq(color, frag_position.z);
 }
 code
    ))
@@ -258,8 +262,9 @@ uniform sampler2D diffuse;
 uniform sampler2D specular;
 
 smooth in vec4 frag_position;
-smooth in vec4 frag_rcolor;
+smooth in vec3 frag_rcolor;
 smooth in vec3 frag_ecolor;
+smooth in float frag_alpha;
 smooth in float frag_ambient;
 smooth in float frag_diffuse;
 smooth in float frag_specular;
@@ -268,8 +273,8 @@ void main() {
   vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_tran(color, frag_rcolor.a, frag_position.z);
+  vec3 color = frag_ecolor + frag_rcolor * light;
+  output_tran(color, frag_alpha, frag_position.z);
 }
 code
    ))
@@ -312,6 +317,7 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "proj" 'proj)
+          (cons "ambient" 'ambient)
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   
@@ -319,6 +325,7 @@ code
 
 ;; ===================================================================================================
 ;; Triangle and quad shape passes
+          
 
 (: make-polygon-shape-passes (-> Integer
                                  Index
@@ -353,17 +360,19 @@ code
                 [e  (in-vector (if (vector? es) es (make-vector len es)))]
                 [m  (in-vector (if (vector? ms) ms (make-vector len ms)))]
                 [v  (in-vector vs)])
+    (define-values (ecolor i.lo) (pack-emitted e))
     (let* ([i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
                       (unsafe-fx+ i 4))]
-           [i  (begin (bytes-copy! draw-data i (pack-emitted e) 0 4)
+           [i  (begin (bytes-copy! draw-data i ecolor 0 4)
                       (unsafe-fx+ i 4))]
            [i  (begin (bytes-set! draw-data i (flonum->byte (material-ambient m)))
                       (unsafe-fx+ i 1))]
            [i  (begin (bytes-set! draw-data i (flonum->byte (material-diffuse m)))
                       (unsafe-fx+ i 1))]
            [i  (begin (bytes-set! draw-data i (flonum->byte (material-specular m)))
-                      ;; last byte is unused
-                      (unsafe-fx+ i 2))]
+                      (unsafe-fx+ i 1))]
+           [i  (begin (bytes-set! draw-data i i.lo)
+                      (unsafe-fx+ i 1))]
            [i  (begin (memcpy draw-ptr i (f32vector->cpointer (flvector->f32vector v)) 12 _byte)
                       (unsafe-fx+ i 12))])
       i))
@@ -463,15 +472,18 @@ code
     (assert (- (vao-struct-size (program-spec-struct (polygon-opaq-program-spec))) 12) positive?))
   (define material-data (make-bytes material-data-size))
   (define material-ptr (u8vector->cpointer material-data))
+  (define-values (ecolor i.lo) (pack-emitted e))
   (let* ([i  (begin (bytes-copy! material-data 0 (pack-color c) 0 4)
                     4)]
-         [i  (begin (bytes-copy! material-data i (pack-emitted e) 0 4)
+         [i  (begin (bytes-copy! material-data i ecolor 0 4)
                     (unsafe-fx+ i 4))]
          [i  (begin (bytes-set! material-data i (flonum->byte (material-ambient m)))
                     (unsafe-fx+ i 1))]
          [i  (begin (bytes-set! material-data i (flonum->byte (material-diffuse m)))
                     (unsafe-fx+ i 1))]
          [i  (begin (bytes-set! material-data i (flonum->byte (material-specular m)))
+                    (unsafe-fx+ i 1))]
+         [i  (begin (bytes-set! material-data i i.lo)
                     (unsafe-fx+ i 1))])
     (void))
   

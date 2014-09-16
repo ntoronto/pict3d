@@ -53,7 +53,7 @@
    [inside? : Boolean])
   #:transparent)
 
-(struct light-shape shape ([intensity : FlVector]) #:transparent)
+(struct light-shape shape ([color : FlVector] [intensity : Flonum]) #:transparent)
 (struct directional-light-shape light-shape ([direction : FlVector]) #:transparent)
 (struct point-light-shape light-shape ([position : FlVector] [radius : Flonum]) #:transparent)
 

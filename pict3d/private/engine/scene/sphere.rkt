@@ -32,8 +32,8 @@
 (define (make-sphere-shape t c e m inside?)
   (cond [(not (= 4 (flvector-length c)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 t c e m inside?)]
-        [(not (= 3 (flvector-length e)))
-         (raise-argument-error 'make-rectangle-shape "length-3 flvector" 2 t c e m inside?)]
+        [(not (= 4 (flvector-length e)))
+         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 t c e m inside?)]
         [else
          (sphere-shape (box 'lazy) (->affine t) c e m inside?)]))
 
@@ -70,7 +70,7 @@ void main() {
 
   frag_trans = mat4x3(trans);
   frag_untrans = mat4x3(untrans);
-  frag_roughness = vert_roughness_inside.x;
+  frag_roughness = vert_roughness_inside.x / 255;
   frag_inside = vert_roughness_inside.y;
   frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
 }
@@ -154,14 +154,16 @@ uniform mat4 proj;
 in vec4 sphere0;
 in vec4 sphere1;
 in vec4 sphere2;
-in vec4 vert_rcolor;
-in vec4 vert_ecolor;           // vec4(hue, saturation, value.hi, value.lo)
-in vec4 vert_material_inside;  // vec4(ambient, diffuse, specular, inside?)
+in vec4 vert_rcolor;    // vec4(r, g, b, a)
+in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
+in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
+in float vert_inside;
 
 flat out mat4x3 frag_trans;
 flat out mat4x3 frag_untrans;
-flat out vec4 frag_rcolor;
+flat out vec3 frag_rcolor;
 flat out vec3 frag_ecolor;
+flat out float frag_alpha;
 flat out float frag_ambient;
 flat out float frag_diffuse;
 flat out float frag_specular;
@@ -177,12 +179,14 @@ void main() {
 
   frag_trans = mat4x3(trans);
   frag_untrans = mat4x3(untrans);
-  frag_rcolor = vert_rcolor;
-  frag_ecolor = hsv_to_rgb(vec3(vert_ecolor.xy, vert_ecolor.w + 256.0 * vert_ecolor.z));
-  frag_ambient = vert_material_inside.x;
-  frag_diffuse = vert_material_inside.y;
-  frag_specular = vert_material_inside.z;
-  frag_inside = vert_material_inside.w;
+  frag_rcolor = pow(vert_rcolor.rgb / 255, vec3(2.2));
+  frag_alpha = vert_rcolor.a / 255;
+  float intensity = (vert_ecolor.a * 256 + vert_material.w) / 255;
+  frag_ecolor = pow(vert_ecolor.rgb / 255, vec3(2.2)) * intensity;
+  frag_ambient = vert_material.x / 255;
+  frag_diffuse = vert_material.y / 255;
+  frag_specular = vert_material.z / 255;
+  frag_inside = vert_inside;
   frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
 }
 code
@@ -205,8 +209,9 @@ uniform sampler2D specular;
 
 flat in mat4x3 frag_trans;
 flat in mat4x3 frag_untrans;
-flat in vec4 frag_rcolor;
+flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
+flat in float frag_alpha;
 flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
@@ -232,7 +237,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_opaq(color, frag_rcolor.a, vpos.z);
+  output_opaq(color, vpos.z);
 }
 code
    ))
@@ -254,8 +259,9 @@ uniform sampler2D specular;
 
 flat in mat4x3 frag_trans;
 flat in mat4x3 frag_untrans;
-flat in vec4 frag_rcolor;
+flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
+flat in float frag_alpha;
 flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
@@ -281,7 +287,7 @@ void main() {
   vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_tran(color, frag_rcolor.a, vpos.z);
+  output_tran(color, frag_alpha, vpos.z);
 }
 code
    ))
@@ -294,7 +300,8 @@ code
      (make-vao-field "sphere2" 4 GL_FLOAT)
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_inside" 1 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
@@ -322,7 +329,8 @@ code
      (make-vao-field "sphere2" 4 GL_FLOAT)
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
      (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material_inside" 4 GL_UNSIGNED_BYTE)))
+     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_inside" 1 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
@@ -351,7 +359,7 @@ code
   
   (define affine-ptr (f32vector->cpointer (affine-data t)))
   (define roughness (flonum->byte (material-roughness m)))
-  (define inside (if inside? 255 0))
+  (define inside (if inside? 1 0))
   
   (define mat-datum-size (+ affine-size 4))  ; last two bytes are unused
   (define mat-data-size (* 4 mat-datum-size))
@@ -365,17 +373,19 @@ code
   (define draw-datum-size (vao-struct-size (program-spec-struct (sphere-opaq-program-spec))))
   (define draw-data-size (* 4 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
+  (define-values (ecolor i.lo) (pack-emitted e))
   (let* ([i  0]
          [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-size)
                     (unsafe-fx+ i affine-size))]
          [i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
                     (unsafe-fx+ i 4))]
-         [i  (begin (bytes-copy! draw-data i (pack-emitted e) 0 4)
+         [i  (begin (bytes-copy! draw-data i ecolor 0 4)
                     (unsafe-fx+ i 4))])
     (bytes-set! draw-data i (flonum->byte (material-ambient m)))
     (bytes-set! draw-data (unsafe-fx+ i 1) (flonum->byte (material-diffuse m)))
     (bytes-set! draw-data (unsafe-fx+ i 2) (flonum->byte (material-specular m)))
-    (bytes-set! draw-data (unsafe-fx+ i 3) inside))
+    (bytes-set! draw-data (unsafe-fx+ i 3) i.lo)
+    (bytes-set! draw-data (unsafe-fx+ i 4) inside))
   (for ([j  (in-range 1 4)])
     (bytes-copy! draw-data (unsafe-fx* j draw-datum-size) draw-data 0 draw-datum-size))
   

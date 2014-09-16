@@ -216,9 +216,9 @@ code
   (string-append
    depth-fragment-code
    #<<code
-void output_opaq(vec3 color, float a, float z) {
+void output_opaq(vec3 color, float z) {
   gl_FragDepth = get_frag_depth(z);
-  gl_FragColor = vec4(color, a);
+  gl_FragColor = vec4(color, 1.0);
 }
 code
    "\n\n"))
@@ -228,12 +228,12 @@ code
    depth-fragment-code
    #<<code
 void output_tran(vec3 color, float a, float z) {
+  //float weight = a * clamp(10/(1e-5 + pow(abs(z)/5,2) + pow(abs(z)/200,6)), 1e-2, 3e3);     // (7)
+  float weight = max(1e-5, a * exp2(z));
   float depth = get_frag_depth(z);
-  float d = 1 - depth;
-  float weight = a * clamp(1 / (d*d*d) - 1, 0.001953125, 32768.0);
   gl_FragDepth = depth;
-  gl_FragData[0] = vec4(color * weight * a, a);
-  gl_FragData[1] = vec4(a * weight);
+  gl_FragData[0] = vec4(color * a, a) * weight;
+  gl_FragData[1] = vec4(weight);
 }
 code
    "\n\n"))
@@ -279,12 +279,12 @@ void output_light(vec3 light, surface s, vec3 L, vec3 V) {
   // Diffuse
   float dotNL = dot(N,L);
   if (dotNL < 1e-7) discard;
-  gl_FragData[0] = vec4(light * dotNL, 0.0);
+  gl_FragData[0] = vec4(light * dotNL, 1.0);
 
   // Specular
   float dotNV = dot(N,V);
   if (dotNV < 1e-7) discard;
-  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,s.roughness), 0.0);
+  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,s.roughness), 1.0);
 }
 code
    "\n\n"))

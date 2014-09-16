@@ -457,7 +457,6 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
 (struct vao-field ([name : String]
                    [count : Index]
                    [type : Integer]
-                   [normalized? : Boolean]
                    [size : Index])
   #:transparent)
 
@@ -465,9 +464,9 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
                     [size : Index])
   #:transparent)
 
-(: make-vao-field (->* [String Index Integer] [Boolean] vao-field))
-(define (make-vao-field name count type [normalized? #t])
-  (vao-field name count type normalized? (assert (* count (gl-type->size type)) index?)))
+(: make-vao-field (-> String Index Integer vao-field))
+(define (make-vao-field name count type)
+  (vao-field name count type (assert (* count (gl-type->size type)) index?)))
 
 (: make-vao-struct (-> vao-field * vao-struct))
 (define (make-vao-struct . fs)
@@ -478,9 +477,9 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
   (match-define (vao-struct fields struct-size) struct)
   (for/fold ([start : Nonnegative-Fixnum  0]) ([field  (in-list fields)]
                                                [index : Natural  (in-naturals 0)])
-    (match-define (vao-field name field-count type normalized? field-size) field)
+    (match-define (vao-field name field-count type field-size) field)
     (glEnableVertexAttribArray index)
-    (glVertexAttribPointer index field-count type normalized? struct-size start)
+    (glVertexAttribPointer index field-count type #f struct-size start)
     (unsafe-fx+ start field-size))
   (void))
 

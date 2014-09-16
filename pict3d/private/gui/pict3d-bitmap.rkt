@@ -52,5 +52,5 @@
          (bytes-copy! bs i0 bs i1 (+ i1 row-size))
          (bytes-copy! bs i1 tmp 0 row-size))
        
-       (send bm set-argb-pixels 0 0 width height bs #f #f))
+       (send bm set-argb-pixels 0 0 width height bs #f #t))
      bm]))
