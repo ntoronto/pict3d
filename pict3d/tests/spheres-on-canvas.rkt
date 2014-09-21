@@ -4,101 +4,65 @@
          typed/racket/class
          pict3d
          racket/math
-         math/flonum
-         pict3d/private/math/flt3
-         pict3d/private/engine/draw-passes)
+         math/flonum)
 
 (current-material '(0.05 0.70 0.25 0.1))
 
+(define (random-color)
+  (build-list 3 (λ (_) (+ (* (random) 0.5) 0.5))))
+
+(: normalize-color (-> (Listof Real) (Listof Real)))
+(define (normalize-color rgb)
+  (define mx (apply max rgb))
+  (map (λ ([r : Real]) (/ r mx)) rgb))
+
+(define (random-position)
+  (build-list 3 (λ (_) (* (- (random) 0.5) 50))))
+
 (define spheres
   (combine
-   (combine* (for/list ([_  (in-range 50000)])
-               (let* ([r  (+ (* (random) 0.5) 0.5)]
-                      [g  (+ (* (random) 0.5) 0.5)]
-                      [b  (+ (* (random) 0.5) 0.5)])
-                 (with-color (list r g b (if (< (random) 0.5) 0.75 1.0))
-                   (sphere (list (* (- (random) 0.5) 40)
-                                 (* (- (random) 0.5) 40)
-                                 (* (- (random) 0.5) 40))
-                           (* 0.25 (+ (random) 0.1)))))))
-   (combine* (for/list ([_  (in-range 500)])
-               (let* ([r  (random)]
-                      [g  (random)]
-                      [b  (random)]
-                      [mx  (max r g b)]
-                      [r  (/ r mx)]
-                      [g  (/ g mx)]
-                      [b  (/ b mx)]
-                      [x  (* (- (random) 0.5) 40)]
-                      [y  (* (- (random) 0.5) 40)]
-                      [z  (* (- (random) 0.5) 40)])
-                 (combine
-                  (with-color "black"
-                    (with-emitted (list r g b 16)
-                      (sphere (list x y z) #i1/16)))
-                  (light (list x y z)
-                         (list r g b)
-                         (* (random) 0.5))))))))
+   (combine*
+    (for/list ([_  (in-range 70000)])
+      (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
+        (sphere (random-position)
+                (* 0.25 (+ (random) 0.1))))))
+   (combine*
+    (for/list ([_  (in-range 500)])
+      (let* ([rgb  (normalize-color (random-color))]
+             [pos  (random-position)]
+             [int  (+ 0.25 (* (random) 0.25))])
+        (combine
+         (with-color "black"
+           (with-emitted (append rgb (list (* int 32)))
+             (sphere pos #i1/16)))
+         (light pos rgb int)))))))
 
 (define frozen-spheres (freeze spheres))
 
-(define frame (new frame% [label "1"] [width 400] [height 400]))
+(define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
 
-(: i Natural)
-(define i 0)
-
-(: thread-loop (-> Void))
-(define (thread-loop)
-  (unless (send frame is-shown?)
-    (thread-suspend th))
-  (define start-time (fl (current-inexact-milliseconds)))
-  (define cx (cos (degrees->radians i)))
-  (define sx (sin (degrees->radians i)))
-  (define cx2 (cos (* 2 (degrees->radians i))))
-  (define sx2 (sin (* 2 (degrees->radians i))))
-  
-  (define camera-basis
-    (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                  (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
-  
-  (define pict
-    (combine
-     (set-basis frozen-spheres 'camera camera-basis)
-     (with-color "black"
-       (with-emitted '(1 1 1 4)
-         (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-     (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
-  (send canvas set-pict3d pict)
-  (set! i (+ i 1))
-  (define end-time (fl (current-inexact-milliseconds)))
-  (sleep/yield (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
-  ;(thread-suspend th)
-  (thread-loop))
-
-(define th
-  (thread thread-loop))
-
-#|
-(define i 0)
-(define cx (cos (degrees->radians i)))
-(define sx (sin (degrees->radians i)))
-(define cx2 (cos (* 2 (degrees->radians i))))
-(define sx2 (sin (* 2 (degrees->radians i))))
-
-(define camera-basis
-  (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
-
-(define pict
-  (combine
-   (set-basis frozen-spheres 'camera camera-basis)
-   (with-color "black"
-     (with-emitted '(1 1 1 4)
-       (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-   (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
-
-(current-ambient '(0 0 0))
-(pict3d->bitmap pict 400 400)
-|#
+(let loop ([i : Natural  0])
+  (when (send frame is-shown?)
+    (define start-time (fl (current-inexact-milliseconds)))
+    (define cx (cos (degrees->radians i)))
+    (define sx (sin (degrees->radians i)))
+    (define cx2 (cos (* 2 (degrees->radians i))))
+    (define sx2 (sin (* 2 (degrees->radians i))))
+    
+    (define camera-basis
+      (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
+                    (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+    
+    (define pict
+      (combine
+       (set-basis frozen-spheres 'camera camera-basis)
+       (with-color "black"
+         (with-emitted '(1 1 1 4)
+           (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
+       (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
+    (send canvas set-pict3d pict)
+    (define end-time (fl (current-inexact-milliseconds)))
+    (sleep/yield (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
+    (loop (+ i 1))))

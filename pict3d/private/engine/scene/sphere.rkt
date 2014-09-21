@@ -49,17 +49,20 @@
 uniform mat4 view;
 uniform mat4 unview;
 uniform mat4 proj;
+uniform mat4 unproj;
 
 in vec4 sphere0;
 in vec4 sphere1;
 in vec4 sphere2;
 in vec4 vert_roughness_inside;
 
-flat out mat4x3 frag_trans;
-flat out mat4x3 frag_untrans;
+flat out vec4 frag_trans_z;
+flat out mat3 frag_untrans;
 flat out float frag_roughness;
 flat out float frag_inside;
 smooth out float frag_is_degenerate;
+smooth out vec3 frag_start;
+smooth out vec3 frag_dir;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -67,12 +70,16 @@ void main() {
   mat4x3 unmodel = affine_inverse(model);
   mat4 trans = view * a2p(model);
   mat4 untrans = a2p(unmodel) * unview;
-
-  frag_trans = mat4x3(trans);
-  frag_untrans = mat4x3(untrans);
+  
+  frag_trans_z = transpose(trans)[2];
+  frag_untrans = mat3(untrans);
   frag_roughness = vert_roughness_inside.x / 255;
   frag_inside = vert_roughness_inside.y;
   frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
+  
+  vec4 dir = unproj * gl_Position;
+  frag_dir = mat3(untrans) * (dir.xyz / dir.w);
+  frag_start = untrans[3].xyz;
 }
 code
    ))
@@ -84,32 +91,31 @@ code
    ray-trace-fragment-code
    #<<code
 uniform mat4 proj;
-uniform mat4 unproj;
 uniform int width;
 uniform int height;
 
-flat in mat4x3 frag_trans;
-flat in mat4x3 frag_untrans;
+flat in vec4 frag_trans_z;
+flat in mat3 frag_untrans;
 flat in float frag_roughness;
 flat in float frag_inside;
 smooth in float frag_is_degenerate;
+smooth in vec3 frag_dir;
+smooth in vec3 frag_start;
 
 void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
-  vec3 dir = normalize(mat3(frag_untrans) * vdir);
-  vec2 ts = unit_sphere_intersect(start, dir);
+  vec3 dir = normalize(frag_dir);
+  vec2 ts = unit_sphere_intersect(frag_start, dir);
   float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
   if (t <= 0.0) discard;
   
-  vec3 pos = start + dir * t;
-  vec3 vpos = frag_trans * vec4(pos, 1.0);
-  vec3 vnorm = pos * mat3(frag_untrans);
-  output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos.z);
+  vec3 pos = frag_start + dir * t;
+  float vpos_z = dot(frag_trans_z, vec4(pos,1.0));  // transformed pos z coord only
+  vec3 vnorm = pos * frag_untrans;
+  output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos_z);
 }
 code
    ))
@@ -150,6 +156,7 @@ code
 uniform mat4 view;
 uniform mat4 unview;
 uniform mat4 proj;
+uniform mat4 unproj;
 
 in vec4 sphere0;
 in vec4 sphere1;
@@ -159,8 +166,7 @@ in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
 in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
 in float vert_inside;
 
-flat out mat4x3 frag_trans;
-flat out mat4x3 frag_untrans;
+flat out vec4 frag_trans_z;
 flat out vec3 frag_rcolor;
 flat out vec3 frag_ecolor;
 flat out float frag_alpha;
@@ -169,6 +175,8 @@ flat out float frag_diffuse;
 flat out float frag_specular;
 flat out float frag_inside;
 smooth out float frag_is_degenerate;
+smooth out vec3 frag_start;
+smooth out vec3 frag_dir;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -177,8 +185,7 @@ void main() {
   mat4 trans = view * a2p(model);
   mat4 untrans = a2p(unmodel) * unview;
 
-  frag_trans = mat4x3(trans);
-  frag_untrans = mat4x3(untrans);
+  frag_trans_z = transpose(trans)[2];
   frag_rcolor = pow(vert_rcolor.rgb / 255, vec3(2.2));
   frag_alpha = vert_rcolor.a / 255;
   float intensity = (vert_ecolor.a * 256 + vert_material.w) / 255;
@@ -188,6 +195,10 @@ void main() {
   frag_specular = vert_material.z / 255;
   frag_inside = vert_inside;
   frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
+
+  vec4 vdir = unproj * gl_Position;
+  frag_start = untrans[3].xyz;
+  frag_dir = mat3(untrans) * (vdir.xyz / vdir.w);
 }
 code
    ))
@@ -207,8 +218,7 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in mat4x3 frag_trans;
-flat in mat4x3 frag_untrans;
+flat in vec4 frag_trans_z;
 flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_alpha;
@@ -217,27 +227,29 @@ flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
 smooth in float frag_is_degenerate;
+smooth in vec3 frag_start;
+smooth in vec3 frag_dir;
 
 void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
-  vec3 dir = normalize(mat3(frag_untrans) * vdir);
+  vec3 dir = normalize(frag_dir);
+  vec3 start = frag_start;
   vec2 ts = unit_sphere_intersect(start, dir);
   float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
   if (t <= 0.0) discard;
   
   vec3 pos = start + dir * t;
-  vec3 vpos = frag_trans * vec4(pos, 1.0);
+  float vpos_z = dot(frag_trans_z, vec4(pos,1.0));
   
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+  ivec2 xy = ivec2(gl_FragCoord.xy);
+  vec3 diff = texelFetch(diffuse, xy, 0).rgb;
+  vec3 spec = texelFetch(specular, xy, 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_opaq(color, vpos.z);
+  output_opaq(color, vpos_z);
 }
 code
    ))
@@ -257,8 +269,7 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in mat4x3 frag_trans;
-flat in mat4x3 frag_untrans;
+flat in vec4 frag_trans_z;
 flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_alpha;
@@ -267,27 +278,29 @@ flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
 smooth in float frag_is_degenerate;
+smooth in vec3 frag_start;
+smooth in vec3 frag_dir;
 
 void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vdir = frag_coord_to_direction(gl_FragCoord, unproj, width, height);
-  vec3 start = frag_untrans[3];  // equiv. to multiplying by vec3(0)
-  vec3 dir = normalize(mat3(frag_untrans) * vdir);
+  vec3 start = frag_start;
+  vec3 dir = normalize(frag_dir);
   vec2 ts = unit_sphere_intersect(start, dir);
   float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
   if (t <= 0.0) discard;
   
   vec3 pos = start + dir * t;
-  vec3 vpos = frag_trans * vec4(pos, 1.0);
+  float vpos_z = dot(frag_trans_z, vec4(pos,1.0));
   
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+  ivec2 xy = ivec2(gl_FragCoord.xy);
+  vec3 diff = texelFetch(diffuse, xy, 0).rgb;
+  vec3 spec = texelFetch(specular, xy, 0).rgb;
   vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
   vec3 color = frag_ecolor + frag_rcolor.rgb * light;
-  output_tran(color, frag_alpha, vpos.z);
+  output_tran(color, frag_alpha, vpos_z);
 }
 code
    ))

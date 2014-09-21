@@ -27,14 +27,15 @@ code
   (string-append
    #<<code
 uniform float zfar;
+uniform float znear;
 uniform float log2_znear_zfar;
 
 float get_frag_depth(float z) {
   return log2(-z/zfar) / log2_znear_zfar;
 }
 
-float get_view_depth(float logz) {
-  return -exp2(logz * log2_znear_zfar) * zfar;
+float get_view_depth(float depth) {
+  return -exp2(depth * log2_znear_zfar) * zfar;
 }
 code
    "\n\n"))
@@ -230,8 +231,7 @@ code
 void output_tran(vec3 color, float a, float z) {
   //float weight = a * clamp(10/(1e-5 + pow(abs(z)/5,2) + pow(abs(z)/200,6)), 1e-2, 3e3);     // (7)
   float weight = max(1e-5, a * exp2(z));
-  float depth = get_frag_depth(z);
-  gl_FragDepth = depth;
+  gl_FragDepth = get_frag_depth(z);
   gl_FragData[0] = vec4(color * a, a) * weight;
   gl_FragData[1] = vec4(weight);
 }

@@ -316,8 +316,9 @@ code
            (cons 'unview (uniform-mat (flprojective3-entries (flt3inverse view)) 4))
            (cons 'proj (uniform-mat (flprojective3-entries proj) 4))
            (cons 'unproj (uniform-mat (flprojective3-entries (flt3inverse proj)) 4))
-           (cons 'log2_znear_zfar (uniform-float (fllog2 (/ znear zfar))))
+           (cons 'znear (uniform-float znear))
            (cons 'zfar (uniform-float zfar))
+           (cons 'log2_znear_zfar (uniform-float (fllog2 (/ znear zfar))))
            (cons 'width (uniform-int width))
            (cons 'height (uniform-int height))
            (cons 'ambient (uniform-float ambient)))))
@@ -594,15 +595,15 @@ code
     (glActiveTexture GL_TEXTURE0)
     
     (draw-fullscreen-quad tex-width tex-height))
-  
-  #|
+
+#|  
   (glViewport 0 0 width height)
   (glClearColor 0.0 0.0 0.0 0.0)
   (glClear GL_COLOR_BUFFER_BIT)
   (glEnable GL_TEXTURE_2D)
   (glDisable GL_BLEND)
   (glDisable GL_DEPTH_TEST)
-  (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+  (with-gl-texture-2d (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
     (draw-fullscreen-quad tex-width tex-height))
-|#
+  |#
   )

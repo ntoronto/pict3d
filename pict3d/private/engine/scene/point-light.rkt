@@ -49,6 +49,7 @@
    #<<code
 uniform mat4 view;
 uniform mat4 proj;
+uniform mat4 unproj;
 
 in vec3 vert_position;
 in vec2 vert_intensity_radius;
@@ -58,6 +59,7 @@ flat out vec3 frag_position;
 flat out float frag_radius;
 flat out vec3 frag_intensity;
 smooth out float frag_is_degenerate;
+smooth out vec3 frag_dir;
 
 void main() {
   mat4x3 model = get_model_transform();
@@ -70,6 +72,9 @@ void main() {
   frag_radius = radius;
   frag_intensity = pow(vert_color / 255, vec3(2.2)) * vert_intensity_radius.x;
   frag_is_degenerate = output_impostor_quad(trans, proj, wmin, wmax);
+
+  vec4 dir = unproj * gl_Position;
+  frag_dir = vec3(dir.xy / dir.z, 1.0);
 }
 code
    ))
@@ -79,10 +84,6 @@ code
    "#version 130\n\n"
    light-fragment-code
    #<<code
-uniform int width;
-uniform int height;
-uniform mat4 unproj;
-
 uniform sampler2D depth;
 uniform sampler2D material;
 
@@ -90,16 +91,21 @@ flat in vec3 frag_position;
 flat in float frag_radius;
 flat in vec3 frag_intensity;
 smooth in float frag_is_degenerate;
+smooth in vec3 frag_dir;
 
 void main() {
   // all fragments should discard if this one does
   if (frag_is_degenerate > 0.0) discard;
 
-  vec3 vpos = frag_coord_to_position(gl_FragCoord, depth, unproj, width, height);
+  float d = texelFetch(depth, ivec2(gl_FragCoord.xy), 0).r;
+  if (d == 0.0) discard;
+  float z = get_view_depth(d);
+  vec3 vpos = frag_dir * z;
+
   vec3 D = frag_position - vpos;
   float dist = length(D);
   if (dist > frag_radius) discard;  
-  vec3 L = normalize(D);
+  vec3 L = D / dist;
   vec3 V = normalize(-vpos);
 
   vec3 light = attenuate_invsqr(frag_intensity, dist);
@@ -124,8 +130,6 @@ code
   (define uniforms
     (list (cons "view" 'view)
           (cons "proj" 'proj)
-          (cons "width" 'width)
-          (cons "height" 'height)
           (cons "unproj" 'unproj)
           (cons "depth" 'depth)
           (cons "material" 'material)))

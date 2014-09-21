@@ -44,6 +44,10 @@
    #<<code
 #version 130
 
+uniform mat4 unproj;
+
+smooth out vec3 frag_dir;
+
 void main() {
     // output the right vertices for a triangle strip
   switch (gl_VertexID % 4) {
@@ -60,6 +64,9 @@ void main() {
     gl_Position = vec4(+1.0, +1.0, 0.0, 1.0);
     break;
   }
+
+  vec4 dir = unproj * gl_Position;
+  frag_dir = vec3(dir.xy / dir.z, 1.0);
 }
 code
    ))
@@ -70,9 +77,6 @@ code
    light-fragment-code
    #<<code
 uniform mat4 unview;
-uniform mat4 unproj;
-uniform int width;
-uniform int height;
 
 uniform sampler2D depth;
 uniform sampler2D material;
@@ -82,8 +86,14 @@ uniform vec3 light_dir;
 uniform vec3 light_color;
 uniform float light_intensity;
 
+smooth in vec3 frag_dir;
+
 void main() {
-  vec3 pos = frag_coord_to_position(gl_FragCoord, depth, unproj, width, height);
+  float d = texelFetch(depth, ivec2(gl_FragCoord.xy), 0).r;
+  if (d == 0.0) discard;
+  float z = get_view_depth(d);
+  vec3 pos = frag_dir * z;
+
   vec3 L = normalize(-light_dir * mat3(unview));
   vec3 V = normalize(-pos);
   output_light(pow(light_color, vec3(2.2)) * light_intensity, get_surface(material), L, V);
@@ -102,8 +112,6 @@ code
   (define uniforms
     (list (cons "unview" 'unview)
           (cons "unproj" 'unproj)
-          (cons "width" 'width)
-          (cons "height" 'height)
           (cons "depth" 'depth)
           (cons "material" 'material)))
   

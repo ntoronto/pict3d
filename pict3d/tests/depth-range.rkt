@@ -1,9 +1,7 @@
 #lang typed/racket
 
 (require pict3d
-         (except-in plot/typed Font-Family)
          math/flonum
-         math/bigfloat
          typed/racket/gui
          typed/racket/class)
 
@@ -28,9 +26,13 @@
      shapes
      'camera
      (normal-basis '(1/2 1 2) '(-1/2 -1 -1.25)))
-    (make-list 3 (flexpt 2.0 -19.0)))
+    (make-list 3 (flexpt 2.0 -10.0)))
    (scale
     (move shapes '(-1.25 -1.25 -1.25))
-    (make-list 3 (flexpt 2.0 31.0)))))
+    (make-list 3 (flexpt 2.0 21.0)))))
 
-pict
+(pict3d->bitmap
+ (combine pict
+          (sunlight (flvector -0.25 -0.5 -1.0) "white" 1)
+          (sunlight (flvector 0.25 0.5 1.0) "white" 0.5))
+ 512 512)
