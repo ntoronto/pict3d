@@ -9,7 +9,7 @@
          "../math/flt3.rkt"
          "../utils.rkt"
          "../ffi.rkt"
-         "gl.rkt"
+         "../gl.rkt"
          "affine.rkt"
          "types.rkt"
          "utils.rkt")
@@ -83,9 +83,9 @@
 
 ;; ===================================================================================================
 
-(struct vertex-buffer ([vao : gl-object]
-                       [vertex-buf : (U #f gl-object)]
-                       [transform-buf : (U #f gl-object)]
+(struct vertex-buffer ([vao : gl-vertex-array]
+                       [vertex-buf : (U #f gl-array-buffer)]
+                       [transform-buf : (U #f gl-array-buffer)]
                        [vertex-count : Index]))
 
 (: make-vertex-buffer (-> Index Index Boolean vertex-buffer))
@@ -95,7 +95,7 @@
   (define vertex-buf-size (* struct-size vertex-count))
   (define vertex-buf
     (cond [(> vertex-buf-size 0)
-           (define vertex-buf (make-gl-buffer))
+           (define vertex-buf (make-gl-array-buffer))
            (with-gl-array-buffer vertex-buf
              (glBufferData GL_ARRAY_BUFFER vertex-buf-size 0 GL_STREAM_DRAW))
            vertex-buf]
@@ -103,7 +103,7 @@
   
   (define transform-buf
     (cond [transform?
-           (define transform-buf (make-gl-buffer))
+           (define transform-buf (make-gl-array-buffer))
            (with-gl-array-buffer transform-buf
              (glBufferData GL_ARRAY_BUFFER (* affine-size vertex-count) 0 GL_STREAM_DRAW))
            transform-buf]
@@ -111,13 +111,14 @@
   
   (vertex-buffer vao vertex-buf transform-buf vertex-count))
 
-(: vertex-buffers (HashTable (U #f gl-context) (HashTable vao-struct vertex-buffer)))
+(: vertex-buffers (HashTable GL-Context (HashTable vao-struct vertex-buffer)))
 (define vertex-buffers (make-weak-hasheq))
 
-(: get-vertex-buffer (-> gl-object vao-struct Nonnegative-Fixnum vertex-buffer))
-(define (get-vertex-buffer program struct vertex-count)
-  (define hash (hash-ref! vertex-buffers (current-gl-context)
+(: get-vertex-buffer (-> gl-program Nonnegative-Fixnum vertex-buffer))
+(define (get-vertex-buffer program vertex-count)
+  (define hash (hash-ref! vertex-buffers (get-current-gl-context 'get-vertex-buffer)
                           (λ () ((inst make-weak-hasheq vao-struct vertex-buffer)))))
+  (define struct (gl-program-struct program))
   (define vbuffer (hash-ref hash struct #f))
   (cond [(and vbuffer (<= vertex-count (vertex-buffer-vertex-count vbuffer)))  vbuffer]
         [else
@@ -177,14 +178,13 @@
 (define get-tmp-transform-data
   (make-cached-vector 'get-tmp-transform-data make-bytes bytes-length))
 
-(: send-single-vertices (-> gl-object
-                            vao-struct
+(: send-single-vertices (-> gl-program
                             Integer
                             (Vectorof draw-params)
                             Nonnegative-Fixnum
                             Nonnegative-Fixnum
                             Void))
-(define (send-single-vertices program struct mode ps start end)
+(define (send-single-vertices program mode ps start end)
   ;; Compute the total number of single vertices to send to the GPU
   (: vertex-count Nonnegative-Fixnum)
   (define-values (vertex-count vertex-count-max)
@@ -207,15 +207,15 @@
               "cannot draw a single shape with more than ~a vertices; given ~a vertices"
               (* 1024 1024)
               vertex-count))
-     (send-single-vertices program struct mode ps start mid)
-     (send-single-vertices program struct mode ps mid end)]
+     (send-single-vertices program mode ps start mid)
+     (send-single-vertices program mode ps mid end)]
     [(> vertex-count 0)
      (define tmp-transform-data
        (get-tmp-transform-data (unsafe-fx* vertex-count-max affine-size)))
      (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
      
      ;; Get (and cache) a VAO with a big enough buffer
-     (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program struct vertex-count))
+     (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program vertex-count))
      
      ;; With the vertex array object (not using with-gl-vertex-array for performance reasons)...
      (gl-bind-vertex-array vao)
@@ -224,10 +224,10 @@
      (when vbuf
        (gl-bind-array-buffer vbuf)
        ;; Map the vertex buffer into memory
-       (define buffer-size (unsafe-fx* (vao-struct-size struct) vertex-count))
+       (define struct-size (vao-struct-size (gl-program-struct program)))
+       (define buffer-size (unsafe-fx* struct-size vertex-count))
        (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
        ;; Copy the vertex data into the buffer
-       (define struct-size (vao-struct-size struct))
        (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
          (define p (unsafe-vector-ref ps i))
          (define v (shape-params-vertices (draw-params-shape-params p)))
@@ -276,14 +276,13 @@
 ;; ===================================================================================================
 ;; Vertex drawing of variable-length primitives (e.g. line strips, triangle strips)
 
-(: send-multi-vertices (-> gl-object 
-                           vao-struct
+(: send-multi-vertices (-> gl-program
                            Integer
                            (Vectorof draw-params)
                            Nonnegative-Fixnum
                            Nonnegative-Fixnum
                            Void))
-(define (send-multi-vertices program struct mode ps start end)
+(define (send-multi-vertices program mode ps start end)
   ;; Compute the total number of vertexes and primitives to send to the GPU
   (define-values (vertex-count prim-count)
     (for/fold ([vertex-count : Nonnegative-Fixnum  0]
@@ -333,7 +332,7 @@
          (values vertex-num prim-num)]))
     
     ;; Get (and cache) a VAO with a big enough buffer
-    (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program struct vertex-count))
+    (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program vertex-count))
     
     ;; With the vertex array object (not using with-gl-vertex-array for performance reasons)...
     (gl-bind-vertex-array vao)
@@ -342,10 +341,10 @@
     (when vbuf
       (gl-bind-array-buffer vbuf)
       ;; Map the vertex array into memory
-      (define buffer-size (unsafe-fx* (vao-struct-size struct) vertex-count))
+      (define struct-size (vao-struct-size (gl-program-struct program)))
+      (define buffer-size (unsafe-fx* struct-size vertex-count))
       (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
       ;; Copy the vertex data into the buffer
-      (define struct-size (vao-struct-size struct))
       (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
         (define p (unsafe-vector-ref ps i))
         (define v (shape-params-vertices (draw-params-shape-params p)))
@@ -403,7 +402,6 @@
     (define pd ((span-key s)))
     (define program (program-spec-program pd))
     (define uniforms (program-spec-uniforms pd))
-    (define struct (program-spec-struct pd))
     (with-gl-program program
       (send-uniforms program uniforms standard-uniforms)
       (gl-program-uniform program "zfar" (hash-ref standard-uniforms 'zfar))
@@ -428,10 +426,10 @@
             (define mode (span-key s))
             (define start (span-start s))
             (define end (span-end s))
-            (send-single-vertices program struct mode ps start end)
-            (send-multi-vertices  program struct mode ps start end))))))
-  (gl-bind-array-buffer null-gl-object)
-  (gl-bind-vertex-array null-gl-object)
+            (send-single-vertices program mode ps start end)
+            (send-multi-vertices  program mode ps start end))))))
+  (gl-bind-array-buffer null-gl-array-buffer)
+  (gl-bind-vertex-array null-gl-vertex-array)
   (gl-draw-face 'front))
 
 ;; ===================================================================================================

@@ -179,3 +179,23 @@
                 (then-thnk)]
                [else
                 (else-proc val)])))]))
+
+
+;; ===================================================================================================
+;; Hash functions
+
+(: hash-clear!* (All (A B) (-> (HashTable A B) Void)))
+(define (hash-clear!* h)
+  (for ([k  (in-list (hash-keys h))])
+    (hash-remove! h k)))
+
+(: hash-empty?* (All (A B) (-> (HashTable A B) Boolean)))
+(define (hash-empty?* h)
+  (let/ec return : Boolean
+    (for/and : Boolean ([(k v)  (in-hash h)])
+      (return #f))))
+
+(: hash-merge (All (A B) (-> (HashTable A B) (HashTable A B) (HashTable A B))))
+(define (hash-merge h1 h2)
+  (for/fold ([h : (HashTable A B)  h1]) ([(k v)  (in-hash h2)])
+    (hash-set h k v)))

@@ -11,7 +11,7 @@
          math/flonum
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
-         "../gl.rkt"
+         "../../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-lib.rkt"
@@ -182,7 +182,7 @@ code
           (cons "unview" 'unview)
           (cons "proj" 'proj)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Program for pass 2: color
@@ -299,7 +299,7 @@ code
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 (define-singleton (polygon-tran-program-spec)
   (define struct
@@ -321,7 +321,7 @@ code
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Triangle and quad shape passes
@@ -337,7 +337,9 @@ code
                                  Face
                                  Passes))
 (define (make-polygon-shape-passes mode len vs ns cs es ms face)
-  (define mat-data-size (* len (vao-struct-size (program-spec-struct (polygon-mat-program-spec)))))
+  (define mat-struct-size
+    (vao-struct-size (gl-program-struct (program-spec-program (polygon-mat-program-spec)))))
+  (define mat-data-size (* len mat-struct-size))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -352,7 +354,9 @@ code
                       (unsafe-fx+ i 12))])
       i))
   
-  (define draw-data-size (* len (vao-struct-size (program-spec-struct (polygon-opaq-program-spec)))))
+  (define opaq-struct-size
+    (vao-struct-size (gl-program-struct (program-spec-program (polygon-opaq-program-spec)))))
+  (define draw-data-size (* len opaq-struct-size))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -454,7 +458,9 @@ code
   
   (define r (flonum->byte (material-roughness m)))
   
-  (define mat-data-size (* 24 (vao-struct-size (program-spec-struct (polygon-mat-program-spec)))))
+  (define mat-struct-size
+    (vao-struct-size (gl-program-struct (program-spec-program (polygon-mat-program-spec)))))
+  (define mat-data-size (* 24 mat-struct-size))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
   (for/fold ([i : Nonnegative-Fixnum  0]
@@ -468,8 +474,10 @@ code
                       (unsafe-fx+ i 12))])
       i))
   
+  (define opaq-struct-size
+    (vao-struct-size (gl-program-struct (program-spec-program (polygon-opaq-program-spec)))))
   (define material-data-size
-    (assert (- (vao-struct-size (program-spec-struct (polygon-opaq-program-spec))) 12) positive?))
+    (assert (- opaq-struct-size 12) positive?))
   (define material-data (make-bytes material-data-size))
   (define material-ptr (u8vector->cpointer material-data))
   (define-values (ecolor i.lo) (pack-emitted e))
@@ -487,7 +495,7 @@ code
                     (unsafe-fx+ i 1))])
     (void))
   
-  (define draw-data-size (* 24 (vao-struct-size (program-spec-struct (polygon-opaq-program-spec)))))
+  (define draw-data-size (* 24 opaq-struct-size))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([v  (in-vector vs)])

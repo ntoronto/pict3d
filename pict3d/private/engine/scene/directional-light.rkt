@@ -8,7 +8,7 @@
          (except-in typed/opengl/ffi -> cast)
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
-         "../gl.rkt"
+         "../../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-lib.rkt"
@@ -115,7 +115,7 @@ code
           (cons "depth" 'depth)
           (cons "material" 'material)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Directional light shape passes

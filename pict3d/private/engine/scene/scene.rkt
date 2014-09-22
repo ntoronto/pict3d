@@ -29,11 +29,11 @@ for `Scene`.
          "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
+         "../../gl.rkt"
          "../../utils.rkt"
          "../draw-pass.rkt"
          "../draw-passes.rkt"
          "../affine.rkt"
-         "../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
          "types.rkt"
@@ -435,8 +435,6 @@ for `Scene`.
                              Nonnegative-Fixnum
                              (U (List shape-params) Null)))
 (define (merge-single-vertices pd uniforms face mode ps start end)
-  (define struct-size (vao-struct-size (program-spec-struct pd)))
-  
   (define vertex-count
     (for/fold ([vertex-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
       (define v (shape-params-vertices (unsafe-vector-ref ps i)))
@@ -447,6 +445,7 @@ for `Scene`.
   (cond
     [(> vertex-count 0)
      ;; Allocate enough space for all the vertex data
+     (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
      (define buffer-size (unsafe-fx* vertex-count struct-size))
      (define all-vertex-data (make-bytes buffer-size))
      (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))
@@ -480,8 +479,6 @@ for `Scene`.
                             Nonnegative-Fixnum
                             (U (List shape-params) Null)))
 (define (merge-multi-vertices pd uniforms face mode ps start end)
-  (define struct-size (vao-struct-size (program-spec-struct pd)))
-  
   (define-values (vertex-count prim-count)
     (for/fold ([vertex-count : Nonnegative-Fixnum  0]
                [prim-count : Nonnegative-Fixnum  0]
@@ -497,6 +494,7 @@ for `Scene`.
   (cond
     [(and (> vertex-count 0) (> prim-count 0))
      ;; Allocate enough space for all the vertex data
+     (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
      (define buffer-size (unsafe-fx* vertex-count struct-size))
      (define all-vertex-data (make-bytes buffer-size))
      (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))

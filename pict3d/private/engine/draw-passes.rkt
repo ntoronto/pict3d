@@ -6,7 +6,7 @@
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
          "../math/flt3.rkt"
-         "gl.rkt"
+         "../gl.rkt"
          "utils.rkt"
          "shader-lib.rkt"
          "draw-pass.rkt")
@@ -351,17 +351,14 @@ code
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT)
     ;; Load depth and material buffers into texture units 0 and 1
-    (glActiveTexture GL_TEXTURE0)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle (gl-texture-2d-object depth-buffer)))
-    (glActiveTexture GL_TEXTURE1)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0))))
-    (glActiveTexture GL_TEXTURE0)
-    ;; Draw pass 0
-    (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
-           [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-      (draw-pass 0 passes standard-uniforms)))
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture depth-buffer
+        (with-gl-active-texture GL_TEXTURE1
+          (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+            ;; Draw pass 0
+            (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
+                   [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
+              (draw-pass 0 passes standard-uniforms)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 2 (color): Draw opaque geometry with lighting
@@ -375,19 +372,14 @@ code
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT)
     ;; Load diffuse and specular buffers into texture units 0 and 1
-    (glActiveTexture GL_TEXTURE0)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0))))
-    (glActiveTexture GL_TEXTURE1)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1))))
-    (glActiveTexture GL_TEXTURE0)
-    ;; Draw pass 2
-    (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
-           [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-      (draw-pass 2 passes standard-uniforms)))
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
+        (with-gl-active-texture GL_TEXTURE1
+          (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
+            ;; Draw pass 2
+            (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
+                   [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
+              (draw-pass 2 passes standard-uniforms)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 3 (pre-light): Compute nearest transparent geometry depth, normals and specular powers
@@ -417,17 +409,14 @@ code
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT)
     ;; Load depth and material buffers into texture units 0 and 1
-    (glActiveTexture GL_TEXTURE0)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle (gl-texture-2d-object tran-depth-buffer)))
-    (glActiveTexture GL_TEXTURE1)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d tran-mat-fbo GL_COLOR_ATTACHMENT0))))
-    (glActiveTexture GL_TEXTURE0)
-    ;; Draw pass 0
-    (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
-           [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-      (draw-pass 0 passes standard-uniforms)))
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture tran-depth-buffer
+        (with-gl-active-texture GL_TEXTURE1
+          (with-gl-texture (gl-framebuffer-texture-2d tran-mat-fbo GL_COLOR_ATTACHMENT0)
+            ;; Draw pass 0
+            (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
+                   [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
+              (draw-pass 0 passes standard-uniforms)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 4 (transparency): Accumulate transparent geometry weighted outputs
@@ -442,19 +431,14 @@ code
     (glEnable GL_BLEND)
     (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
     ;; Load diffuse and specular buffers into texture units 0 and 1
-    (glActiveTexture GL_TEXTURE0)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0))))
-    (glActiveTexture GL_TEXTURE1)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1))))
-    (glActiveTexture GL_TEXTURE0)
-    ;; Draw pass 4
-    (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
-           [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-      (draw-pass 4 passes standard-uniforms)))
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
+        (with-gl-active-texture GL_TEXTURE1
+          (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
+            ;; Draw pass 4
+            (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
+                   [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
+              (draw-pass 4 passes standard-uniforms)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Draw weighted transparency output
@@ -469,21 +453,13 @@ code
       (glDisable GL_DEPTH_TEST)
       (glEnable GL_BLEND)
       (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
-      
-      (gl-program-uniform program "rgba" (uniform-int 0))
-      (glActiveTexture GL_TEXTURE0)
-      (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                    (gl-texture-2d-object
-                                     (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0))))
-      
-      (gl-program-uniform program "weight" (uniform-int 1))
-      (glActiveTexture GL_TEXTURE1)
-      (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                    (gl-texture-2d-object
-                                     (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1))))
-      (glActiveTexture GL_TEXTURE0)
-      
-      (draw-fullscreen-quad tex-width tex-height)))
+      (with-gl-active-texture GL_TEXTURE0
+        (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0)
+          (with-gl-active-texture GL_TEXTURE1
+            (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1)
+              (gl-program-uniform program "rgba" (uniform-int 0))
+              (gl-program-uniform program "weight" (uniform-int 1))
+              (draw-fullscreen-quad tex-width tex-height)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Extract overbright values and blur
@@ -495,10 +471,10 @@ code
     (define program (bloom-extract-program))
     (with-gl-program program
       (gl-program-uniform program "rgba" (uniform-int 0))
-      (with-gl-texture-2d (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad tex-width tex-height))))
   
-  (with-gl-texture-2d (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
+  (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
     (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST)
     ;; Some stupid ATI drivers don't generate mipmaps unless this enable is done immediately before:
     (glEnable GL_TEXTURE_2D)
@@ -527,7 +503,7 @@ code
     
     (with-gl-framebuffer bloom-fbo
       (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
-      (with-gl-texture-2d (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
+      (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad tex-width tex-height)))
     
     ;; Ping-pong horizontal and vertical blur, alternating between "bloom-fbo => blur-fbo"
@@ -540,7 +516,7 @@ code
           (gl-program-uniform horz-program "rgba" (uniform-int 0))
           (gl-program-uniform horz-program "width" (uniform-int (gl-framebuffer-width blur-fbo)))
           ;; Read from bloom-fbo
-          (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
+          (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
             (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom)))))
       
       (with-gl-program vert-program
@@ -550,14 +526,14 @@ code
           (gl-program-uniform vert-program "rgba" (uniform-int 0))
           (gl-program-uniform vert-program "height" (uniform-int (gl-framebuffer-height bloom-fbo)))
           ;; Read from blur-fbo
-          (with-gl-texture-2d (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
+          (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
             (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))))
     
     (glEnable GL_BLEND)
     (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
-      (with-gl-texture-2d (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
+      (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))
     )
   
@@ -579,22 +555,15 @@ code
     (glEnable GL_BLEND)
     (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
     
-    (gl-program-uniform program "bloom_frac" (uniform-float (/ 1.0 (fl (length bloom-levels)))))
-    
-    (gl-program-uniform program "color_tex" (uniform-int 0))
-    (glActiveTexture GL_TEXTURE0)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0))))
-    
-    (gl-program-uniform program "bloom_tex" (uniform-int 1))
-    (glActiveTexture GL_TEXTURE1)
-    (glBindTexture GL_TEXTURE_2D (gl-object-handle
-                                  (gl-texture-2d-object
-                                   (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0))))
-    (glActiveTexture GL_TEXTURE0)
-    
-    (draw-fullscreen-quad tex-width tex-height))
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+        (with-gl-active-texture GL_TEXTURE1
+          (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+            (define bloom-frac (/ 1.0 (fl (length bloom-levels))))
+            (gl-program-uniform program "bloom_frac" (uniform-float bloom-frac))
+            (gl-program-uniform program "color_tex" (uniform-int 0))
+            (gl-program-uniform program "bloom_tex" (uniform-int 1))
+            (draw-fullscreen-quad tex-width tex-height))))))
 
 #|  
   (glViewport 0 0 width height)
@@ -603,7 +572,7 @@ code
   (glEnable GL_TEXTURE_2D)
   (glDisable GL_BLEND)
   (glDisable GL_DEPTH_TEST)
-  (with-gl-texture-2d (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+  (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
     (draw-fullscreen-quad tex-width tex-height))
   |#
   )

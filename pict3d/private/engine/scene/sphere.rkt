@@ -10,8 +10,8 @@
          math/flonum
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
+         "../../gl.rkt"
          "../affine.rkt"
-         "../gl.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-lib.rkt"
@@ -141,7 +141,7 @@ code
           (cons "width" 'width)
           (cons "height" 'height)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Program for pass 2: color
@@ -332,7 +332,7 @@ code
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 (define-singleton (sphere-tran-program-spec)
   (define struct
@@ -361,7 +361,7 @@ code
           (cons "diffuse" 'diffuse)
           (cons "specular" 'specular)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Sphere shape passes
@@ -383,7 +383,8 @@ code
   (for ([j  (in-range 1 4)])
     (bytes-copy! mat-data (unsafe-fx* j mat-datum-size) mat-data 0 mat-datum-size))
   
-  (define draw-datum-size (vao-struct-size (program-spec-struct (sphere-opaq-program-spec))))
+  (define draw-datum-size
+    (vao-struct-size (gl-program-struct (program-spec-program (sphere-opaq-program-spec)))))
   (define draw-data-size (* 4 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
   (define-values (ecolor i.lo) (pack-emitted e))

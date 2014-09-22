@@ -10,8 +10,8 @@
          "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
+         "../../gl.rkt"
          "../draw-pass.rkt"
-         "../gl.rkt"
          "../shader-lib.rkt"
          "../types.rkt"
          "../utils.rkt"
@@ -134,7 +134,7 @@ code
           (cons "depth" 'depth)
           (cons "material" 'material)))
   
-  (program-spec program uniforms struct))
+  (program-spec program uniforms))
 
 ;; ===================================================================================================
 ;; Point light shape passes

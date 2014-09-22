@@ -8,8 +8,8 @@
          typed/opengl
          "../math/flt3.rkt"
          "../engine/scene.rkt"
-         "../engine/gl.rkt"
          "../engine/utils.rkt"
+         "../gl.rkt"
          "pict3d-snip.rkt"
          )
 

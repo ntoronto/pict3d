@@ -14,13 +14,14 @@
          "../math/flt3.rkt"
          "../math/flrect3.rkt"
          "../engine/scene.rkt"
-         "../engine/gl.rkt"
          "../engine/utils.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
          "../engine/affine.rkt"
+         "../gl.rkt"
          "../utils.rkt"
-         "../gui/user-types.rkt"
+         "user-types.rkt"
+         "utils.rkt"
          "axes-scene.rkt"
          )
 

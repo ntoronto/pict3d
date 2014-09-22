@@ -5,9 +5,9 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../utils.rkt"
+         "../../gl.rkt"
          "../draw-pass.rkt"
          "../affine.rkt"
-         "../gl.rkt"
          "../types.rkt")
 
 (provide (all-defined-out))

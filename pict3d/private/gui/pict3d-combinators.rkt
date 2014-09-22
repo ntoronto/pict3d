@@ -10,6 +10,7 @@
          "../engine/scene.rkt"
          "../engine/utils.rkt"
          "../engine/types.rkt"
+         "../utils.rkt"
          "pict3d-snip.rkt"
          "user-types.rkt"
          )

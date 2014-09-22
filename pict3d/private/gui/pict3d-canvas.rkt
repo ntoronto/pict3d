@@ -9,9 +9,9 @@
          "../math/flv3.rkt"
          "../math/flt3.rkt"
          "../engine/scene.rkt"
-         "../engine/gl.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
+         "../gl.rkt"
          "../utils.rkt"
          "pict3d-snip.rkt"
          )
@@ -44,7 +44,7 @@
          (init-field [pict  Pict3D #:optional])
          [set-pict3d  (-> Pict3D Void)]
          [get-pict3d  (-> Pict3D)]
-         [get-managed-gl-context  (-> gl-context)]
+         [get-managed-gl-context  (-> GL-Context)]
          ))
 
 ;; ===================================================================================================
@@ -119,7 +119,7 @@
     
     (define config (new gl-config%))
     (send config set-legacy? #f)
-    (send config set-share-context (get-gl-context (get-master-gl-context)))
+    (send config set-share-context (gl-context-context (get-master-gl-context)))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
@@ -182,17 +182,17 @@
     
     (define/public (get-pict3d) pict)
     
-    (: managed-ctxt (U #f gl-context))
+    (: managed-ctxt (U #f GL-Context))
     (define managed-ctxt #f)
     
-    (: get-managed-gl-context (-> gl-context))
+    (: get-managed-gl-context (-> GL-Context))
     (define/public (get-managed-gl-context)
       (define ctxt (send (send this get-dc) get-gl-context))
       (define mctxt managed-ctxt)
       (cond [(or (not ctxt) (not (send ctxt ok?)))
              (error 'get-managed-context "no GL context is available")]
             [(or (not mctxt)
-                 (not (eq? ctxt (get-gl-context mctxt))))
+                 (not (eq? ctxt (gl-context-context mctxt))))
              (let ([mctxt  (managed-gl-context ctxt)])
                (set! managed-ctxt mctxt)
                mctxt)]
