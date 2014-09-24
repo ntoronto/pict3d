@@ -50,6 +50,7 @@
          current-pict3d-background
          current-pict3d-ambient-color
          current-pict3d-ambient-intensity
+         snip-class
          pict3d
          empty-pict3d
          pict3d-scene
@@ -449,6 +450,19 @@
 (define white-pen (make-object pen% "white" 1 'solid))
 (define trans-brush (make-object brush% "black" 'transparent))
 
+(define pict3d-snip-class%
+  (class snip-class%
+    (super-make-object)
+    
+    (send this set-classname
+          (format "~s" '(lib "pict3d-snip.rkt" "pict3d" "private" "gui")))
+    (send this set-version 0)
+    
+    (define/override (read f)
+      empty-pict3d)))
+
+(define snip-class (make-object pict3d-snip-class%))
+
 (: pict3d% Pict3D%)
 (define pict3d%
   (class snip%
@@ -464,6 +478,9 @@
                 ambient-intensity)
     
     (super-make-object)
+    
+    (send this set-snipclass snip-class)
+    (send (get-the-snip-class-list) add snip-class)
     
     (: the-bitmap (U #f (Instance Bitmap%)))
     (define the-bitmap #f)
@@ -514,6 +531,9 @@
     (define/override (copy)
       (make-object pict3d% scene bases
         width height z-near z-far fov-degrees background ambient-color ambient-intensity))
+    
+    (define/override (write f)
+      (send f put 8 #"(pict3d)"))
     
     (: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
