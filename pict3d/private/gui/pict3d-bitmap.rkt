@@ -1,8 +1,9 @@
-#lang typed/racket/base
+#lang racket/base
 
 (require racket/fixnum
          racket/math
          math/flonum
+         typed/racket/base
          typed/racket/gui
          typed/racket/class
          typed/opengl

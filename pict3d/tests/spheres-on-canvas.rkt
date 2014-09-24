@@ -1,9 +1,8 @@
-#lang typed/racket/base
+#lang racket
 
-(require typed/racket/gui
-         typed/racket/class
+(require racket/gui
+         racket/class
          pict3d
-         racket/math
          math/flonum)
 
 (current-material '(0.05 0.70 0.25 0.1))
@@ -11,10 +10,9 @@
 (define (random-color)
   (build-list 3 (λ (_) (+ (* (random) 0.5) 0.5))))
 
-(: normalize-color (-> (Listof Real) (Listof Real)))
 (define (normalize-color rgb)
   (define mx (apply max rgb))
-  (map (λ ([r : Real]) (/ r mx)) rgb))
+  (map (λ (r) (/ r mx)) rgb))
 
 (define (random-position)
   (build-list 3 (λ (_) (* (- (random) 0.5) 50))))
@@ -43,7 +41,7 @@
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
 
-(let loop ([i : Natural  0])
+(let loop ([i 0])
   (when (send frame is-shown?)
     (define start-time (fl (current-inexact-milliseconds)))
     (define cx (cos (degrees->radians i)))

@@ -1,4 +1,4 @@
-#lang typed/racket/base
+#lang racket/base
 
 (require racket/list
          racket/match
@@ -9,6 +9,7 @@
          typed/racket/gui
          typed/racket/class
          typed/racket/async-channel
+         typed/racket/base
          typed/opengl
          "../math/flv3.rkt"
          "../math/flt3.rkt"
@@ -198,28 +199,30 @@
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
-     (with-gl-context (get-master-gl-context)
-       ;; Draw the scene and all its little extra bits (bases, etc.)
-       (draw-draw-passes (send snip get-draw-passes view proj)
-                         width height
-                         view proj
-                         background ambient-color ambient-intensity)
-       
-       ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
-       (define row-size (* width 4))
-       (define bs (get-the-bytes (assert (* row-size height) index?)))
-       (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-       
-       ;; Flip right-side-up
-       (define tmp (get-tmp-bytes row-size))
-       (for ([row  (in-range (fxquotient height 2))])
-         (define i0 (* row row-size))
-         (define i1 (* (- (- height row) 1) row-size))
-         (bytes-copy! tmp 0 bs i0 (+ i0 row-size))
-         (bytes-copy! bs i0 bs i1 (+ i1 row-size))
-         (bytes-copy! bs i1 tmp 0 row-size))
-       
-       (send snip set-argb-pixels bs))
+     (call-with-gl-context
+      (λ ()
+        ;; Draw the scene and all its little extra bits (bases, etc.)
+        (draw-draw-passes (send snip get-draw-passes view proj)
+                          width height
+                          view proj
+                          background ambient-color ambient-intensity)
+        
+        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
+        (define row-size (* width 4))
+        (define bs (get-the-bytes (assert (* row-size height) index?)))
+        (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
+        
+        ;; Flip right-side-up
+        (define tmp (get-tmp-bytes row-size))
+        (for ([row  (in-range (fxquotient height 2))])
+          (define i0 (* row row-size))
+          (define i1 (* (- (- height row) 1) row-size))
+          (bytes-copy! tmp 0 bs i0 (+ i0 row-size))
+          (bytes-copy! bs i0 bs i1 (+ i1 row-size))
+          (bytes-copy! bs i1 tmp 0 row-size))
+        
+        (send snip set-argb-pixels bs))
+      (get-master-gl-context))
      )
     (render-thread-loop))
   
@@ -245,8 +248,8 @@
       (let ([camera  (hash-ref (pict3d-bases pict) 'camera #f)])
         (cond
           [camera
-           (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-             (flaffine3-values (->flaffine3 (Basis-forward camera))))
+           (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+             (flvector->list (flaffine3-entries (->flaffine3 (Basis-forward camera)))))
            (define position (flvector m03 m13 m23))
            (define yaw (- (atan m12 m02) (/ pi 2.0)))
            (define pitch (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))
@@ -491,9 +494,6 @@
     (define/public (get-scene) scene)
     (define/public (get-bases) bases)
     
-    (: passes (Lazy-Box (Vectorof draw-passes)))
-    (define passes (lazy-box (Vectorof draw-passes)))
-    
     (define/public (get-draw-passes view proj)
       (define t (flt3compose proj view))
       (define planes (flprojective3-frustum-planes (->flprojective3 t)))
@@ -530,7 +530,7 @@
       (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
       (super draw dc x y left top right bottom dx dy draw-caret))
     
-    #;; Can't use this because of an error in TR
+    ;; Can't use this because of an error in TR
     (define/override (get-extent dc x y [w #f] [h #f] [descent #f] [space #f] [lspace #f] [rspace #f])
       (when (box? w) (set-box! w (+ width 4)))
       (when (box? h) (set-box! h (+ height 4)))
@@ -539,7 +539,7 @@
       (when (box? lspace) (set-box! lspace 0))
       (when (box? rspace) (set-box! rspace 0)))
     
-    ;; This works around it
+    #;; This works around it
     (define/override (get-extent dc x y . #{args : (Listof (U #f (Boxof Nonnegative-Real)))})
       (match-define (list w h descent space lspace rspace) args)
       (when (box? w) (set-box! w (+ width 4)))

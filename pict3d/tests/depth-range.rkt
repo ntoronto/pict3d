@@ -1,9 +1,9 @@
-#lang typed/racket
+#lang racket
 
 (require pict3d
          math/flonum
-         typed/racket/gui
-         typed/racket/class)
+         racket/gui
+         racket/class)
 
 (current-pict3d-width 512)
 (current-pict3d-height 512)

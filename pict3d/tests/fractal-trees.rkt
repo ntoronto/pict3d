@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang racket
 
 (require pict3d)
 
@@ -17,7 +17,7 @@
    (scale (normal-basis '(0 0 1) '(-1/3 0 1) 15)
           '(0.75 0.75 0.75))))
 
-(: build-tree (-> Natural Pict3D))
+;(: build-tree (-> Natural Pict3D))
 (define (build-tree n)
   (cond [(= n 0)  leaf]
         [else
@@ -32,7 +32,7 @@ t
 frozen-t
 
 (define s
-  (for*/fold ([s : Pict3D  empty-pict3d]) ([x  (in-range -3 4)]
-                                           [y  (in-range -3 4)])
+  (for*/fold ([s  empty-pict3d]) ([x  (in-range -3 4)]
+                                  [y  (in-range -3 4)])
     (combine s (move frozen-t (list (* x 5) (* y 5) 0)))))
 s

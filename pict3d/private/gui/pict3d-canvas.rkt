@@ -1,8 +1,9 @@
-#lang typed/racket/base
+#lang racket/base
 
 (require racket/match
          racket/math
          math/flonum
+         typed/racket/base
          typed/racket/gui
          typed/racket/class
          typed/racket/async-channel
@@ -88,12 +89,14 @@
      (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
      
      ;; Lock everything up for drawing
-     (with-gl-context (send canvas get-managed-gl-context)
-       ;; Draw the scene and swap buffers
-       (draw-scene (send pict get-scene) width height
-                   view proj
-                   background ambient-color ambient-intensity)
-       (gl-swap-buffers))
+     (call-with-gl-context
+      (λ ()
+        ;; Draw the scene and swap buffers
+        (draw-scene (send pict get-scene) width height
+                    view proj
+                    background ambient-color ambient-intensity)
+        (gl-swap-buffers))
+      (send canvas get-managed-gl-context))
      )
     (render-thread-loop))
   
@@ -117,9 +120,7 @@
           [stretchable-height  #t])
     (init-field [pict  empty-pict3d])
     
-    (define config (new gl-config%))
-    (send config set-legacy? #f)
-    (send config set-share-context (gl-context-context (get-master-gl-context)))
+    (define config (make-shared-gl-config))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]

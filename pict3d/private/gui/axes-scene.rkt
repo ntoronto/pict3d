@@ -10,20 +10,6 @@
 
 (provide axes-scene)
 
-#;
-(define (make-up-arrow)
-  (combine
-   (rectangle '(-1/64 -1/64 -1/64)
-              '(1/64 1/64 56/64))
-   (let ([p  (triangle '(2/64 2/64 56/64)
-                       '(-2/64 2/64 56/64)
-                       '(0 0 1))])
-     (combine p (rotate-z p 90) (rotate-z p 180) (rotate-z p 270)))
-   (quad '(2/64 2/64 56/64)
-         '(2/64 -2/64 56/64)
-         '(-2/64 -2/64 56/64)
-         '(-2/64 2/64 56/64))))
-
 (: make-unit-pyramid-scene (-> FlVector FlVector material Scene))
 (define (make-unit-pyramid-scene c e m)
   (scene-union

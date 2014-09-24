@@ -8,8 +8,7 @@
          "gl/renderbuffer.rkt"
          "gl/framebuffer.rkt"
          "gl/program.rkt"
-         "gl/face.rkt"
-         "gl/master-context.rkt")
+         "gl/face.rkt")
 
 (provide (all-from-out
           "gl/context.rkt"
@@ -20,5 +19,4 @@
           "gl/renderbuffer.rkt"
           "gl/framebuffer.rkt"
           "gl/program.rkt"
-          "gl/face.rkt"
-          "gl/master-context.rkt"))
+          "gl/face.rkt"))

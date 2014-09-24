@@ -1,8 +1,6 @@
-#lang typed/racket
+#lang racket
 
-(require typed/racket/gui
-         typed/racket/class
-         pict3d)
+(require pict3d)
 
 (require math/flonum
          math/base
@@ -13,7 +11,7 @@
          pict3d/private/engine/scene)
 
 (define sphere-vs 
-  (for/list : (Listof (Listof Flonum)) ([_  (in-range 5000)])
+  (for/list ([_  (in-range 5000)])
     (list (* (- (random) 0.5) 2)
           (* (- (random) 0.5) 2)
           (* (- (random) 0.5) 2))))
@@ -35,13 +33,13 @@
 (define wacky-blue-spheres
   (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
 
-(: frustum (-> FlTransform3 Pict3D))
+;(: frustum (-> FlTransform3 Pict3D))
 (define (frustum t)
   (define tinv (flt3inverse t))
   (match-define (list v1 v2 v4 v3 v5 v6 v8 v7)
-    (for*/list : (Listof FlVector) ([z  (list -1.0 1.0)]
-                                    [y  (list -1.0 1.0)]
-                                    [x  (list -1.0 1.0)])
+    (for*/list ([z  (list -1.0 1.0)]
+                [y  (list -1.0 1.0)]
+                [x  (list -1.0 1.0)])
       (flt3apply/pos tinv (flvector x y z))))
   
   (combine

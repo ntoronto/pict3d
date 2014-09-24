@@ -1,8 +1,6 @@
-#lang typed/racket/base
+#lang racket
 
-(require racket/list
-         typed/racket/class
-         typed/racket/gui
+(require racket/gui
          math/base
          math/flonum
          pict3d
@@ -12,29 +10,26 @@
 (current-pict3d-width 512)
 (current-pict3d-height 384)
 
-(: xyz-fun (-> Flonum Flonum FlVector))
+;(: xyz-fun (-> Flonum Flonum FlVector))
 (define (xyz-fun x y)
   (let ([x  (+ x (* 0.1 (sin (* (+ x y) 10))))]
         [y  (+ y (* 0.1 (cos (* (+ x y) 10))))])
     (flvector x y (* 1.0 (sin x) (cos y)))))
 
-(: norm-fun (-> Flonum Flonum FlVector))
+;(: norm-fun (-> Flonum Flonum FlVector))
 (define (norm-fun x y)
   (let ([x  (+ x (* 0.1 (sin (* (+ x y) 10))))]
         [y  (+ y (* 0.1 (cos (* (+ x y) 10))))])
-    (assert
-     (flv3normalize (flvector (* -1.0 (cos x) (cos y))
-                              (* +1.0 (sin x) (sin y))
-                              1.0))
-     values)))
+    (flv3normalize (flvector (* -1.0 (cos x) (cos y))
+                             (* +1.0 (sin x) (sin y))
+                             1.0))))
 
 (define grid-size 64)
 
 (define vss
   (append*
-   (for*/list : (Listof (Listof (List FlVector FlVector FlVector)))
-     ([xi  (in-range 0 grid-size)]
-      [yi  (in-range 0 grid-size)])
+   (for*/list ([xi  (in-range 0 grid-size)]
+               [yi  (in-range 0 grid-size)])
      (define x0 (* 0.5 (- xi (* 0.5 grid-size))))
      (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
      (define x1 (+ x0 0.5))
@@ -54,7 +49,7 @@
 (define ts
   (time
    (append
-    (for/list : (Listof Pict3D) ([vs  (in-list vss)])
+    (for/list ([vs  (in-list vss)])
       (apply triangle vs)))))
 
 (define lights
@@ -63,16 +58,16 @@
     
     (list (light '(0 0 2) '(1.0 1.0 0.95) 5))
     
-    (for*/list : (Listof Pict3D) ([xi  (in-range 0 grid-size 8)]
-                                  [yi  (in-range 0 grid-size 8)])
+    (for*/list ([xi  (in-range 0 grid-size 8)]
+                [yi  (in-range 0 grid-size 8)])
       (define x0 (* 0.5 (- xi (* 0.5 grid-size))))
       (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
       (light (list x0 y0 2) '(1 1 0.95) 2)))))
 
 (define rects
   (time
-   (for*/list : (Listof Pict3D) ([xi  (in-range 1 grid-size 2)]
-                                 [yi  (in-range 1 grid-size 2)])
+   (for*/list ([xi  (in-range 1 grid-size 2)]
+               [yi  (in-range 1 grid-size 2)])
      (define x0 (* 0.5 (- xi (* 0.5 grid-size))))
      (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
      (define x1 (+ x0 0.5))

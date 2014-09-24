@@ -1,5 +1,3 @@
-======================================================================================================
-Short-term (before RacketCon)
 
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
 
@@ -8,8 +6,7 @@ pict3d%
  * Make pict3d% snips save and load drawing parameters (e.g. near and far plane distances)
  * Fix editor lock problem
 
-======================================================================================================
-Medium-term (if time before RacketCon)
+Reorder arguments in `call-with-*` functions and macros
 
 Speed up vector operations (settle for < 4 ulps error)
 

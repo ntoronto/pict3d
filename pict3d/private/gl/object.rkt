@@ -37,8 +37,9 @@
      (define ctxt (with-handlers ([exn?  (λ (e) #f)])
                     (gl-object-context obj)))
      (when (and ctxt (gl-context-ok? ctxt))
-       (with-gl-context ctxt
-         (delete (gl-object-handle obj)))))))
+       (call-with-gl-context
+        (λ () (delete (gl-object-handle obj)))
+        ctxt)))))
 
 (define-syntax-rule (call-with-gl-object body-thunk param obj bind)
   (call-with-gl-state body-thunk param obj (λ (v) (bind (gl-object-handle v)))))
