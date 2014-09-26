@@ -34,6 +34,7 @@
          Basis-Label
          Bases
          Pict3D
+         pict3d?
          default-pict3d-width
          default-pict3d-height
          default-pict3d-z-near
@@ -140,6 +141,34 @@
 (define-type Basis-Label (U String Symbol Number (Pair Basis-Label Basis-Label) Null))
 
 (define-type Bases (HashTable Basis-Label Basis))
+#|
+(: basis->sexp (-> Basis SExp))
+(define (basis->sexp t)
+  (make-hash (list (cons 'forward (flaffine3->sexp (Basis-forward t)))
+                   (cons 'inverse (flaffine3->sexp (Basis-inverse t))))))
+
+(: bases->sexp (-> Bases SExp))
+(define (bases->sexp h)
+  (for/hash ([(k t)  (in-hash h)])
+    (values k (basis->sexp t))))
+
+(: sexp->basis (-> Any Basis))
+(define (sexp->basis e)
+  (cond [(hash? e)
+         (basis (sexp->flaffine3 (hash-ref e 'forward))
+                (sexp->flaffine3 (hash-ref e 'inverse)))]
+        [else
+         (raise-argument-error 'sexp->basis "hash" e)]))
+
+(: sexp->bases (-> Any Bases))
+(define (sexp->bases e)
+  (cond [(hash? e)
+         (for/hash ([(k e)  (in-hash e)])
+           (values k (sexp->basis e)))]
+        [else
+         (raise-argument-error 'sexp->bases "hash" e)]))
+|#
+;; ===================================================================================================
 
 (define-type Pict3D%
   (Class #:implements Snip%
@@ -454,14 +483,15 @@
   (class snip-class%
     (super-make-object)
     
-    (send this set-classname
-          (format "~s" '(lib "pict3d-snip.rkt" "pict3d" "private" "gui")))
+    (send this set-classname (format "~s" '(lib "pict3d-snip.rkt" "pict3d" "private" "gui")))
     (send this set-version 0)
     
     (define/override (read f)
-      empty-pict3d)))
+      (error 'read "pict3d does not support cut, copy and paste yet"))
+    ))
 
 (define snip-class (make-object pict3d-snip-class%))
+(send (get-the-snip-class-list) add snip-class)
 
 (: pict3d% Pict3D%)
 (define pict3d%
@@ -481,6 +511,17 @@
     
     (send this set-snipclass snip-class)
     (send (get-the-snip-class-list) add snip-class)
+    
+    (define/public (get-scene) scene)
+    (define/public (get-bases) bases)
+    
+    (: copy (-> Pict3D))
+    (define/override (copy)
+      (make-object pict3d% scene bases
+        width height z-near z-far fov-degrees background ambient-color ambient-intensity))
+    
+    (define/override (write f)
+      (error 'write "pict3d does not support cut, copy and paste yet"))
     
     (: the-bitmap (U #f (Instance Bitmap%)))
     (define the-bitmap #f)
@@ -508,32 +549,19 @@
       (when admin
         (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
     
-    (define/public (get-scene) scene)
-    (define/public (get-bases) bases)
-    
     (define/public (get-draw-passes view proj)
       (define t (flt3compose proj view))
       (define planes (flprojective3-frustum-planes (->flprojective3 t)))
-      (define scene-val scene)
-      (if scene-val
-          (list->vector
-           (append (scene-draw-passes scene-val planes)
-                   (scene-draw-passes axes-scene planes)
-                   (list (draw-passes (shape-passes standard-over-light) identity-affine)
-                         (draw-passes (shape-passes standard-under-light) identity-affine))
-                   (append*
-                    (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
-                      (scene-draw-passes (force (Basis-scene p)) planes)))))
-          (vector))
+      (define scene-val (pict3d-scene this))
+      (list->vector
+       (append (scene-draw-passes scene-val planes)
+               (scene-draw-passes axes-scene planes)
+               (list (draw-passes (shape-passes standard-over-light) identity-affine)
+                     (draw-passes (shape-passes standard-under-light) identity-affine))
+               (append*
+                (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
+                  (scene-draw-passes (force (Basis-scene p)) planes)))))
       )
-    
-    (: copy (-> Pict3D))
-    (define/override (copy)
-      (make-object pict3d% scene bases
-        width height z-near z-far fov-degrees background ambient-color ambient-intensity))
-    
-    (define/override (write f)
-      (send f put 8 #"(pict3d)"))
     
     (: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
@@ -589,7 +617,15 @@
             (and gui-val (send gui-val is-capturing?)))
           blank-cursor
           #f))
+    
+    (define/override (get-num-scroll-steps)
+      (exact-ceiling (/ height 16)))
+    
+    (define/override (get-scroll-step-offset y)
+      (* y 16))
     ))
+
+(define (pict3d? p) (is-a? p pict3d%))
 
 (: pict3d (-> Scene Bases Pict3D))
 (define (pict3d s ps)
