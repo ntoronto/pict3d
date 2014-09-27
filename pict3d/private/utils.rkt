@@ -189,13 +189,34 @@
   (for ([k  (in-list (hash-keys h))])
     (hash-remove! h k)))
 
-(: hash-empty?* (All (A B) (-> (HashTable A B) Boolean)))
-(define (hash-empty?* h)
-  (let/ec return : Boolean
-    (for/and : Boolean ([(k v)  (in-hash h)])
-      (return #f))))
+(define-type (List-Hash A B) (Listof (Pair A B)))
 
-(: hash-merge (All (A B) (-> (HashTable A B) (HashTable A B) (HashTable A B))))
-(define (hash-merge h1 h2)
-  (for/fold ([h : (HashTable A B)  h1]) ([(k v)  (in-hash h2)])
-    (hash-set h k v)))
+(: list-hasheq-ref (All (A B) (->* [(List-Hash A B) A] [(-> B)] B)))
+(define (list-hasheq-ref orig-h k [thnk #f])
+  (let loop ([h orig-h])
+    (cond [(empty? h)  (if thnk (thnk) (error 'list-hasheq-ref "no key ~e in hash ~e" k orig-h))]
+          [else
+           (define kv (first h))
+           (cond [(eq? (car kv) k)  (cdr kv)]
+                 [else  (loop (rest h))])])))
+
+(: list-hasheq-remove (All (A B) (-> (List-Hash A B) A (List-Hash A B))))
+(define (list-hasheq-remove h k)
+  (let loop ([h h])
+    (cond [(empty? h)  empty]
+          [else
+           (define kv (first h))
+           (cond [(eq? (car kv) k)  (rest h)]
+                 [else
+                  (define rest-h (rest h))
+                  (define new-rest-h (loop rest-h))
+                  (if (eq? new-rest-h rest-h) h (cons kv new-rest-h))])])))
+
+(: list-hasheq-set (All (A B) (-> (List-Hash A B) A B (List-Hash A B))))
+(define (list-hasheq-set h k v)
+  (cons (cons k v)
+        (list-hasheq-remove h k)))
+
+(: list-hasheq-merge (All (A B) (-> (List-Hash A B) (List-Hash A B) (List-Hash A B))))
+(define (list-hasheq-merge h1 h2)
+  ((inst remove-duplicates (Pair A B) A) (append h1 h2) eq? #:key car))

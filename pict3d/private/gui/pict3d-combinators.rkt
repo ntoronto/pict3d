@@ -1,8 +1,9 @@
-#lang racket/base
+#lang typed/racket/base
 
 (require racket/list
          racket/match
-         typed/racket/base
+         typed/racket/class
+         typed/racket/gui
          math/flonum
          math/base
          "../math/flv3.rkt"
@@ -12,8 +13,9 @@
          "../engine/utils.rkt"
          "../engine/types.rkt"
          "../utils.rkt"
-         "pict3d-snip.rkt"
          "user-types.rkt"
+         "basis.rkt"
+         "pict3d-struct.rkt"
          )
 
 (provide
@@ -24,9 +26,6 @@
  current-color
  current-emitted
  current-material
- with-color
- with-emitted
- with-material
  ;; Bases
  get-basis
  set-basis
@@ -47,14 +46,26 @@
  scale-y
  scale-z
  scale
+ scale-basis-x
+ scale-basis-y
+ scale-basis-z
+ scale-basis
  rotate-x
  rotate-y
  rotate-z
  rotate
+ rotate-basis-x
+ rotate-basis-y
+ rotate-basis-z
+ rotate-basis
  move-x
  move-y
  move-z
  move
+ move-basis-x
+ move-basis-y
+ move-basis-z
+ move-basis
  combine
  combine*
  pin
@@ -82,15 +93,6 @@
 (: current-material (Parameterof (U material (List Real Real Real Real)) material))
 (define current-material 
   (make-parameter (->material default-material) ->material))
-
-(define-syntax-rule (with-color col body ...)
-  (parameterize ([current-color col]) body ...))
-
-(define-syntax-rule (with-emitted col body ...)
-  (parameterize ([current-emitted col]) body ...))
-
-(define-syntax-rule (with-material mat body ...)
-  (parameterize ([current-material mat]) body ...))
 
 ;; ===================================================================================================
 ;; Affine bases
@@ -141,37 +143,38 @@
          (flt3compose (basis-inverse p) tinv)))
 
 (: bases-post-transform (-> Bases FlAffine3- FlAffine3- Bases))
-(define (bases-post-transform ps t tinv)
-  (for/hash : Bases ([(label p)  (in-hash ps)])
-    (values label (basis-post-transform p t tinv))))
+(define (bases-post-transform bases t tinv)
+  (for/list : Bases ([kv  (in-list bases)])
+    (match-define (cons label p) kv)
+    (cons label (basis-post-transform p t tinv))))
 
-(: get-basis (->* [Pict3D] [Basis-Label] Basis))
-(define (get-basis s [label null])
+(: get-basis (->* [Pict3D] [Symbol] Basis))
+(define (get-basis s [label 'default])
   (define h (pict3d-bases s))
-  (if (hash-empty?* h)
+  (if (empty? h)
       (error 'get-basis "scene has no bases")
-      (hash-ref h label (λ () (error 'get-basis "scene has no basis labeled ~e" label)))))
+      (list-hasheq-ref h label (λ () (error 'get-basis "scene has no basis labeled ~e" label)))))
 
 (: set-basis (case-> (-> Pict3D Basis Pict3D)
-                     (-> Pict3D Basis-Label Basis Pict3D)))
-(define set-basis 
+                     (-> Pict3D Symbol Basis Pict3D)))
+(define set-basis
   (case-lambda
-    [(s p)  (set-basis s null p)]
+    [(s p)  (set-basis s 'default p)]
     [(s label p)
      (define h (pict3d-bases s))
-     (pict3d (pict3d-scene s) (hash-set h label p))]))
+     (pict3d (pict3d-scene s) (list-hasheq-set h label p))]))
 
-(: remove-basis (->* [Pict3D] [Basis-Label] Pict3D))
-(define (remove-basis s [label null])
+(: remove-basis (->* [Pict3D] [Symbol] Pict3D))
+(define (remove-basis s [label 'default])
   (define h (pict3d-bases s))
-  (pict3d (pict3d-scene s) (hash-remove h label)))
+  (pict3d (pict3d-scene s) (list-hasheq-remove h label)))
 
 ;; ===================================================================================================
 ;; Constructors
 
 (: scene->pict3d (-> Scene Pict3D))
 (define (scene->pict3d scene)
-  (pict3d scene (make-immutable-hash)))
+  (pict3d scene empty))
 
 (: shape->pict3d (-> Shape Pict3D))
 (define (shape->pict3d s)
@@ -294,84 +297,108 @@
 (: pict3d-post-transform (-> Pict3D FlAffine3- FlAffine3- Pict3D))
 (define (pict3d-post-transform s t tinv)
   (define scene (pict3d-scene s))
-  (define ps (pict3d-bases s))
+  (define h (pict3d-bases s))
   (pict3d (scene-transform scene t tinv)
-          (bases-post-transform ps t tinv)))
+          (and h (bases-post-transform h t tinv))))
 
 (: transform (case-> (-> Pict3D FlAffine3- Pict3D)
-                     (-> Pict3D FlAffine3- FlAffine3- Pict3D)
-                     (-> Basis FlAffine3- Basis)
-                     (-> Basis FlAffine3- FlAffine3- Basis)))
+                     (-> Pict3D FlAffine3- FlAffine3- Pict3D)))
 (define (transform s t [tinv (flt3inverse t)])
-  (if (basis? s)
-      (basis-pre-transform s t tinv)
-      (pict3d-post-transform s t tinv)))
+  (pict3d-post-transform s t tinv))
+
+(: transform-basis (case-> (-> Basis FlAffine3- Basis)
+                           (-> Basis FlAffine3- FlAffine3- Basis)))
+(define (transform-basis s t [tinv (flt3inverse t)])
+  (basis-pre-transform s t tinv))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
 
-(: scale-x (case-> (-> Pict3D Real Pict3D)
-                   (-> Basis Real Basis)))
+(: check-scale (-> Symbol (U Real User-Vector) FlVector))
+(define (check-scale name v)
+  (cond [(real? v)
+         (let ([v  (fl v)])
+           (cond [(= v 0.0)  (raise-argument-error name "nonzero scale" v)]
+                 [else  (flvector v v v)]))]
+        [else
+         (let ([v  (->flv3 v)])
+           (define-values (x y z) (flv3-values v))
+           (cond [(or (= x 0.0) (= y 0.0) (= z 0.0))
+                  (raise-argument-error name "nonzero scale" v)]
+                 [else  v]))]))
+
+(: scale-x (-> Pict3D Real Pict3D))
+(: scale-y (-> Pict3D Real Pict3D))
+(: scale-z (-> Pict3D Real Pict3D))
+(: scale (-> Pict3D (U Real User-Vector) Pict3D))
+
 (define (scale-x s v) (scale s (flvector (fl v) 1.0 1.0)))
-
-(: scale-y (case-> (-> Pict3D Real Pict3D)
-                   (-> Basis Real Basis)))
 (define (scale-y s v) (scale s (flvector 1.0 (fl v) 1.0)))
-
-(: scale-z (case-> (-> Pict3D Real Pict3D)
-                   (-> Basis Real Basis)))
 (define (scale-z s v) (scale s (flvector 1.0 1.0 (fl v))))
+(define (scale s v) (transform s (scale-flt3 (check-scale 'scale v))))
 
-(: scale (case-> (-> Pict3D (U Real User-Vector) Pict3D)
-                 (-> Basis (U Real User-Vector) Basis)))
-(define (scale s v)
-  (let ([v  (cond [(real? v)  (let ([v  (fl v)])
-                                (flvector v v v))]
-                  [else  (->flv3 v)])])
-    (transform s (scale-flt3 v))))
+(: scale-basis-x (-> Basis Real Basis))
+(: scale-basis-y (-> Basis Real Basis))
+(: scale-basis-z (-> Basis Real Basis))
+(: scale-basis (-> Basis (U Real User-Vector) Basis))
+
+(define (scale-basis-x s v) (scale-basis s (flvector (fl v) 1.0 1.0)))
+(define (scale-basis-y s v) (scale-basis s (flvector 1.0 (fl v) 1.0)))
+(define (scale-basis-z s v) (scale-basis s (flvector 1.0 1.0 (fl v))))
+(define (scale-basis s v) (transform-basis s (scale-flt3 (check-scale 'scale-basis v))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Translate
 
-(: move-x (case-> (-> Pict3D Real Pict3D)
-                  (-> Basis Real Basis)))
+(: move-x (-> Pict3D Real Pict3D))
+(: move-y (-> Pict3D Real Pict3D))
+(: move-z (-> Pict3D Real Pict3D))
+(: move (-> Pict3D User-Vector Pict3D))
+
 (define (move-x s v) (move s (flvector (fl v) 0.0 0.0)))
-
-(: move-y (case-> (-> Pict3D Real Pict3D)
-                  (-> Basis Real Basis)))
 (define (move-y s v) (move s (flvector 0.0 (fl v) 0.0)))
-
-(: move-z (case-> (-> Pict3D Real Pict3D)
-                  (-> Basis Real Basis)))
 (define (move-z s v) (move s (flvector 0.0 0.0 (fl v))))
-
-(: move (case-> (-> Pict3D User-Vector Pict3D)
-                (-> Basis User-Vector Basis)))
 (define (move s v) (transform s (translate-flt3 (->flv3 v))))
+
+(: move-basis-x (-> Basis Real Basis))
+(: move-basis-y (-> Basis Real Basis))
+(: move-basis-z (-> Basis Real Basis))
+(: move-basis (-> Basis User-Vector Basis))
+
+(define (move-basis-x s v) (move-basis s (flvector (fl v) 0.0 0.0)))
+(define (move-basis-y s v) (move-basis s (flvector 0.0 (fl v) 0.0)))
+(define (move-basis-z s v) (move-basis s (flvector 0.0 0.0 (fl v))))
+(define (move-basis s v) (transform-basis s (translate-flt3 (->flv3 v))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rotate
 
-(: rotate-x (case-> (-> Pict3D Real Pict3D)
-                    (-> Basis Real Basis)))
-(define (rotate-x s a) (rotate s (flvector 1.0 0.0 0.0) a))
-
-(: rotate-y (case-> (-> Pict3D Real Pict3D)
-                    (-> Basis Real Basis)))
-(define (rotate-y s a) (rotate s (flvector 0.0 1.0 0.0) a))
-
-(: rotate-z (case-> (-> Pict3D Real Pict3D)
-                    (-> Basis Real Basis)))
-(define (rotate-z s a) (rotate s (flvector 0.0 0.0 1.0) a))
-
-(: rotate (case-> (-> Pict3D User-Vector Real Pict3D)
-                  (-> Basis User-Vector Real Basis)))
-(define (rotate s v a)
+(: check-axis (-> Symbol User-Vector FlVector))
+(define (check-axis name v)
   (let ([v  (flv3normalize (->flv3 v))])
-    (cond [v
-           (transform s (rotate-flt3 (->flv3 v) (degrees->radians (fl a))))]
-          [else
-           (raise-argument-error 'rotate "nonzero direction vector" 1 s v a)])))
+    (if v v (raise-argument-error name "nonzero direction vector" v))))
+
+(: rotate-x (-> Pict3D Real Pict3D))
+(: rotate-y (-> Pict3D Real Pict3D))
+(: rotate-z (-> Pict3D Real Pict3D))
+(: rotate (-> Pict3D User-Vector Real Pict3D))
+
+(define (rotate-x s a) (rotate s (flvector 1.0 0.0 0.0) a))
+(define (rotate-y s a) (rotate s (flvector 0.0 1.0 0.0) a))
+(define (rotate-z s a) (rotate s (flvector 0.0 0.0 1.0) a))
+(define (rotate s v a)
+  (transform s (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a)))))
+
+(: rotate-basis-x (-> Basis Real Basis))
+(: rotate-basis-y (-> Basis Real Basis))
+(: rotate-basis-z (-> Basis Real Basis))
+(: rotate-basis (-> Basis User-Vector Real Basis))
+
+(define (rotate-basis-x s a) (rotate-basis s (flvector 1.0 0.0 0.0) a))
+(define (rotate-basis-y s a) (rotate-basis s (flvector 0.0 1.0 0.0) a))
+(define (rotate-basis-z s a) (rotate-basis s (flvector 0.0 0.0 1.0) a))
+(define (rotate-basis s v a)
+  (transform-basis s (rotate-flt3 (check-axis 'rotate-basis v) (degrees->radians (fl a)))))
 
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)
@@ -379,27 +406,31 @@
 (: combine* (-> (Listof Pict3D) Pict3D))
 (define (combine* ss)
   (pict3d (scene-union* (map pict3d-scene ss))
-          (for/fold ([ps : Bases  (make-immutable-hash)]) ([s  (in-list ss)])
-            (hash-merge ps (pict3d-bases s)))))
+          ((inst remove-duplicates (Pair Symbol Basis) Symbol)
+           (append* (reverse (map pict3d-bases ss)))
+           eq?
+           #:key car)))
 
 (: combine (-> Pict3D * Pict3D))
 (define (combine . ss)
   (combine* ss))
 
-(: pin (->* [Pict3D Pict3D] [Basis-Label Basis-Label] Pict3D))
-(define (pin s1 s2 [label1 null] [label2 null])
+(: pin (->* [Pict3D Pict3D] [Symbol Symbol] Pict3D))
+(define (pin s1 s2 [label1 'default] [label2 'default])
   (define p1 (get-basis s1 label1))
   (define p2 (get-basis s2 label2))
-  (define scene1 (pict3d-scene s1))
-  (define scene2 (pict3d-scene s2))
   (define t1 (basis-forward p1))
   (define t2 (basis-forward p2))
   (define t (flt3compose t1 (flt3inverse t2)))
   (define tinv (flt3compose t2 (flt3inverse t1)))
+  (define scene1 (pict3d-scene s1))
+  (define scene2 (pict3d-scene s2))
+  (define h1 (assert (pict3d-bases s1) values))
+  (define h2 (assert (pict3d-bases s2) values))
   (pict3d
    (scene-union scene1 (scene-transform scene2 t tinv))
-   (hash-merge (hash-remove (pict3d-bases s1) label1)
-               (bases-post-transform (hash-remove (pict3d-bases s2) label2) t tinv))))
+   (list-hasheq-merge (list-hasheq-remove h1 label1)
+                      (bases-post-transform (list-hasheq-remove h2 label2) t tinv))))
 
 ;; ===================================================================================================
 ;; Testing combinators

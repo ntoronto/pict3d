@@ -3,7 +3,8 @@
 (require racket/gui
          racket/class
          pict3d
-         math/flonum)
+         math/flonum
+         profile)
 
 (current-material '(0.05 0.70 0.25 0.1))
 
@@ -18,22 +19,23 @@
   (build-list 3 (λ (_) (* (- (random) 0.5) 50))))
 
 (define spheres
-  (combine
-   (combine*
-    (for/list ([_  (in-range 70000)])
-      (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
-        (sphere (random-position)
-                (* 0.25 (+ (random) 0.1))))))
-   (combine*
-    (for/list ([_  (in-range 500)])
-      (let* ([rgb  (normalize-color (random-color))]
-             [pos  (random-position)]
-             [int  (+ 0.25 (* (random) 0.25))])
-        (combine
-         (with-color "black"
-           (with-emitted (append rgb (list (* int 32)))
-             (sphere pos #i1/16)))
-         (light pos rgb int)))))))
+  (time
+   (combine
+    (combine*
+     (for/list ([_  (in-range 70000)])
+       (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
+         (sphere (random-position)
+                 (* 0.25 (+ (random) 0.1))))))
+    (combine*
+     (for/list ([_  (in-range 500)])
+       (let* ([rgb  (normalize-color (random-color))]
+              [pos  (random-position)]
+              [int  (+ 0.25 (* (random) 0.25))])
+         (combine
+          (with-color "black"
+            (with-emitted (append rgb (list (* int 32)))
+              (sphere pos #i1/16)))
+          (light pos rgb int))))))))
 
 (define frozen-spheres (freeze spheres))
 

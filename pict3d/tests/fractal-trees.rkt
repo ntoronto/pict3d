@@ -6,16 +6,16 @@
   (set-basis
    (scale (rectangle '(-1 -1 -1) '(1 1 1))
           '(0.1 0.1 1))
-   "base"
+   'base
    (normal-basis '(0 0 -1))))
 
 (define branch
   (set-basis
-   (set-basis leaf "left" (scale (normal-basis '(0 0 1) '(2/3 0 1) 30)
-                                 '(0.75 0.75 0.75)))
-   "right"
-   (scale (normal-basis '(0 0 1) '(-1/3 0 1) 15)
-          '(0.75 0.75 0.75))))
+   (set-basis leaf 'left (scale-basis (normal-basis '(0 0 1) '(2/3 0 1) 30)
+                                      '(0.75 0.75 0.75)))
+   'right
+   (scale-basis (normal-basis '(0 0 1) '(-1/3 0 1) 15)
+                '(0.75 0.75 0.75))))
 
 ;(: build-tree (-> Natural Pict3D))
 (define (build-tree n)
@@ -23,8 +23,8 @@
         [else
          (define left (build-tree (- n 1)))
          (define right (build-tree (- n 1)))
-         (pin (pin branch left "left" "base")
-              right "right" "base")]))
+         (pin (pin branch left 'left 'base)
+              right 'right 'base)]))
 
 (define t (build-tree 9))
 (define frozen-t (freeze t))

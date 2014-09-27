@@ -1,7 +1,7 @@
 #lang racket/base
 
-(require typed/racket/gui
-         typed/racket/class
+(require racket/gui
+         racket/class
          math/flonum
          math/base
          "../math/flv3.rkt"

@@ -1,27 +1,27 @@
-#lang racket
+#lang typed/racket
 
-(require racket/gui
+(require typed/racket/gui
          pict3d
          math/flonum
          math/base
          pict3d/private/math/flv3)
 
-;(: 3d-polar->cartesian (-> Flonum Flonum Flonum FlVector))
+(: 3d-polar->cartesian (-> Flonum Flonum Flonum FlVector))
 (define (3d-polar->cartesian θ ρ r)
   (let ([cos-ρ  (cos ρ)])
     (flvector (* r (* (cos θ) cos-ρ))
               (* r (* (sin θ) cos-ρ))
               (* r (sin ρ)))))
 
-;(: cartesian->3d-polar (-> FlVector (Values Flonum Flonum Flonum)))
+(: cartesian->3d-polar (-> FlVector (Values Flonum Flonum Flonum)))
 (define (cartesian->3d-polar v)
   (define-values (x y z) (flv3-values v))
   (define r (flsqrt (+ (sqr x) (sqr y) (sqr z))))
   (values (atan y x) (asin (/ z r)) r))
 
-;(: retesselate (-> (-> FlVector FlVector)
-;                   (-> (List FlVector FlVector FlVector)
-;                       (Listof (List FlVector FlVector FlVector)))))
+(: retesselate (-> (-> FlVector FlVector)
+                   (-> (List FlVector FlVector FlVector)
+                       (Listof (List FlVector FlVector FlVector)))))
 (define ((retesselate f) vs)
   (match-define (list v0 v1 v2) vs)
   (define v01 (f (flv3* (flv3+ v0 v1) 0.5)))
@@ -32,33 +32,34 @@
         (list v2 v20 v12)
         (list v01 v12 v20)))
 
-;(: absmax (-> Flonum Flonum Flonum))
+(: absmax (-> Flonum Flonum Flonum))
 (define (absmax x y)
   (if (> (abs x) (abs y)) x y))
 
-;(: make-planetoid-pict (-> Pict3D))
+(: make-planetoid-pict (-> Pict3D))
 (define (make-planetoid-pict)
   (define n 200)
   (define as
-    (build-list n (λ (_) (flv3normalize (flvector (- (random) 0.5)
-                                                  (- (random) 0.5)
-                                                  (- (random) 0.5))))))
+    (build-list n (λ (_) (assert (flv3normalize (flvector (- (random) 0.5)
+                                                          (- (random) 0.5)
+                                                          (- (random) 0.5)))
+                                 values))))
   (define ws (build-list n (λ (_) 4.0 #;(+ 0.5 (* (random) 10.0)))))
   (define ss (build-list n (λ (_) 0.025 #;(+ 0.05 (* (random) 0.05)))))
   
-  ;(: f (-> FlVector FlVector))
+  (: f (-> FlVector FlVector))
   (define (f v)
-    (let ([v  (flv3normalize v)])
+    (let ([v  (assert (flv3normalize v) values)])
       (define r
-        (for/fold ([r  1.0]) ([a  (in-list as)]
-                              [w  (in-list ws)]
-                              [s  (in-list ss)])
+        (for/fold ([r : Flonum  1.0]) ([a  (in-list as)]
+                                       [w  (in-list ws)]
+                                       [s  (in-list ss)])
           (+ r (* s (flexp (* (sqr w) (- (flv3dot v a) 1.0)))))))
       (flv3* v r)))
   
   (define vss
     (map
-     (λ (vs)
+     (λ ([vs : (List FlVector FlVector FlVector)])
        (match-define (list v0 v1 v2) vs)
        (list (f v0) (f v1) (f v2)))
      (list (list (flvector 1.0 0.0 0.0)
@@ -87,12 +88,12 @@
                  (flvector 0.0 0.0 -1.0)))))
   (let* ([vss  (append* (map (retesselate f) vss))]
          [vss  (append* (map (retesselate f) vss))]
-         [vss  (append* (map (retesselate f) vss))]
+         ;[vss  (append* (map (retesselate f) vss))]
          ;[vss  (append* (map (retesselate f) vss))]
          ;[vss  (append* (map (retesselate f) vss))]
          )
     (combine*
-     (map (λ (vs) (apply triangle vs)) vss))))
+     (map (λ ([vs : (List FlVector FlVector FlVector)]) (apply triangle vs)) vss))))
 
 (define num-planetoid-picts 20)
 (define num-planetoids 200)
@@ -100,7 +101,7 @@
 (define planetoid-picts
   (build-vector
    num-planetoid-picts
-   (λ (n)
+   (λ ([n : Index])
      (printf "building planetoid ~v~n" (+ n 1))
      (with-color (list (- 0.8 (* (random) 0.16))
                        (- 0.9 (* (random) 0.18))
@@ -116,7 +117,11 @@
            (with-color '(1/4 1/2 1 0.075)
              (sphere '(0 0 0) 1.35)))))))))
 
-(struct planetoid (pict position axis speed) #:transparent)
+(struct planetoid ([pict : Pict3D]
+                   [position : User-Vector]
+                   [axis : User-Vector]
+                   [speed : Real])
+  #:transparent)
 
 (define planetoids
   (build-list
@@ -152,7 +157,7 @@
    (normal-basis '(0 -40 0) '(0 1 0))))
 
 (define spheres
-  (for/list ([_  (in-range 1000)])
+  (for/list : (Listof Pict3D) ([_  (in-range 1000)])
     (sphere (list (* (- (random) 0.5) 40.0)
                   (* (- (random) 0.5) 40.0)
                   (* (- (random) 0.5) 40.0))
@@ -175,8 +180,6 @@
     (send canvas set-pict3d pict)
     (sleep/yield (/ 16 1000))))
 
-
-
 (current-material '(0.05 0.75 0.25 0.1))
 
 (define body
@@ -190,12 +193,12 @@
                     (with-emitted '(1/4 1/2 1 8)
                       (sphere '(0 0 0) 1/4)))
                   '(1 1 2)))]
-         [body  (set-basis body "right-wing" (normal-basis '(3/16 0 0) '(1 1/3 0)))]
-         [body  (set-basis body "left-wing" (scale (normal-basis '(-3/16 0 0) '(-1 1/3 0))
-                                                   '(-1 1 1)))])
+         [body  (set-basis body 'right-wing (normal-basis '(3/16 0 0) '(1 1/3 0)))]
+         [body  (set-basis body 'left-wing (scale-basis (normal-basis '(-3/16 0 0) '(-1 1/3 0))
+                                                        '(-1 1 1)))])
     body))
 
-;(: make-wing (-> String Pict3D))
+(: make-wing (-> Symbol Pict3D))
 (define (make-wing gun-name)
   (define wing
     (combine
@@ -234,14 +237,14 @@
                        30)
                       '(1 1 2))
                -30)))
-  (let* ([wing  (set-basis wing "wing-attach" (normal-basis '(-2 0 0) '(1 0 0)))]
+  (let* ([wing  (set-basis wing 'wing-attach (normal-basis '(-2 0 0) '(1 0 0)))]
          [wing  (set-basis wing gun-name (normal-basis '(0 0 2) '(0 0 1)))])
     wing))
 
 (define ship
   (rotate-x
-   (pin (pin body (make-wing "right-gun") "right-wing" "wing-attach")
-        (make-wing "left-gun") "left-wing" "wing-attach")
+   (pin (pin body (make-wing 'right-gun) 'right-wing 'wing-attach)
+        (make-wing 'left-gun) 'left-wing 'wing-attach)
    -90))
 
 ship

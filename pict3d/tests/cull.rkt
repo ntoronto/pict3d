@@ -8,7 +8,8 @@
          pict3d/private/math/flt3
          pict3d/private/math/flrect3
          pict3d/private/engine/draw-passes
-         pict3d/private/engine/scene)
+         pict3d/private/engine/scene
+         pict3d/private/gui/basis)
 
 (define sphere-vs 
   (for/list ([_  (in-range 5000)])

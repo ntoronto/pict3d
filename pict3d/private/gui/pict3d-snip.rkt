@@ -1,15 +1,15 @@
 #lang racket/base
 
-(require racket/list
+(require racket/gui
+         racket/class
+         racket/async-channel
+         racket/contract
+         racket/list
          racket/match
          racket/fixnum
          racket/promise
          racket/math
          math/flonum
-         typed/racket/gui
-         typed/racket/class
-         typed/racket/async-channel
-         typed/racket/base
          typed/opengl
          "../math/flv3.rkt"
          "../math/flt3.rkt"
@@ -21,95 +21,17 @@
          "../engine/affine.rkt"
          "../gl.rkt"
          "../utils.rkt"
-         "user-types.rkt"
+         "pict3d-struct.rkt"
+         "parameters.rkt"
+         "basis.rkt"
          "utils.rkt"
          "axes-scene.rkt"
          )
 
-(provide (rename-out [-Basis Basis]
-                     [Basis? basis?]
-                     [Basis-forward basis-forward]
-                     [Basis-inverse basis-inverse])
-         basis
-         Basis-Label
-         Bases
-         Pict3D
-         pict3d?
-         default-pict3d-width
-         default-pict3d-height
-         default-pict3d-z-near
-         default-pict3d-z-far
-         default-pict3d-fov-degrees
-         default-pict3d-background
-         default-pict3d-ambient-color
-         default-pict3d-ambient-intensity
-         current-pict3d-width
-         current-pict3d-height
-         current-pict3d-z-near
-         current-pict3d-z-far
-         current-pict3d-fov-degrees
-         current-pict3d-background
-         current-pict3d-ambient-color
-         current-pict3d-ambient-intensity
-         snip-class
-         pict3d
-         empty-pict3d
-         pict3d-scene
-         pict3d-bases
-         pict3d-view-transform
-         )
+;(provide snip-class)
 
 ;; ===================================================================================================
 ;; Parameters
-
-(define default-pict3d-width 256)
-(define default-pict3d-height 256)
-(define default-pict3d-z-near (assert (flexpt 2.0 -20.0) positive?))
-(define default-pict3d-z-far  (assert (flexpt 2.0 +32.0) positive?))
-(define default-pict3d-fov-degrees 90.0)
-(define default-pict3d-background "black")
-(define default-pict3d-ambient-color "white")
-(define default-pict3d-ambient-intensity 1)
-
-(: current-pict3d-width (Parameterof Integer Positive-Index))
-(define current-pict3d-width
-  (make-parameter default-pict3d-width
-                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
-
-(: current-pict3d-height (Parameterof Integer Positive-Index))
-(define current-pict3d-height
-  (make-parameter default-pict3d-height
-                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
-
-(: current-pict3d-z-near (Parameterof Positive-Real Positive-Flonum))
-(define current-pict3d-z-near
-  (make-parameter default-pict3d-z-near
-                  (λ ([z : Positive-Real])
-                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
-
-(: current-pict3d-z-far (Parameterof Positive-Real Positive-Flonum))
-(define current-pict3d-z-far
-  (make-parameter default-pict3d-z-far
-                  (λ ([z : Positive-Real])
-                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
-
-(: current-pict3d-fov-degrees (Parameterof Positive-Real Positive-Flonum))
-(define current-pict3d-fov-degrees
-  (make-parameter default-pict3d-fov-degrees
-                  (λ ([z : Positive-Real])
-                    (max 1.0 (min 179.0 (fl z))))))
-
-(: current-pict3d-background (Parameterof User-Color FlVector))
-(define current-pict3d-background
-  (make-parameter (->flcolor4 default-pict3d-background) ->flcolor4))
-
-(: current-pict3d-ambient-color (Parameterof User-Color FlVector))
-(define current-pict3d-ambient-color
-  (make-parameter (->flcolor3 default-pict3d-ambient-color) ->flcolor3))
-
-(: current-pict3d-ambient-intensity (Parameterof Nonnegative-Real Nonnegative-Flonum))
-(define current-pict3d-ambient-intensity
-  (make-parameter (fl default-pict3d-ambient-intensity) fl))
 
 (define physics-delay 16)
 (define physics-timeout 500)
@@ -119,57 +41,7 @@
 
 ;; ===================================================================================================
 ;; Types
-
-(struct Basis ([forward : FlAffine3-]
-               [inverse : FlAffine3-]
-               [scene : (Promise Scene)]))
-
-(define-type -Basis Basis)
-
-(define smaller-flt3 (scale-flt3 (flvector 0.5 0.5 0.5)))
-(define bigger-flt3 (scale-flt3 (flvector 2.0 2.0 2.0)))
-
-(: basis (->* [FlAffine3-] [FlAffine3-] Basis))
-(define (basis t [tinv (flt3inverse t)])
-  (Basis t
-         tinv
-         (delay (scene-transform
-                 axes-scene
-                 (flt3compose t smaller-flt3)
-                 (flt3compose bigger-flt3 tinv)))))
-
-(define-type Basis-Label (U String Symbol Number (Pair Basis-Label Basis-Label) Null))
-
-(define-type Bases (HashTable Basis-Label Basis))
-#|
-(: basis->sexp (-> Basis SExp))
-(define (basis->sexp t)
-  (make-hash (list (cons 'forward (flaffine3->sexp (Basis-forward t)))
-                   (cons 'inverse (flaffine3->sexp (Basis-inverse t))))))
-
-(: bases->sexp (-> Bases SExp))
-(define (bases->sexp h)
-  (for/hash ([(k t)  (in-hash h)])
-    (values k (basis->sexp t))))
-
-(: sexp->basis (-> Any Basis))
-(define (sexp->basis e)
-  (cond [(hash? e)
-         (basis (sexp->flaffine3 (hash-ref e 'forward))
-                (sexp->flaffine3 (hash-ref e 'inverse)))]
-        [else
-         (raise-argument-error 'sexp->basis "hash" e)]))
-
-(: sexp->bases (-> Any Bases))
-(define (sexp->bases e)
-  (cond [(hash? e)
-         (for/hash ([(k e)  (in-hash e)])
-           (values k (sexp->basis e)))]
-        [else
-         (raise-argument-error 'sexp->bases "hash" e)]))
-|#
-;; ===================================================================================================
-
+#;
 (define-type Pict3D%
   (Class #:implements Snip%
          (init-field [scene  Scene]
@@ -189,11 +61,9 @@
          [get-draw-passes (-> FlAffine3- FlTransform3 (Vectorof draw-passes))]
          [set-argb-pixels  (-> Bytes Void)]
          ))
-
-(define-type Pict3D (Instance Pict3D%))
-
+#;
 (define-type Pict3D-GUI%
-  (Class (init-field [pict Pict3D])
+  (Class (init-field [pict (Instance Pict3D%)])
          [is-capturing?  (-> Boolean)]
          [own-caret  (-> Any Void)]
          [on-event  (-> (Instance Mouse-Event%) Void)]
@@ -205,12 +75,10 @@
 (define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
 (define get-tmp-bytes (make-cached-vector 'get-tmp-bytes make-bytes bytes-length))
 
-(: make-snip-render-thread (-> Pict3D (Async-Channelof FlAffine3-) Thread))
+;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread snip ch)
-  (: render-thread-loop (-> Void))
   (define (render-thread-loop)
     ;; Wait for a view matrix
-    (: view FlAffine3-)
     (define view
       (let ([view  (async-channel-get ch)])
         ;; Empty the queue looking for the lastest one
@@ -239,7 +107,7 @@
         
         ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
         (define row-size (* width 4))
-        (define bs (get-the-bytes (assert (* row-size height) index?)))
+        (define bs (get-the-bytes (* row-size height)))
         (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
         
         ;; Flip right-side-up
@@ -261,25 +129,26 @@
 ;; ===================================================================================================
 ;; The snip's GUI
 
-(: pict3d-gui% Pict3D-GUI%)
+;(: pict3d-gui% Pict3D-GUI%)
 (define pict3d-gui%
   (class object%
     (init-field pict)
     
     (super-new)
     
-    (define render-queue ((inst make-async-channel FlAffine3-)))
+    ;(: render-queue (Async-Channel FlAffine3-))
+    (define render-queue (make-async-channel))
     
-    (: render-thread Thread)
+    ;(: render-thread Thread)
     (define render-thread (make-snip-render-thread pict render-queue))
     
-    (: camera (Instance Camera%))
+    ;(: camera (Instance Camera%))
     (define camera
-      (let ([camera  (hash-ref (pict3d-bases pict) 'camera #f)])
+      (let ([camera  (list-hasheq-ref (send pict get-bases) 'camera (λ () #f))])
         (cond
           [camera
            (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-             (flvector->list (flaffine3-entries (->flaffine3 (Basis-forward camera)))))
+             (flvector->list (flaffine3-entries (->flaffine3 (basis-forward camera)))))
            (define position (flvector m03 m13 m23))
            (define yaw (- (atan m12 m02) (/ pi 2.0)))
            (define pitch (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))
@@ -289,7 +158,7 @@
                 [yaw  yaw]
                 [pitch  pitch])]
           [else
-           (let* ([s  (pict3d-scene pict)]
+           (let* ([s  (send pict get-scene)]
                   [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
                   [b  (and (not (empty-scene? s)) (scene-rect s))]
                   [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
@@ -300,10 +169,10 @@
                   [yaw  (degrees->radians 135.0)]
                   [pitch  (degrees->radians -35.264389682754654)]))])))
     
-    (: last-view-matrix (U #f FlTransform3))
+    ;(: last-view-matrix (U #f FlAffine3-))
     (define last-view-matrix #f)
     
-    (: maybe-redraw (-> Void))
+    ;(: maybe-redraw (-> Void))
     (define (maybe-redraw)
       (define view-matrix (send camera get-view-matrix))
       (unless (equal? view-matrix last-view-matrix)
@@ -312,22 +181,22 @@
     
     (maybe-redraw)
     
-    (: capturing? Boolean)
+    ;(: capturing? Boolean)
     (define capturing? #f)
     
     (define/public (is-capturing?) capturing?)
     
-    (: frame-timer (U #f (Instance Timeout-Timer%)))
+    ;(: frame-timer (U #f (Instance Timeout-Timer%)))
     (define frame-timer #f)
     
-    (: stop-frame-timer (-> Void))
+    ;(: stop-frame-timer (-> Void))
     (define (stop-frame-timer)
       (define frame-timer-val frame-timer)
       (when frame-timer-val
         (send frame-timer-val timeout)
         (set! frame-timer #f)))
     
-    (: start-frame-timer (-> Void))
+    ;(: start-frame-timer (-> Void))
     (define (start-frame-timer)
       (define frame-timer-val frame-timer)
       (if frame-timer-val
@@ -344,13 +213,13 @@
         (hash-clear!* key-hash)
         (stop-frame-timer)))
     
-    (: home-mouse-x Integer)
-    (: home-mouse-y Integer)
+    ;(: home-mouse-x Integer)
+    ;(: home-mouse-y Integer)
     (define home-mouse-x 0)
     (define home-mouse-y 0)
     
-    (: yaw-vel Flonum)
-    (: pitch-vel Flonum)
+    ;(: yaw-vel Flonum)
+    ;(: pitch-vel Flonum)
     (define yaw-vel 0.0)
     (define pitch-vel 0.0)
     
@@ -392,16 +261,16 @@
                    [else    (set! capturing? #f)
                             (stop-frame-timer)])))]))
     
-    (: key-hash (HashTable (U Char Symbol) #t))
-    (define key-hash ((inst make-hasheq (U Char Symbol) #t) empty))
+    ;(: key-hash (HashTable (U Char Symbol) #t))
+    (define key-hash (make-hasheq empty))
     
-    (: key-pressed? (-> (U Char Symbol) Boolean))
+    ;(: key-pressed? (-> (U Char Symbol) Boolean))
     (define/private (key-pressed? code)
       (hash-ref key-hash code #f))
     
-    (: keys-pressed? (-> (Listof (U Char Symbol)) Boolean))
+    ;(: keys-pressed? (-> (Listof (U Char Symbol)) Boolean))
     (define/private (keys-pressed? codes)
-      (ormap (λ ([code : (U Char Symbol)]) (key-pressed? code)) codes))
+      (ormap (λ (code) (key-pressed? code)) codes))
     
     (define/public (on-char e)
       (define code (send e get-key-code))
@@ -416,10 +285,10 @@
         (maybe-redraw)
         (start-frame-timer)))
     
-    (: last-frame-time Flonum)
+    ;(: last-frame-time Flonum)
     (define last-frame-time (fl (current-inexact-milliseconds)))
     
-    (: update-camera (-> Void))
+    ;(: update-camera (-> Void))
     (define (update-camera)
       (define frame-time (fl (current-inexact-milliseconds)))
       (define frame-delay (max 1.0 (min 100.0 (- frame-time last-frame-time))))
@@ -456,7 +325,7 @@
       (set! pitch-vel (* pitch-vel #i1/3))
       )
     
-    (: timer-tick (-> Void))
+    ;(: timer-tick (-> Void))
     (define (timer-tick)
       (update-camera)
       (maybe-redraw))
@@ -479,6 +348,7 @@
 (define white-pen (make-object pen% "white" 1 'solid))
 (define trans-brush (make-object brush% "black" 'transparent))
 
+#|
 (define pict3d-snip-class%
   (class snip-class%
     (super-make-object)
@@ -492,10 +362,11 @@
 
 (define snip-class (make-object pict3d-snip-class%))
 (send (get-the-snip-class-list) add snip-class)
+|#
 
-(: pict3d% Pict3D%)
+;(: pict3d% Pict3D%)
 (define pict3d%
-  (class snip%
+  (class image-snip%
     (init-field scene
                 bases
                 width
@@ -509,13 +380,13 @@
     
     (super-make-object)
     
-    (send this set-snipclass snip-class)
-    (send (get-the-snip-class-list) add snip-class)
+    ;(send this set-snipclass snip-class)
+    ;(send (get-the-snip-class-list) add snip-class)
     
     (define/public (get-scene) scene)
     (define/public (get-bases) bases)
     
-    (: copy (-> Pict3D))
+    ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
       (make-object pict3d% scene bases
         width height z-near z-far fov-degrees background ambient-color ambient-intensity))
@@ -523,10 +394,10 @@
     (define/override (write f)
       (error 'write "pict3d does not support cut, copy and paste yet"))
     
-    (: the-bitmap (U #f (Instance Bitmap%)))
+    ;(: the-bitmap (U #f (Instance Bitmap%)))
     (define the-bitmap #f)
     
-    (: get-the-bitmap (-> (Instance Bitmap%)))
+    ;(: get-the-bitmap (-> (Instance Bitmap%)))
     (define (get-the-bitmap)
       (define the-bitmap-val the-bitmap)
       (if the-bitmap-val
@@ -552,18 +423,20 @@
     (define/public (get-draw-passes view proj)
       (define t (flt3compose proj view))
       (define planes (flprojective3-frustum-planes (->flprojective3 t)))
-      (define scene-val (pict3d-scene this))
       (list->vector
-       (append (scene-draw-passes scene-val planes)
+       (append (scene-draw-passes scene planes)
                (scene-draw-passes axes-scene planes)
                (list (draw-passes (shape-passes standard-over-light) identity-affine)
                      (draw-passes (shape-passes standard-under-light) identity-affine))
-               (append*
-                (for/list : (Listof (Listof draw-passes)) ([(name p)  (in-hash bases)])
-                  (scene-draw-passes (force (Basis-scene p)) planes)))))
+               (if bases
+                   (append*
+                    (for/list ([name-p  (in-list bases)])
+                      (match-define (cons name p) name-p)
+                      (scene-draw-passes (force (basis-scene p)) planes)))
+                   empty)))
       )
     
-    (: gui (U #f (Instance Pict3D-GUI%)))
+    ;(: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
     
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
@@ -576,6 +449,7 @@
       (send dc set-pen white-pen)
       (send dc draw-rectangle (+ x 1.5) (+ y 1.5) (+ width 2) (+ height 2))
       (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
+      #;
       (super draw dc x y left top right bottom dx dy draw-caret))
     
     ;; Can't use this because of an error in TR
@@ -617,21 +491,14 @@
             (and gui-val (send gui-val is-capturing?)))
           blank-cursor
           #f))
-    
-    (define/override (get-num-scroll-steps)
-      (exact-ceiling (/ height 16)))
-    
-    (define/override (get-scroll-step-offset y)
-      (* y 16))
     ))
 
-(define (pict3d? p) (is-a? p pict3d%))
-
-(: pict3d (-> Scene Bases Pict3D))
-(define (pict3d s ps)
+(define (pict3d->pict3d% p)
+  (define scene (pict3d-scene p))
+  (define bases (pict3d-bases p))
   (make-object pict3d%
-    s
-    ps
+    scene
+    bases
     (current-pict3d-width)
     (current-pict3d-height)
     (current-pict3d-z-near)
@@ -641,19 +508,17 @@
     (current-pict3d-ambient-color)
     (current-pict3d-ambient-intensity)))
 
-(define empty-pict3d (pict3d empty-scene (make-immutable-hash)))
+(define (pict3d-custom-write p out mode)
+  (define print-it
+    (cond [(eq? mode #t)  write]
+          [(eq? mode #f)  display]
+          [else  print]))
+  (print-it (pict3d->pict3d% p) out))
 
-(: pict3d-scene (-> Pict3D Scene))
-(define (pict3d-scene s) (send s get-scene))
+(define (pict3d-print-converter p recur)
+  (pict3d->pict3d% p))
 
-(: pict3d-bases (-> Pict3D Bases))
-(define (pict3d-bases s) (send s get-bases))
-
-(: pict3d-view-transform (->* [Pict3D] [FlAffine3-] FlAffine3-))
-(define (pict3d-view-transform s [default (scale-flt3 (flvector 1.0 -1.0 -1.0))])
-  (define bases (pict3d-bases s))
-  (define camera-basis (hash-ref bases 'camera #f))
-  (if camera-basis
-      (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                   (Basis-inverse camera-basis))
-      default))
+;; Set the custom printer so Pict3D instances will print nicely in Racket
+(current-pict3d-custom-write pict3d-custom-write)
+;; Set the print converter so Pict3D instances will print nicely in HTDP languages
+(current-pict3d-print-converter pict3d-print-converter)

@@ -1,4 +1,4 @@
-#lang racket
+#lang typed/racket
 
 (require pict3d
          math/flonum

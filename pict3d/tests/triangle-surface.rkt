@@ -9,6 +9,8 @@
 
 (current-pict3d-width 512)
 (current-pict3d-height 384)
+(current-color "azure")
+(current-material '(0.01 0.29 0.7 0.2))
 
 ;(: xyz-fun (-> Flonum Flonum FlVector))
 (define (xyz-fun x y)
