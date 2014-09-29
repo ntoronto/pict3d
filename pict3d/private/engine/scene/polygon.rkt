@@ -9,6 +9,7 @@
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
+         "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
@@ -33,6 +34,8 @@
          make-rectangle-shape-passes
          ;rectangle-shape-rect  ; already an accessor
          rectangle-shape-transform
+         
+         rectangle-shape->quad-shapes
          )
 
 ;; ===================================================================================================
@@ -51,71 +54,71 @@
                            (U FlVector (Vectorof FlVector))
                            (U FlVector (Vectorof FlVector))
                            (U material (Vectorof material))
-                           Face
+                           Boolean
                            triangle-shape))
-(define (make-triangle-shape vs ns cs es ms face)
+(define (make-triangle-shape vs ns cs es ms back?)
   (cond [(not (well-formed-flvectors? vs 3 3))
          (raise-argument-error 'make-triangle-shape
                                "length-3 flvector, or length-3 vector of length-3 flvectors"
-                               0 vs ns cs es ms face)]
+                               0 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? ns 3 3))
          (raise-argument-error 'make-triangle-shape
                                "length-3 flvector, or length-3 vector of length-3 flvectors"
-                               1 vs ns cs es ms face)]
+                               1 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? cs 3 4))
          (raise-argument-error 'make-triangle-shape
                                "length-4 flvector, or length-3 vector of length-4 flvectors"
-                               2 vs ns cs es ms face)]
+                               2 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? es 3 4))
          (raise-argument-error 'make-triangle-shape
                                "length-3 flvector, or length-3 vector of length-4 flvectors"
-                               3 vs ns cs es ms face)]
+                               3 vs ns cs es ms back?)]
         [(not (or (material? ms) (= 3 (vector-length ms))))
          (raise-argument-error 'make-triangle-shape
                                "material, or length-3 vector of materials"
-                               4 vs ns cs es ms face)]
+                               4 vs ns cs es ms back?)]
         [else
-         (triangle-shape (box 'lazy) vs ns cs es ms face)]))
+         (triangle-shape (box 'lazy) vs ns cs es ms back?)]))
 
 (: make-quad-shape (-> (Vectorof FlVector)
                        (U FlVector (Vectorof FlVector))
                        (U FlVector (Vectorof FlVector))
                        (U FlVector (Vectorof FlVector))
                        (U material (Vectorof material))
-                       Face
+                       Boolean
                        quad-shape))
-(define (make-quad-shape vs ns cs es ms face)
+(define (make-quad-shape vs ns cs es ms back?)
   (cond [(not (well-formed-flvectors? vs 4 3))
          (raise-argument-error 'make-quad-shape
                                "length-3 flvector, or length-4 vector of length-3 flvectors"
-                               0 vs ns cs es ms face)]
+                               0 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? ns 4 3))
          (raise-argument-error 'make-quad-shape
                                "length-3 flvector, or length-4 vector of length-3 flvectors"
-                               1 vs ns cs es ms face)]
+                               1 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? cs 4 4))
          (raise-argument-error 'make-quad-shape
                                "length-4 flvector, or length-4 vector of length-4 flvectors"
-                               2 vs ns cs es ms face)]
+                               2 vs ns cs es ms back?)]
         [(not (well-formed-flvectors? es 4 4))
          (raise-argument-error 'make-quad-shape
                                "length-3 flvector, or length-4 vector of length-4 flvectors"
-                               3 vs ns cs es ms face)]
+                               3 vs ns cs es ms back?)]
         [(not (or (material? ms) (= 4 (vector-length ms))))
          (raise-argument-error 'make-quad-shape
                                "material, or length-4 vector of materials"
-                               4 vs ns cs es ms face)]
+                               4 vs ns cs es ms back?)]
         [else
-         (quad-shape (box 'lazy) vs ns cs es ms face)]))
+         (quad-shape (box 'lazy) vs ns cs es ms back?)]))
 
-(: make-rectangle-shape (-> Nonempty-FlRect3 FlVector FlVector material Face rectangle-shape))
-(define (make-rectangle-shape b c e m face)
+(: make-rectangle-shape (-> Nonempty-FlRect3 FlVector FlVector material Boolean rectangle-shape))
+(define (make-rectangle-shape b c e m back?)
   (cond [(not (= 4 (flvector-length c)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 b c e m face)]
+         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 b c e m back?)]
         [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m face)]
+         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
         [else
-         (rectangle-shape (box 'lazy) b c e m face)]))
+         (rectangle-shape (box 'lazy) b c e m back?)]))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -328,25 +331,33 @@ code
           
 
 (: make-polygon-shape-passes (-> Integer
-                                 Index
+                                 Positive-Index
                                  (Vectorof FlVector)
                                  (U FlVector (Vectorof FlVector))
                                  (U FlVector (Vectorof FlVector))
                                  (U FlVector (Vectorof FlVector))
                                  (U material (Vectorof material))
-                                 Face
+                                 Boolean
                                  Passes))
-(define (make-polygon-shape-passes mode len vs ns cs es ms face)
+(define (make-polygon-shape-passes mode len vs ns orig-cs orig-es ms back?)
+  (define-values (start stop step)
+    (if back?
+        (values (- len 1) -1 -1)
+        (values 0 len 1)))
+  
+  (define cs (if (vector? orig-cs) orig-cs (make-vector len orig-cs)))
+  (define es (if (vector? orig-es) orig-es (make-vector len orig-es)))
+  
   (define mat-struct-size
     (vao-struct-size (gl-program-struct (program-spec-program (polygon-mat-program-spec)))))
   (define mat-data-size (* len mat-struct-size))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
-  (for/fold ([i : Nonnegative-Fixnum  0]
-             ) ([v  (in-vector vs)]
-                [n  (in-vector (if (vector? ns) ns (make-vector len ns)))]
-                [m  (in-vector (if (vector? ms) ms (make-vector len ms)))])
-    (let* ([i  (begin (bytes-copy! mat-data i (normal->rgb-bytes n) 0 3)
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
+    (define v (vector-ref vs j))
+    (define n (if (vector? ns) (vector-ref ns j) ns))
+    (define m (if (vector? ms) (vector-ref ms j) ms))
+    (let* ([i  (begin (bytes-copy! mat-data i (normal->rgb-bytes (if back? (flv3neg n) n)) 0 3)
                       (unsafe-fx+ i 3))]
            [i  (begin (bytes-set! mat-data i (flonum->byte (material-roughness m)))
                       (unsafe-fx+ i 1))]
@@ -359,11 +370,11 @@ code
   (define draw-data-size (* len opaq-struct-size))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
-  (for/fold ([i : Nonnegative-Fixnum  0]
-             ) ([c  (in-vector (if (vector? cs) cs (make-vector len cs)))]
-                [e  (in-vector (if (vector? es) es (make-vector len es)))]
-                [m  (in-vector (if (vector? ms) ms (make-vector len ms)))]
-                [v  (in-vector vs)])
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
+    (define v (vector-ref vs j))
+    (define c (if (vector? cs) (vector-ref cs j) cs))
+    (define e (if (vector? es) (vector-ref es j) es))
+    (define m (if (vector? ms) (vector-ref ms j) ms))
     (define-values (ecolor i.lo) (pack-emitted e))
     (let* ([i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
                       (unsafe-fx+ i 4))]
@@ -395,15 +406,15 @@ code
          #()
          #()
          #()
-         (vector (shape-params polygon-mat-program-spec empty face mode
+         (vector (shape-params polygon-mat-program-spec empty #f mode
                                (single-vertices len mat-data)))
-         (vector (shape-params polygon-tran-program-spec empty face mode
+         (vector (shape-params polygon-tran-program-spec empty #f mode
                                (single-vertices len draw-data))))
         (vector
          #()
-         (vector (shape-params polygon-mat-program-spec empty face mode
+         (vector (shape-params polygon-mat-program-spec empty #f mode
                                (single-vertices len mat-data)))
-         (vector (shape-params polygon-opaq-program-spec empty face mode
+         (vector (shape-params polygon-opaq-program-spec empty #f mode
                                (single-vertices len draw-data)))
          #()
          #())))
@@ -422,9 +433,16 @@ code
 ;; ===================================================================================================
 ;; Rectangle shape passes
 
+(define vec-x- (flvector -1.0 0.0 0.0))
+(define vec-x+ (flvector +1.0 0.0 0.0))
+(define vec-y- (flvector 0.0 -1.0 0.0))
+(define vec-y+ (flvector 0.0 +1.0 0.0))
+(define vec-z- (flvector 0.0 0.0 -1.0))
+(define vec-z+ (flvector 0.0 0.0 +1.0))
+
 (: make-rectangle-shape-passes (-> rectangle-shape Passes))
 (define (make-rectangle-shape-passes a)
-  (match-define (rectangle-shape _ rect c e m face) a)
+  (match-define (rectangle-shape _ rect c e m inside?) a)
   
   (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values rect))
   
@@ -436,12 +454,12 @@ code
   (define v6 (f32vector xmax ymin zmax))
   (define v7 (f32vector xmax ymax zmax))
   (define v8 (f32vector xmin ymax zmax))
-  (define nleft  (normal->rgb-bytes (flvector -1.0 0.0 0.0)))
-  (define nright (normal->rgb-bytes (flvector +1.0 0.0 0.0)))
-  (define nfront (normal->rgb-bytes (flvector 0.0 -1.0 0.0)))
-  (define nback  (normal->rgb-bytes (flvector 0.0 +1.0 0.0)))
-  (define nbot   (normal->rgb-bytes (flvector 0.0 0.0 -1.0)))
-  (define ntop   (normal->rgb-bytes (flvector 0.0 0.0 +1.0)))
+  (define nleft  (normal->rgb-bytes (if inside? vec-x+ vec-x-)))
+  (define nright (normal->rgb-bytes (if inside? vec-x- vec-x+)))
+  (define nfront (normal->rgb-bytes (if inside? vec-y+ vec-y-)))
+  (define nback  (normal->rgb-bytes (if inside? vec-y- vec-y+)))
+  (define nbot   (normal->rgb-bytes (if inside? vec-z+ vec-z-)))
+  (define ntop   (normal->rgb-bytes (if inside? vec-z- vec-z+)))
   
   (define vs (vector v4 v3 v2 v1
                      v5 v6 v7 v8
@@ -456,6 +474,11 @@ code
                      nleft nleft nleft nleft
                      nright nright nright nright))
   
+  (define-values (start stop step)
+    (if inside?
+        (values 23 -1 -1)
+        (values 0 24 1)))
+  
   (define r (flonum->byte (material-roughness m)))
   
   (define mat-struct-size
@@ -463,9 +486,9 @@ code
   (define mat-data-size (* 24 mat-struct-size))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
-  (for/fold ([i : Nonnegative-Fixnum  0]
-             ) ([v  (in-vector vs)]
-                [n  (in-vector ns)])
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
+    (define v (vector-ref vs j))
+    (define n (vector-ref ns j))
     (let* ([i  (begin (bytes-copy! mat-data i n 0 3)
                       (unsafe-fx+ i 3))]
            [i  (begin (bytes-set! mat-data i r)
@@ -498,7 +521,8 @@ code
   (define draw-data-size (* 24 opaq-struct-size))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
-  (for/fold ([i : Nonnegative-Fixnum  0]) ([v  (in-vector vs)])
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
+    (define v (vector-ref vs j))
     (let* ([i  (begin (bytes-copy! draw-data i material-data 0 material-data-size)
                       (unsafe-fx+ i material-data-size))]
            [i  (begin (memcpy draw-ptr i (f32vector->cpointer v) 12 _byte)
@@ -514,15 +538,15 @@ code
          #()
          #()
          #()
-         (vector (shape-params polygon-mat-program-spec empty face GL_QUADS
+         (vector (shape-params polygon-mat-program-spec empty #f GL_QUADS
                                (single-vertices 24 mat-data)))
-         (vector (shape-params polygon-tran-program-spec empty face GL_QUADS
+         (vector (shape-params polygon-tran-program-spec empty #f GL_QUADS
                                (single-vertices 24 draw-data))))
         (vector
          #()
-         (vector (shape-params polygon-mat-program-spec empty face GL_QUADS
+         (vector (shape-params polygon-mat-program-spec empty #f GL_QUADS
                                (single-vertices 24 mat-data)))
-         (vector (shape-params polygon-opaq-program-spec empty face GL_QUADS
+         (vector (shape-params polygon-opaq-program-spec empty #f GL_QUADS
                                (single-vertices 24 draw-data)))
          #()
          #())))
@@ -546,52 +570,62 @@ code
 
 (: triangle-shape-transform (-> triangle-shape FlAffine3- FlAffine3- (List triangle-shape)))
 (define (triangle-shape-transform a t tinv)
-  (match-define (triangle-shape passes vs ns cs es ms face) a)
-  (define new-vs (vector-map (λ ([v : FlVector]) (flt3apply/pos t v)) vs))
-  (define new-ns (if (vector? ns)
-                     (vector-map (λ ([n : FlVector]) (flt3apply/norm tinv n)) ns)
-                     (flt3apply/norm tinv ns)))
-  (define new-face (if (flt3consistent? t) face (opposite-gl-face face)))
-  (list (triangle-shape (box 'lazy) new-vs new-ns cs es ms new-face)))
+  (match-define (triangle-shape passes vs ns cs es ms back?) a)
+  (define consistent? (flt3consistent? t))
+  (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
+  (define transform-norm (λ ([n : FlVector])
+                           (if consistent?
+                               (flt3apply/norm tinv n)
+                               (flv3neg (flt3apply/norm tinv n)))))
+  (list (triangle-shape (box 'lazy)
+                        (vector-map transform-pos vs)
+                        (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
+                        cs es ms
+                        (if consistent? back? (not back?)))))
 
 (: quad-shape-transform (-> quad-shape FlAffine3- FlAffine3- (List quad-shape)))
 (define (quad-shape-transform a t tinv)
-  (match-define (quad-shape passes vs ns cs es ms face) a)
-  (define new-vs (vector-map (λ ([v : FlVector]) (flt3apply/pos t v)) vs))
-  (define new-ns (if (vector? ns)
-                     (vector-map (λ ([n : FlVector]) (flt3apply/norm tinv n)) ns)
-                     (flt3apply/norm tinv ns)))
-  (define new-face (if (flt3consistent? t) face (opposite-gl-face face)))
-  (list (quad-shape (box 'lazy) new-vs new-ns cs es ms new-face)))
+  (match-define (quad-shape passes vs ns cs es ms back?) a)
+  (define consistent? (flt3consistent? t))
+  (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
+  (define transform-norm (λ ([n : FlVector])
+                           (if consistent?
+                               (flt3apply/norm tinv n)
+                               (flv3neg (flt3apply/norm tinv n)))))
+  (list (quad-shape (box 'lazy)
+                    (vector-map transform-pos vs)
+                    (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
+                    cs es ms
+                    (if consistent? back? (not back?)))))
 
-(: rectangle-shape-transform (-> rectangle-shape FlAffine3- FlAffine3-
-                                 (List quad-shape quad-shape
-                                       quad-shape quad-shape
-                                       quad-shape quad-shape)))
+(: rectangle-shape-transform (-> rectangle-shape FlAffine3- FlAffine3- (Listof quad-shape)))
 (define (rectangle-shape-transform a t tinv)
-  (match-define (rectangle-shape passes b c e m old-face) a)
+  (append* (map (λ ([a : quad-shape])
+                  (quad-shape-transform a t tinv))
+                (rectangle-shape->quad-shapes a))))
+
+;; ===================================================================================================
+;; Conversions
+
+(: rectangle-shape->quad-shapes (-> rectangle-shape (List quad-shape quad-shape
+                                                          quad-shape quad-shape
+                                                          quad-shape quad-shape)))
+(define (rectangle-shape->quad-shapes a)
+  (match-define (rectangle-shape _ b c e m inside?) a)
   (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
-  
-  (define face (if (flt3consistent? t) old-face (opposite-gl-face old-face)))
-  
-  (define v1 (flt3apply/pos t (flvector xmin ymin zmin)))
-  (define v2 (flt3apply/pos t (flvector xmax ymin zmin)))
-  (define v3 (flt3apply/pos t (flvector xmax ymax zmin)))
-  (define v4 (flt3apply/pos t (flvector xmin ymax zmin)))
-  (define v5 (flt3apply/pos t (flvector xmin ymin zmax)))
-  (define v6 (flt3apply/pos t (flvector xmax ymin zmax)))
-  (define v7 (flt3apply/pos t (flvector xmax ymax zmax)))
-  (define v8 (flt3apply/pos t (flvector xmin ymax zmax)))
-  (define nleft  (flt3apply/norm tinv (flvector -1.0 0.0 0.0)))
-  (define nright (flt3apply/norm tinv (flvector +1.0 0.0 0.0)))
-  (define nfront (flt3apply/norm tinv (flvector 0.0 -1.0 0.0)))
-  (define nback  (flt3apply/norm tinv (flvector 0.0 +1.0 0.0)))
-  (define nbot   (flt3apply/norm tinv (flvector 0.0 0.0 -1.0)))
-  (define ntop   (flt3apply/norm tinv (flvector 0.0 0.0 +1.0)))
-  
-  (list (make-quad-shape (vector v4 v3 v2 v1) nbot   c e m face)
-        (make-quad-shape (vector v5 v6 v7 v8) ntop   c e m face)
-        (make-quad-shape (vector v1 v2 v6 v5) nfront c e m face)
-        (make-quad-shape (vector v3 v4 v8 v7) nback  c e m face)
-        (make-quad-shape (vector v4 v1 v5 v8) nleft  c e m face)
-        (make-quad-shape (vector v2 v3 v7 v6) nright c e m face)))
+  (define v1 (flvector xmin ymin zmin))
+  (define v2 (flvector xmax ymin zmin))
+  (define v3 (flvector xmax ymax zmin))
+  (define v4 (flvector xmin ymax zmin))
+  (define v5 (flvector xmin ymin zmax))
+  (define v6 (flvector xmax ymin zmax))
+  (define v7 (flvector xmax ymax zmax))
+  (define v8 (flvector xmin ymax zmax))
+  (list (make-quad-shape (vector v4 v3 v2 v1) vec-z- c e m inside?)
+        (make-quad-shape (vector v5 v6 v7 v8) vec-z+ c e m inside?)
+        (make-quad-shape (vector v1 v2 v6 v5) vec-y- c e m inside?)
+        (make-quad-shape (vector v3 v4 v8 v7) vec-y+ c e m inside?)
+        (make-quad-shape (vector v4 v1 v5 v8) vec-x- c e m inside?)
+        (make-quad-shape (vector v2 v3 v7 v6) vec-x+ c e m inside?)))
+
+;; quad-shape->triangle-shapes

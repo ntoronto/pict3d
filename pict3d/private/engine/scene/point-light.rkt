@@ -155,7 +155,7 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params point-light-program-spec empty 'both GL_QUADS (single-vertices 4 data)))
+     (vector (shape-params point-light-program-spec empty #t GL_QUADS (single-vertices 4 data)))
      #()
      #()
      #()

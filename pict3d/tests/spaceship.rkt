@@ -173,7 +173,7 @@
            (match-define (planetoid pict pos axis speed) p)
            (rotate (move (rotate pict axis (* speed angle)) pos)
                    '(0 0 1)
-                   (* angle 0.01))))
+                   (* angle 0.1))))
         sun)
        'camera
        (normal-basis '(0 -40 0) '(0 1 0))))

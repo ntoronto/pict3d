@@ -62,7 +62,7 @@ for `Scene`.
 
 (: make-nonempty-scene-tran (-> FlAffine3- FlAffine3- Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-scene-tran t tinv s)
-  (if #f ;(scene-tran? s)
+  (if (scene-tran? s)
       (make-nonempty-scene-tran (flt3compose t (scene-tran-transform s))
                                 (flt3compose (scene-tran-inverse s) tinv)
                                 (scene-tran-scene s))
@@ -428,13 +428,13 @@ for `Scene`.
 
 (: merge-single-vertices (-> program-spec
                              (List-Hash String (U Symbol Uniform))
-                             Face
+                             Boolean
                              Integer
                              (Vectorof shape-params)
                              Nonnegative-Fixnum
                              Nonnegative-Fixnum
                              (U (List shape-params) Null)))
-(define (merge-single-vertices pd uniforms face mode ps start end)
+(define (merge-single-vertices pd uniforms two-sided? mode ps start end)
   (define vertex-count
     (for/fold ([vertex-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
       (define v (shape-params-vertices (unsafe-vector-ref ps i)))
@@ -466,19 +466,19 @@ for `Scene`.
           vertex-num]))
      
      (define verts (single-vertices (assert vertex-count index?) all-vertex-data))
-     (list (shape-params (λ () pd) uniforms face mode verts))]
+     (list (shape-params (λ () pd) uniforms two-sided? mode verts))]
     [else
      empty]))
 
 (: merge-multi-vertices (-> program-spec
                             (List-Hash String (U Symbol Uniform))
-                            Face
+                            Boolean
                             Integer
                             (Vectorof shape-params)
                             Nonnegative-Fixnum
                             Nonnegative-Fixnum
                             (U (List shape-params) Null)))
-(define (merge-multi-vertices pd uniforms face mode ps start end)
+(define (merge-multi-vertices pd uniforms two-sided? mode ps start end)
   (define-values (vertex-count prim-count)
     (for/fold ([vertex-count : Nonnegative-Fixnum  0]
                [prim-count : Nonnegative-Fixnum  0]
@@ -539,7 +539,7 @@ for `Scene`.
      
      (list (shape-params (λ () pd)
                          uniforms
-                         face
+                         two-sided?
                          mode
                          (multi-vertices (assert vertex-count index?)
                                          all-vertex-data
@@ -581,9 +581,8 @@ for `Scene`.
             [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
                                         shape-params-uniforms))]
             [uniforms  (in-value (span-key s))]
-            [s  (in-list ((inst group-by-key! shape-params Face)
-                          ps get-swap-params (span-start s) (span-end s)
-                          shape-params-face))]
+            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
+                                        shape-params-two-sided?))]
             [face  (in-value (span-key s))]
             [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
                                         shape-params-mode))]

@@ -25,7 +25,7 @@
    [colors : (U FlVector (Vectorof FlVector))]
    [emitted-colors : (U FlVector (Vectorof FlVector))]
    [materials : (U material (Vectorof material))]
-   [face : Face])
+   [back? : Boolean])
   #:transparent)
 
 (struct quad-shape solid-shape
@@ -34,7 +34,7 @@
    [colors : (U FlVector (Vectorof FlVector))]
    [emitted-colors : (U FlVector (Vectorof FlVector))]
    [materials : (U material (Vectorof material))]
-   [face : Face])
+   [back? : Boolean])
   #:transparent)
 
 (struct rectangle-shape solid-shape
@@ -42,7 +42,7 @@
    [color : FlVector]
    [emitted-color : FlVector]
    [material : material]
-   [face : Face])
+   [inside? : Boolean])
   #:transparent)
 
 (struct sphere-shape solid-shape

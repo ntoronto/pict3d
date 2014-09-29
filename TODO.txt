@@ -3,12 +3,6 @@ Easy
 
 Better types for positions and directions
 
-Back faces
- * Triangles, quads, rectangles: use `inside?` instead of 'back and 'front
- * Triangles, quads, rectangles: reorder vertices instead of rendering different sides
- * Make rendering with inconsistent view matrix (e.g. scale negative x) not render shapes inside-out
- * Determine whether lighting on inside of spheres needs to be fixed
-
 Light min radius (test with cartoon lighting and use for debug lights)
 
 Reorder arguments in `call-with-*` functions and macros
@@ -27,6 +21,8 @@ pict3d% GUI
 Better default camera when no 'camera basis exists (point along min/max box diagonal)
 
 game-pict3d-canvas%
+
+? Use hash tables again instead of List-Hash instances for bases (test with "spheres-on-canvas.rkt")
 
 ? animated-pict3d-canvas%
 

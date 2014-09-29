@@ -183,8 +183,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (->* [User-Vector User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
-(define (triangle v1 v2 v3 [face 'front])
+(: triangle (->* [User-Vector User-Vector User-Vector] [Any] Pict3D))
+(define (triangle v1 v2 v3 [back? #f])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3)))
   (define norm (flv3polygon-normal vs))
   (shape->pict3d
@@ -193,13 +193,13 @@
                         (current-color)
                         (current-emitted)
                         (current-material)
-                        face)))
+                        (and back? #t))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
-(: quad (->* [User-Vector User-Vector User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
-(define (quad v1 v2 v3 v4 [face 'front])
+(: quad (->* [User-Vector User-Vector User-Vector User-Vector] [Any] Pict3D))
+(define (quad v1 v2 v3 v4 [back? #f])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3) (->flv3 v4)))
   (define norm (flv3polygon-normal vs))
   (shape->pict3d
@@ -208,19 +208,19 @@
                     (current-color)
                     (current-emitted)
                     (current-material)
-                    face)))
+                    (and back? #t))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
 
-(: rectangle (->* [User-Vector User-Vector] [(U 'front 'back 'both)] Pict3D))
-(define (rectangle v1 v2 [face 'front])
+(: rectangle (->* [User-Vector User-Vector] [Any] Pict3D))
+(define (rectangle v1 v2 [inside? #f])
   (shape->pict3d
    (make-rectangle-shape (assert (flv3rect (vector (->flv3 v1) (->flv3 v2))) nonempty-flrect3?)
                          (current-color)
                          (current-emitted)
                          (current-material)
-                         face)))
+                         (and inside? #t))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Ellipsoid

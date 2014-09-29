@@ -412,15 +412,15 @@ code
          #()
          #()
          #()
-         (vector (shape-params sphere-mat-program-spec empty 'both GL_QUADS
+         (vector (shape-params sphere-mat-program-spec empty #t GL_QUADS
                                (single-vertices 4 mat-data)))
-         (vector (shape-params sphere-tran-program-spec empty 'both GL_QUADS
+         (vector (shape-params sphere-tran-program-spec empty #t GL_QUADS
                                (single-vertices 4 draw-data))))
         (vector
          #()
-         (vector (shape-params sphere-mat-program-spec empty 'both GL_QUADS
+         (vector (shape-params sphere-mat-program-spec empty #t GL_QUADS
                                (single-vertices 4 mat-data)))
-         (vector (shape-params sphere-opaq-program-spec empty 'both GL_QUADS
+         (vector (shape-params sphere-opaq-program-spec empty #t GL_QUADS
                                (single-vertices 4 draw-data)))
          #()
          #())))

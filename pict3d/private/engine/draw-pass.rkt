@@ -3,12 +3,9 @@
 (require racket/match
          racket/list
          racket/unsafe/ops
-         racket/vector
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
-         "../math/flt3.rkt"
          "../utils.rkt"
-         "../ffi.rkt"
          "../gl.rkt"
          "affine.rkt"
          "types.rkt"
@@ -22,8 +19,6 @@
           (struct-out draw-passes)
           empty-shape-params
           Passes
-          (struct-out span)
-          group-by-key!
           draw-pass)
 
 ;; ===================================================================================================
@@ -57,7 +52,7 @@
 ;; (`program-spec` is lazy because programs can't be constructed until a GL context is active)
 (struct shape-params ([program-spec : (-> program-spec)]
                       [uniforms : (List-Hash String (U Symbol Uniform))]
-                      [face : Face]
+                      [two-sided? : Boolean]
                       [mode : Integer]
                       [vertices : Vertices])
   #:transparent)
@@ -75,7 +70,7 @@
   #:transparent)
 
 (define empty-shape-params
-  (shape-params (λ () (error 'empty-shape-params)) empty 'both 0 (single-vertices 0 #"")))
+  (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (single-vertices 0 #"")))
 
 (: empty-draw-params draw-params)
 (define empty-draw-params
@@ -392,8 +387,9 @@
                         Nonnegative-Fixnum
                         Nonnegative-Fixnum
                         (HashTable Symbol Uniform)
+                        Face
                         Void))
-(define (send-draw-params ps start end standard-uniforms)
+(define (send-draw-params ps start end standard-uniforms face)
   ;; For each program...
   (for ([s  (in-list (group-by-key! ps get-swap-params start end
                                     (λ ([ts : draw-params])
@@ -415,9 +411,9 @@
         (for ([s  (in-list ((inst group-by-key! draw-params Face)
                             ps get-swap-params (span-start s) (span-end s)
                             (λ ([ts : draw-params])
-                              (define consistent? (affine-consistent? (draw-params-transform ts)))
-                              (define face (shape-params-face (draw-params-shape-params ts)))
-                              (if consistent? face (opposite-gl-face face)))))])
+                              (cond [(shape-params-two-sided? (draw-params-shape-params ts))  'both]
+                                    [(affine-consistent? (draw-params-transform ts))  face]
+                                    [else  (opposite-gl-face face)]))))])
           (gl-draw-face (span-key s))
           ;; For each drawing mode...
           (for ([s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
@@ -442,8 +438,8 @@
      ((inst make-vector draw-params) n empty-draw-params))
    vector-length))
 
-(: draw-pass (-> Index (Vectorof draw-passes) (HashTable Symbol Uniform) Void))
-(define (draw-pass pass passess standard-uniforms)
+(: draw-pass (-> Index (Vectorof draw-passes) (HashTable Symbol Uniform) Face Void))
+(define (draw-pass pass passess standard-uniforms face)
   ;(printf "drawing pass ~v~n" pass)
   (define len
     (for/fold ([len : Nonnegative-Fixnum  0]) ([passes  (in-vector passess)])
@@ -472,4 +468,4 @@
   (unless (= n len)
     (error 'draw-pass "copy error: wrote ~a but len = ~a" n len))
   
-  (send-draw-params params 0 len standard-uniforms))
+  (send-draw-params params 0 len standard-uniforms face))

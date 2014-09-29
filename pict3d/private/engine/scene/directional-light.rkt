@@ -132,7 +132,7 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params directional-light-program-spec uniforms 'both GL_TRIANGLE_STRIP
+     (vector (shape-params directional-light-program-spec uniforms #t GL_TRIANGLE_STRIP
                            (multi-vertices 4 #"" (vector 0) (s32vector 4))))
      #()
      #()

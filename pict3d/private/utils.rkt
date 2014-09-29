@@ -180,7 +180,6 @@
                [else
                 (else-proc val)])))]))
 
-
 ;; ===================================================================================================
 ;; Hash functions
 
@@ -220,3 +219,22 @@
 (: list-hasheq-merge (All (A B) (-> (List-Hash A B) (List-Hash A B) (List-Hash A B))))
 (define (list-hasheq-merge h1 h2)
   ((inst remove-duplicates (Pair A B) A) (append h1 h2) eq? #:key car))
+
+;; ===================================================================================================
+;; Vector operations
+
+(: vector-rmap (All (A B) (-> (-> A B) (Vectorof A) (Vectorof B))))
+(define (vector-rmap f vs)
+  (define n (vector-length vs))
+  (cond [(= n 0)  #()]
+        [else
+         (define new-vs (make-vector n (f (vector-ref vs 0))))
+         (define n-1 (- n 1))
+         (for ([i  (in-range 0 n-1)]
+               [j  (in-range n-1 0 -1)])
+           (vector-set! new-vs i (f (vector-ref vs j))))
+         new-vs]))
+
+(: vector-reverse (All (A) (-> (Vectorof A) (Vectorof A))))
+(define (vector-reverse vs)
+  (vector-rmap (λ ([a : A]) a) vs))
