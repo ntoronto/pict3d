@@ -1,26 +1,54 @@
+======================================================================================================
+Easy
 
-Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
+Better types for positions and directions
 
-pict3d%
- * Save/load pict3d% snips (needs snip admin)
- * Make pict3d% snips save and load drawing parameters (e.g. near and far plane distances)
- * Fix editor lock problem
+Back faces
+ * Triangles, quads, rectangles: use `inside?` instead of 'back and 'front
+ * Triangles, quads, rectangles: reorder vertices instead of rendering different sides
+ * Make rendering with inconsistent view matrix (e.g. scale negative x) not render shapes inside-out
+ * Determine whether lighting on inside of spheres needs to be fixed
+
+Light min radius (test with cartoon lighting and use for debug lights)
 
 Reorder arguments in `call-with-*` functions and macros
-
-Speed up vector operations (settle for < 4 ulps error)
 
 Fix `send-multi-vertices`
  * Make it send a per-vertex model transformation
  * Check for > 1M vertexes and split drawing (like `send-single-vertices` does)
 
+pict3d% GUI
+ * Point hovered over, plane normal at that point (after simple collision detection, or use to test)
+ ? Resize corner
+ * Toggle sunlight and underlight
+ * Toggle debug view of lights
+ * Toggle normals, outlines, etc.
+
+Better default camera when no 'camera basis exists (point along min/max box diagonal)
+
+game-pict3d-canvas%
+
+? animated-pict3d-canvas%
+
+======================================================================================================
+Medium
+
+3D Universe
+
+Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
+
+Fix pict3d% editor lock problem (may not be an issue anymore since printing snips)
+
+Speed up vector operations (settle for < 4 ulps error)
+
 Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
 New shape constructors
  * cylinder (unit impostor with arbitrary affine transformation)
- * heightmap/terrain
- * smooth existing shape (snap extremely close vertices, average normals)
- * skybox (render scene in six directions from camera/origin, then construct a texture-mapped rect)
+ ? quadratic patches to generalize cylinders, spheres, arches, etc.
+ * heightmap/terrain (try a geometry shader)
+ * smooth existing shape (snap extremely close vertices, interpolate normals)
+ * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
 
 New kinds of Vertices
  * vao-vertices (need to key these on GL context)
@@ -28,36 +56,35 @@ New kinds of Vertices
  * indexed-multi-vertices
  * for indexed, try using glDrawElementsBaseVertex instead of manually incrementing offsets
 
-pict3d% GUI
- * Point hovered over, plane normal at that point
- ? Resize corner
- * Toggle sunlight and underlight
- * Toggle debug view of lights
- * Toggle normals, outlines, etc.
-
 Simple collision detection
-
-Light min radius (test with cartoon lighting)
-
-Make rendering with inconsistent view matrix (e.g. scale negative x) not render shapes inside-out
 
 Try state grouping on a test application using `equal?` instead of `eq?`
 
+Constructive solid geometry (CSG) operations
+
 ? Physically-based transparency (i.e. proper transmission fractions)
-? Precompute ray-tracing per-pixel directions when projection matrix changes
-? Package transform and inverse into a struct (may interfere with state grouping by `eq?`)
-? Draw Pict3D with alpha (to let REPL background show through)
+? Package transform and inverse into a struct
 ? Special-case transformation matrix struct for translation
 ? Pinch rectangle sides (implement with a projective transformation for rects only)
 
 ======================================================================================================
-Long-term (possibly never :/)
+Hard
 
 Figure out a nice functional API for textures
 
 Screen-space ambient occlusion (paper "Scalable Ambient Obscurance")
 
 Shadow mapping
+
+pict3d%
+ * Save/load pict3d% snips (waiting on Robby's redesign)
+ * Make pict3d% snips display properly in algebraic stepper in student languages
+
+Abstract the process of applying rendering passes
+
+Find a good way to wire shaders with rendering passes
+
+S-expression-based shader language that compiles to GLSL and can be run on the CPU for debugging
 
 ======================================================================================================
 
