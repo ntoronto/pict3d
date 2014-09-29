@@ -73,7 +73,6 @@
 ;; Rendering threads
 
 (define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
-(define get-tmp-bytes (make-cached-vector 'get-tmp-bytes make-bytes bytes-length))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread snip ch)
@@ -94,33 +93,21 @@
      (define-values (width height znear zfar fov-degrees background ambient-color ambient-intensity)
        (send snip get-init-params))
      (define fov-radians (degrees->radians (fl fov-degrees)))
-     (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+     (define proj (flt3compose
+                   (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
+                   (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
      
      ;; Lock everything up for drawing
-     (call-with-gl-context
-      (λ ()
-        ;; Draw the scene and all its little extra bits (bases, etc.)
-        (draw-draw-passes (send snip get-draw-passes view proj)
-                          width height
-                          view proj
-                          background ambient-color ambient-intensity)
-        
-        ;; Get the resulting pixels, upside-down (OpenGL origin is lower-left; we use upper-left)
-        (define row-size (* width 4))
-        (define bs (get-the-bytes (* row-size height)))
-        (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-        
-        ;; Flip right-side-up
-        (define tmp (get-tmp-bytes row-size))
-        (for ([row  (in-range (fxquotient height 2))])
-          (define i0 (* row row-size))
-          (define i1 (* (- (- height row) 1) row-size))
-          (bytes-copy! tmp 0 bs i0 (+ i0 row-size))
-          (bytes-copy! bs i0 bs i1 (+ i1 row-size))
-          (bytes-copy! bs i1 tmp 0 row-size))
-        
-        (send snip set-argb-pixels bs))
-      (get-master-gl-context))
+     (with-gl-context (get-master-gl-context)
+       ;; Draw the scene and all its little extra bits (bases, etc.)
+       (draw-draw-passes (send snip get-draw-passes view proj)
+                         width height
+                         view proj
+                         background ambient-color ambient-intensity)
+       ;; Get the resulting pixels and set them into the snip's bitmap
+       (define bs (get-the-bytes (* 4 width height)))
+       (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
+       (send snip set-argb-pixels bs))
      )
     (render-thread-loop))
   

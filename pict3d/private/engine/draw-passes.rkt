@@ -260,7 +260,7 @@ code
                         FlVector FlVector Flonum
                         Void))
 (define (draw-draw-passes passes width height view* proj* background ambient-color ambient-intensity)
-  (define face (if (flt3consistent? view*) 'front 'back))
+  (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
   
   (define view (->flprojective3 view*))
   (define proj (->flprojective3 proj*))

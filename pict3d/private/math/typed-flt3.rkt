@@ -648,6 +648,24 @@ Higher precision (try to guarantee 2.5 ulps?)
     (define s2 (det2 m00 m01 m10 m11))
     (+ (* s0 m20) (* s1 m21) (* s2 m22))))
 
+(define-syntax-rule (projective3-determinant s00 s01 s02 s03 s10 s11 s12 s13
+                                             s20 s21 s22 s23 s30 s31 s32 s33)
+  (let-values ([(m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
+                (values s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33)])
+    (define s0 (det2 m00 m01 m10 m11))
+    (define c5 (det2 m22 m23 m32 m33))
+    (define s1 (det2 m00 m02 m10 m12))
+    (define c4 (det2 m21 m23 m31 m33))
+    (define s2 (det2 m00 m03 m10 m13))
+    (define c3 (det2 m21 m22 m31 m32))
+    (define s3 (det2 m01 m02 m11 m12))
+    (define c2 (det2 m20 m23 m30 m33))
+    (define s4 (det2 m01 m03 m11 m13))
+    (define c1 (det2 m20 m22 m30 m32))
+    (define s5 (det2 m02 m03 m12 m13))
+    (define c0 (det2 m20 m21 m30 m31))
+    (+ (* s0 c5) (- (* s4 c1)) (* s2 c3) (* s3 c2) (- (* s1 c4)) (* s5 c0))))
+
 (: fllinear3-consistent? (-> fllinear3 Boolean))
 (define (fllinear3-consistent? m)
   (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22) (fllinear3-values m))
@@ -658,11 +676,18 @@ Higher precision (try to guarantee 2.5 ulps?)
   (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23) (flaffine3-values m))
   (>= (linear3-determinant m00 m01 m02 m10 m11 m12 m20 m21 m22) 0.0))
 
-(: flt3consistent? (-> FlAffine3- Boolean))
+(: flprojective3-consistent? (-> flprojective3 Boolean))
+(define (flprojective3-consistent? m)
+  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
+    (flprojective3-values m))
+  (>= (projective3-determinant m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33) 0.0))
+
+(: flt3consistent? (-> FlTransform3 Boolean))
 (define (flt3consistent? m)
   (cond [(flidentity3? m)  #t]
         [(fllinear3? m)  (fllinear3-consistent? m)]
-        [else  (flaffine3-consistent? m)]))
+        [(flaffine3? m)  (flaffine3-consistent? m)]
+        [else  (flprojective3-consistent? m)]))
 
 ;; ===================================================================================================
 ;; Frustum utils
