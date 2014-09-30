@@ -13,8 +13,7 @@
           get-transform-data))
 
 (struct affine ([transform : FlAffine3-]
-                [lazy-data : (Lazy-Box F32Vector)]
-                [lazy-consistent? : (Lazy-Box Boolean)])
+                [lazy-data : (Lazy-Box F32Vector)])
   #:transparent)
 
 (define affine-size (* 12 4))
@@ -25,14 +24,13 @@
 
 (define identity-affine
   (affine identity-flt3
-          (lazy-box F32Vector identity-transform)
-          (lazy-box Boolean #t)))
+          (lazy-box F32Vector identity-transform)))
 
 (: make-affine (-> FlAffine3- affine))
 (define (make-affine t)
   (if (flidentity3? t)
       identity-affine
-      (affine t (box 'lazy) (box 'lazy))))
+      (affine t (box 'lazy))))
 
 (: ->affine (-> (U affine FlAffine3-) affine))
 (define (->affine t)
@@ -52,12 +50,13 @@
                    0.0 1.0 0.0 0.0
                    0.0 0.0 1.0 0.0)]
           [(fllinear3? t)
-           (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22) (fllinear3-values t))
+           (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22)
+             (flvector-values (fltransform3-forward t) 9))
            (values m00 m01 m02 0.0
                    m10 m11 m12 0.0
                    m20 m21 m22 0.0)]
           [(flaffine3? t)
-           (flaffine3-values t)]))
+           (flvector-values (fltransform3-forward t) 12)]))
   (define vec (make-f32vector 12))
   (define p (f32vector->cpointer vec))
   (ptr-set! p _float 0 m00)
@@ -83,6 +82,4 @@
 
 (: affine-consistent? (-> affine Boolean))
 (define (affine-consistent? m)
-  (lazy-box-ref!
-   (affine-lazy-consistent? m)
-   (λ () (flt3consistent? (affine-transform m)))))
+  (flt3consistent? (affine-transform m)))

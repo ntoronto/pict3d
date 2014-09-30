@@ -123,30 +123,21 @@
 
 (: columns->basis (-> User-Vector User-Vector User-Vector User-Vector Basis))
 (define (columns->basis x y z p)
-  (define-values (x0 x1 x2) (flv3-values (->flv3 x)))
-  (define-values (y0 y1 y2) (flv3-values (->flv3 y)))
-  (define-values (z0 z1 z2) (flv3-values (->flv3 z)))
-  (define-values (p0 p1 p2) (flv3-values (->flv3 p)))
-  (basis (flaffine3
-          (flvector x0 y0 z0 p0
-                    x1 y1 z1 p1
-                    x2 y2 z2 p2))))
+  (basis (basis->flaffine3 (->flv3 x) (->flv3 y) (->flv3 z) (->flv3 p))))
 
-(: basis-pre-transform (-> Basis FlAffine3- FlAffine3- Basis))
-(define (basis-pre-transform p t tinv)
-  (basis (flt3compose (basis-forward p) t)
-         (flt3compose tinv (basis-inverse p))))
+(: basis-pre-transform (-> Basis FlAffine3- Basis))
+(define (basis-pre-transform p t)
+  (basis (flt3compose (basis-transform p) t)))
 
-(: basis-post-transform (-> Basis FlAffine3- FlAffine3- Basis))
-(define (basis-post-transform p t tinv)
-  (basis (flt3compose t (basis-forward p))
-         (flt3compose (basis-inverse p) tinv)))
+(: basis-post-transform (-> Basis FlAffine3- Basis))
+(define (basis-post-transform p t)
+  (basis (flt3compose t (basis-transform p))))
 
-(: bases-post-transform (-> Bases FlAffine3- FlAffine3- Bases))
-(define (bases-post-transform bases t tinv)
+(: bases-post-transform (-> Bases FlAffine3- Bases))
+(define (bases-post-transform bases t)
   (for/list : Bases ([kv  (in-list bases)])
     (match-define (cons label p) kv)
-    (cons label (basis-post-transform p t tinv))))
+    (cons label (basis-post-transform p t))))
 
 (: get-basis (->* [Pict3D] [Symbol] Basis))
 (define (get-basis s [label 'default])
@@ -294,22 +285,20 @@
 ;; ===================================================================================================
 ;; Transformations
 
-(: pict3d-post-transform (-> Pict3D FlAffine3- FlAffine3- Pict3D))
-(define (pict3d-post-transform s t tinv)
+(: pict3d-post-transform (-> Pict3D FlAffine3- Pict3D))
+(define (pict3d-post-transform s t)
   (define scene (pict3d-scene s))
   (define h (pict3d-bases s))
-  (pict3d (scene-transform scene t tinv)
-          (and h (bases-post-transform h t tinv))))
+  (pict3d (scene-transform scene t)
+          (and h (bases-post-transform h t))))
 
-(: transform (case-> (-> Pict3D FlAffine3- Pict3D)
-                     (-> Pict3D FlAffine3- FlAffine3- Pict3D)))
-(define (transform s t [tinv (flt3inverse t)])
-  (pict3d-post-transform s t tinv))
+(: transform (-> Pict3D FlAffine3- Pict3D))
+(define (transform s t)
+  (pict3d-post-transform s t))
 
-(: transform-basis (case-> (-> Basis FlAffine3- Basis)
-                           (-> Basis FlAffine3- FlAffine3- Basis)))
-(define (transform-basis s t [tinv (flt3inverse t)])
-  (basis-pre-transform s t tinv))
+(: transform-basis (-> Basis FlAffine3- Basis))
+(define (transform-basis s t)
+  (basis-pre-transform s t))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
@@ -419,18 +408,17 @@
 (define (pin s1 s2 [label1 'default] [label2 'default])
   (define p1 (get-basis s1 label1))
   (define p2 (get-basis s2 label2))
-  (define t1 (basis-forward p1))
-  (define t2 (basis-forward p2))
+  (define t1 (basis-transform p1))
+  (define t2 (basis-transform p2))
   (define t (flt3compose t1 (flt3inverse t2)))
-  (define tinv (flt3compose t2 (flt3inverse t1)))
   (define scene1 (pict3d-scene s1))
   (define scene2 (pict3d-scene s2))
   (define h1 (assert (pict3d-bases s1) values))
   (define h2 (assert (pict3d-bases s2) values))
   (pict3d
-   (scene-union scene1 (scene-transform scene2 t tinv))
+   (scene-union scene1 (scene-transform scene2 t))
    (list-hasheq-merge (list-hasheq-remove h1 label1)
-                      (bases-post-transform (list-hasheq-remove h2 label2) t tinv))))
+                      (bases-post-transform (list-hasheq-remove h2 label2) t))))
 
 ;; ===================================================================================================
 ;; Testing combinators
@@ -492,4 +480,4 @@
 (define arrow
   (case-lambda
     [(end)  (arrow '(0 0 0) end)]
-    [(v0 v1)  (transform (make-up-arrow) (basis-forward (direction-basis v0 v1)))]))
+    [(v0 v1)  (transform (make-up-arrow) (basis-transform (direction-basis v0 v1)))]))

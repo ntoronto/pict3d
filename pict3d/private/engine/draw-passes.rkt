@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/match
+         racket/bool
          math/flonum
          math/base
          typed/opengl
@@ -260,6 +261,7 @@ code
                         FlVector FlVector Flonum
                         Void))
 (define (draw-draw-passes passes width height view* proj* background ambient-color ambient-intensity)
+  ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
   (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
   
   (define view (->flprojective3 view*))
@@ -314,10 +316,10 @@ code
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
     (make-immutable-hasheq
-     (list (cons 'view (uniform-mat (flprojective3-entries view) 4))
-           (cons 'unview (uniform-mat (flprojective3-entries (flt3inverse view)) 4))
-           (cons 'proj (uniform-mat (flprojective3-entries proj) 4))
-           (cons 'unproj (uniform-mat (flprojective3-entries (flt3inverse proj)) 4))
+     (list (cons 'view (uniform-mat (fltransform3-forward view) 4))
+           (cons 'unview (uniform-mat (fltransform3-inverse view) 4))
+           (cons 'proj (uniform-mat (fltransform3-forward proj) 4))
+           (cons 'unproj (uniform-mat (fltransform3-inverse proj) 4))
            (cons 'znear (uniform-float znear))
            (cons 'zfar (uniform-float zfar))
            (cons 'log2_znear_zfar (uniform-float (fllog2 (/ znear zfar))))
@@ -566,8 +568,7 @@ code
             (gl-program-uniform program "color_tex" (uniform-int 0))
             (gl-program-uniform program "bloom_tex" (uniform-int 1))
             (draw-fullscreen-quad tex-width tex-height))))))
-
-#|  
+  #|
   (glViewport 0 0 width height)
   (glClearColor 0.0 0.0 0.0 0.0)
   (glClear GL_COLOR_BUFFER_BIT)

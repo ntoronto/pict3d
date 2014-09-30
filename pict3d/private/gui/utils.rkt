@@ -127,10 +127,10 @@
         (set! velocity (flvector 0.0 0.0 0.0))))
     
     (define/public (rotate-direction v)
-      (flv4->norm (flt3tapply (get-rotation-matrix) (norm->flv4 v))))
+      (flt3apply/pos (flt3inverse (get-rotation-matrix)) v))
     
     (define/public (unrotate-direction v)
-      (flv4->norm (flt3apply (flt3inverse (get-rotation-matrix)) (norm->flv4 v))))
+      (flt3apply/pos (get-rotation-matrix) v))
     
     (define/public (change-angles dy dp)
       (let* ([y  (- yaw dy)]

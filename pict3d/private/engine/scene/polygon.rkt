@@ -568,40 +568,40 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-transform (-> triangle-shape FlAffine3- FlAffine3- (List triangle-shape)))
-(define (triangle-shape-transform a t tinv)
+(: triangle-shape-transform (-> triangle-shape FlAffine3- (List triangle-shape)))
+(define (triangle-shape-transform a t)
   (match-define (triangle-shape passes vs ns cs es ms back?) a)
   (define consistent? (flt3consistent? t))
   (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
   (define transform-norm (λ ([n : FlVector])
                            (if consistent?
-                               (flt3apply/norm tinv n)
-                               (flv3neg (flt3apply/norm tinv n)))))
+                               (flt3apply/nrm t n)
+                               (flv3neg (flt3apply/nrm t n)))))
   (list (triangle-shape (box 'lazy)
                         (vector-map transform-pos vs)
                         (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
                         cs es ms
                         (if consistent? back? (not back?)))))
 
-(: quad-shape-transform (-> quad-shape FlAffine3- FlAffine3- (List quad-shape)))
-(define (quad-shape-transform a t tinv)
+(: quad-shape-transform (-> quad-shape FlAffine3- (List quad-shape)))
+(define (quad-shape-transform a t)
   (match-define (quad-shape passes vs ns cs es ms back?) a)
   (define consistent? (flt3consistent? t))
   (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
   (define transform-norm (λ ([n : FlVector])
                            (if consistent?
-                               (flt3apply/norm tinv n)
-                               (flv3neg (flt3apply/norm tinv n)))))
+                               (flt3apply/nrm t n)
+                               (flv3neg (flt3apply/nrm t n)))))
   (list (quad-shape (box 'lazy)
                     (vector-map transform-pos vs)
                     (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
                     cs es ms
                     (if consistent? back? (not back?)))))
 
-(: rectangle-shape-transform (-> rectangle-shape FlAffine3- FlAffine3- (Listof quad-shape)))
-(define (rectangle-shape-transform a t tinv)
+(: rectangle-shape-transform (-> rectangle-shape FlAffine3- (Listof quad-shape)))
+(define (rectangle-shape-transform a t)
   (append* (map (λ ([a : quad-shape])
-                  (quad-shape-transform a t tinv))
+                  (quad-shape-transform a t))
                 (rectangle-shape->quad-shapes a))))
 
 ;; ===================================================================================================

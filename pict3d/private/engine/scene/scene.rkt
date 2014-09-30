@@ -60,19 +60,16 @@ for `Scene`.
         [(empty-scene? s2)  s1]
         [else  (make-nonempty-scene-node s1 s2)]))
 
-(: make-nonempty-scene-tran (-> FlAffine3- FlAffine3- Nonempty-Scene Nonempty-Scene))
-(define (make-nonempty-scene-tran t tinv s)
+(: make-nonempty-scene-tran (-> FlAffine3- Nonempty-Scene Nonempty-Scene))
+(define (make-nonempty-scene-tran t s)
   (if (scene-tran? s)
       (make-nonempty-scene-tran (flt3compose t (scene-tran-transform s))
-                                (flt3compose (scene-tran-inverse s) tinv)
                                 (scene-tran-scene s))
-      (scene-tran (flrect3-transform (scene-rect s) t)
-                  (nonempty-scene-count s)
-                  t tinv s)))
+      (scene-tran (flrect3-transform (scene-rect s) t) (nonempty-scene-count s) t s)))
 
-(: scene-transform (-> Scene FlAffine3- FlAffine3- Scene))
-(define (scene-transform s t tinv)
-  (if (empty-scene? s) s (make-nonempty-scene-tran t tinv s)))
+(: scene-transform (-> Scene FlAffine3- Scene))
+(define (scene-transform s t)
+  (if (empty-scene? s) s (make-nonempty-scene-tran t s)))
 
 ;; ===================================================================================================
 ;; Scene union with rebalancing
@@ -194,11 +191,11 @@ for `Scene`.
              [(empty-scene? new-s1)  new-s2]
              [(empty-scene? new-s2)  new-s1]
              [else  (make-nonempty-scene-node new-s1 new-s2)])]
-      [(scene-tran b c t0 tinv0 s0)
+      [(scene-tran b c t0 s0)
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
              [(empty-scene? new-s0)  new-s0]
-             [else  (make-nonempty-scene-tran t0 tinv0 new-s0)])])))
+             [else  (make-nonempty-scene-tran t0 new-s0)])])))
 
 (: nonempty-scene-extract (All (B C) (-> Nonempty-Scene
                                          C (-> C FlAffine3- C)
@@ -221,11 +218,12 @@ for `Scene`.
        (append (loop (scene-node-neg s) c planes inside?)
                (loop (scene-node-pos s) c planes inside?))]
       [(scene-tran? s)
-       (match-define (scene-tran _ _ t0 tinv0 s0) s)
+       (match-define (scene-tran _ _ t0 s0) s)
        (define new-c (c-compose c t0))
+       (define tinv0 (flt3inverse t0))
        (define new-planes
          (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
-           (define new-p (flt3apply/plane t0 p))
+           (define new-p (flt3apply/pln tinv0 p))
            (if new-p (cons new-p planes) planes)))
        (loop s0 new-c new-planes inside?)])))
 
@@ -276,13 +274,13 @@ for `Scene`.
              [(empty-scene? new-s2)  new-s1]
              [else  (make-nonempty-scene-node new-s1 new-s2)])]
       [(scene-tran? s)
-       (match-define (scene-tran b c t tinv s0) s)
-       (define new-p (flt3apply/plane t p))
+       (match-define (scene-tran b c t s0) s)
+       (define new-p (flt3apply/pln (flt3inverse t) p))
        (cond [new-p
               (define new-s0 (loop s0 new-p))
               (cond [(eq? new-s0 s0)  s]
                     [(empty-scene? new-s0)  new-s0]
-                    [else  (make-nonempty-scene-tran t tinv new-s0)])]
+                    [else  (make-nonempty-scene-tran t new-s0)])]
              [else
               empty-scene])])))
 
@@ -312,13 +310,13 @@ for `Scene`.
              [(empty-scene? new-s2)  new-s1]
              [else  (make-nonempty-scene-node new-s1 new-s2)])]
       [(scene-tran? s)
-       (match-define (scene-tran b0 c0 t0 tinv0 s0) s)
-       (define new-t (flt3compose tinv0 t))
+       (match-define (scene-tran b0 c0 t0 s0) s)
+       (define new-t (flt3compose (flt3inverse t0) t))
        (define new-b (flrect3-transform orig-b new-t))
        (define new-s0 (loop s0 new-t new-b))
        (cond [(eq? new-s0 s0)  s]
              [(empty-scene? new-s0)  new-s0]
-             [else  (make-nonempty-scene-tran t0 tinv0 new-s0)])])))
+             [else  (make-nonempty-scene-tran t0 new-s0)])])))
 
 (: scene-rect-cull (-> Scene FlRect3 Scene))
 (define (scene-rect-cull s b)
@@ -340,38 +338,38 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Shape and scene transformation (forced, not lazy)
 
-(: shape-transform (-> Shape FlAffine3- FlAffine3- (Listof Shape)))
-(define (shape-transform a t tinv)
+(: shape-transform (-> Shape FlAffine3- (Listof Shape)))
+(define (shape-transform a t)
   (cond
     [(flidentity3? t)  (list a)]
     [(solid-shape? a)
      (cond
-       [(triangle-shape? a)   (triangle-shape-transform a t tinv)]
-       [(quad-shape? a)       (quad-shape-transform a t tinv)]
-       [(rectangle-shape? a)  (rectangle-shape-transform a t tinv)]
-       [(sphere-shape? a)     (sphere-shape-transform a t tinv)])]
+       [(triangle-shape? a)   (triangle-shape-transform a t)]
+       [(quad-shape? a)       (quad-shape-transform a t)]
+       [(rectangle-shape? a)  (rectangle-shape-transform a t)]
+       [(sphere-shape? a)     (sphere-shape-transform a t)])]
     [(light-shape? a)
      (cond
-       [(directional-light-shape? a)  (directional-light-shape-transform a t tinv)]
-       [(point-light-shape? a)        (point-light-shape-transform a t tinv)])]
+       [(directional-light-shape? a)  (directional-light-shape-transform a t)]
+       [(point-light-shape? a)        (point-light-shape-transform a t)])]
     ;; Frozen scene
     [(frozen-scene-shape? a)
-     (frozen-scene-shape-transform a t tinv)]))
+     (frozen-scene-shape-transform a t)]))
 
-(: nonempty-transform-shapes (-> Nonempty-Scene FlAffine3- FlAffine3- Scene))
-(define (nonempty-transform-shapes s t tinv)
+(: nonempty-transform-shapes (-> Nonempty-Scene FlAffine3- Scene))
+(define (nonempty-transform-shapes s t)
   (match s
     [(scene-leaf b c a)
-     (scene-union* (map shape->scene (shape-transform a t tinv)))]
+     (scene-union* (map shape->scene (shape-transform a t)))]
     [(scene-node b c s1 s2)
-     (make-scene-node (nonempty-transform-shapes s1 t tinv)
-                      (nonempty-transform-shapes s2 t tinv))]
-    [(scene-tran b c t0 tinv0 s0)
-     (nonempty-transform-shapes s0 (flt3compose t t0) (flt3compose tinv0 tinv))]))
+     (make-scene-node (nonempty-transform-shapes s1 t)
+                      (nonempty-transform-shapes s2 t))]
+    [(scene-tran b c t0 s0)
+     (nonempty-transform-shapes s0 (flt3compose t t0))]))
 
-(: scene-transform-shapes (-> Scene FlAffine3- FlAffine3- Scene))
-(define (scene-transform-shapes s t tinv)
-  (if (empty-scene? s) s (nonempty-transform-shapes s t tinv)))
+(: scene-transform-shapes (-> Scene FlAffine3- Scene))
+(define (scene-transform-shapes s t)
+  (if (empty-scene? s) s (nonempty-transform-shapes s t)))
 
 ;; ===================================================================================================
 ;; Scene drawing
@@ -553,9 +551,9 @@ for `Scene`.
   
   (: transformed-passes (-> Shape FlAffine3- (Listof Passes)))
   (define (transformed-passes s t)
-    (map shape-passes (shape-transform s t (flt3inverse t))))
+    (map shape-passes (shape-transform s t)))
   
-  (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3 identity-flt3)
+  (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3)
                                      identity-flt3
                                      flt3compose
                                      empty
@@ -601,12 +599,11 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Transform
 
-(: frozen-scene-shape-transform (-> frozen-scene-shape FlAffine3- FlAffine3- (Listof Shape)))
-(define (frozen-scene-shape-transform a t tinv)
+(: frozen-scene-shape-transform (-> frozen-scene-shape FlAffine3- (Listof Shape)))
+(define (frozen-scene-shape-transform a t)
   (append*
-   (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t tinv)
+   (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t)
                   identity-flt3
                   flt3compose
                   empty
-                  (λ ([s : Shape] [t : FlAffine3-])
-                    (shape-transform s t (flt3inverse t))))))
+                  shape-transform)))

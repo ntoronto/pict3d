@@ -58,7 +58,8 @@
 (define fov-radians (degrees->radians (fl 30.0)))
 (define camera-basis (normal-basis '(1.25 1.25 1.25) '(-1 -1 -1)))
 (define proj (perspective-flt3/viewport (fl 800) (fl 600) fov-radians znear zfar))
-(define view (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0)) (basis-inverse camera-basis)))
+(define view (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
+                          (flt3inverse (basis-transform camera-basis))))
 (define t (flt3compose proj view))
 
 (define t-frustum

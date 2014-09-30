@@ -61,5 +61,5 @@
   (define camera-basis (list-hasheq-ref bases 'camera (λ () #f)))
   (if camera-basis
       (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                   (basis-inverse camera-basis))
+                   (flt3inverse (basis-transform camera-basis)))
       default))

@@ -2,7 +2,9 @@
 
 (require (for-syntax racket/base)
          racket/list
-         racket/vector)
+         racket/vector
+         racket/flonum
+         racket/unsafe/ops)
 
 (provide (all-defined-out))
 
@@ -238,3 +240,17 @@
 (: vector-reverse (All (A) (-> (Vectorof A) (Vectorof A))))
 (define (vector-reverse vs)
   (vector-rmap (λ ([a : A]) a) vs))
+
+;; ===================================================================================================
+;; FlVector operations
+
+(define-syntax (flvector-values stx)
+  (syntax-case stx ()
+    [(_ v-stx n)
+     (exact-nonnegative-integer? (syntax->datum #'n))
+     (with-syntax ([(i ...)  (build-list (syntax->datum #'n) values)])
+       (syntax/loc stx
+         (let ([v : FlVector  v-stx])
+           (unless (= n (flvector-length v))
+             (raise-type-error 'flvector-values (format "length-~a FlVector" n) v))
+           (values (unsafe-flvector-ref v i) ...))))]))

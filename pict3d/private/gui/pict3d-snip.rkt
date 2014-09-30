@@ -135,7 +135,7 @@
         (cond
           [camera
            (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-             (flvector->list (flaffine3-entries (->flaffine3 (basis-forward camera)))))
+             (flvector->list (fltransform3-forward (->flaffine3 (basis-transform camera)))))
            (define position (flvector m03 m13 m23))
            (define yaw (- (atan m12 m02) (/ pi 2.0)))
            (define pitch (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))

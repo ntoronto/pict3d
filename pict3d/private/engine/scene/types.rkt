@@ -92,7 +92,6 @@
 
 (struct scene-tran nonempty-scene
   ([transform : FlAffine3-]
-   [inverse : FlAffine3-]
    [scene : Nonempty-Scene])
   #:transparent)
 

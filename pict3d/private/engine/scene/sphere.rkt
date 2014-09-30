@@ -440,7 +440,7 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: sphere-shape-transform (-> sphere-shape FlAffine3- FlAffine3- (List sphere-shape)))
-(define (sphere-shape-transform a t tinv)
+(: sphere-shape-transform (-> sphere-shape FlAffine3- (List sphere-shape)))
+(define (sphere-shape-transform a t)
   (match-define (sphere-shape passes t0 c e m inside?) a)
   (list (sphere-shape (box 'lazy) (affine-compose t t0) c e m inside?)))

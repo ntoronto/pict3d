@@ -21,8 +21,7 @@
       (define norm (assert (flv3polygon-normal vs) values))
       (scene-transform-shapes
        (shape->scene (make-triangle-shape vs norm c e m #f))
-       (rotate-z-flt3 (degrees->radians (* (fl i) +90.0)))
-       (rotate-z-flt3 (degrees->radians (* (fl i) -90.0))))))
+       (rotate-z-flt3 (degrees->radians (* (fl i) +90.0))))))
    (shape->scene
     (make-quad-shape
      (vector (flvector +1.0 +1.0 0.0)
@@ -46,7 +45,7 @@
               (scale-flt3 (flvector #i2/64 #i2/64 #i8/64)))])
      (scene-transform-shapes
       (make-unit-pyramid-scene c e m)
-      t (flt3inverse t)))))
+      t))))
 
 (define axis-material
   (material 0.1 0.2 0.7 0.3))
@@ -57,8 +56,7 @@
     (flvector 0.0 0.0 0.0 1.0)
     (flvector 1.0 0.05 0.05 2.0)
     axis-material)
-   (rotate-y-flt3 (degrees->radians +90.0))
-   (rotate-y-flt3 (degrees->radians -90.0))))
+   (rotate-y-flt3 (degrees->radians +90.0))))
 
 (define y-axis-scene
   (scene-transform-shapes
@@ -66,8 +64,7 @@
     (flvector 0.0 0.0 0.0 1.0)
     (flvector 0.0 1.0 0.0 1.75)
     axis-material)
-   (rotate-x-flt3 (degrees->radians -90.0))
-   (rotate-x-flt3 (degrees->radians +90.0))))
+   (rotate-x-flt3 (degrees->radians -90.0))))
 
 (define z-axis-scene
   (make-unit-arrow-scene

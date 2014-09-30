@@ -150,7 +150,7 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: directional-light-shape-transform (-> directional-light-shape FlAffine3- FlAffine3-
-                                         (List directional-light-shape )))
-(define (directional-light-shape-transform a t tinv)
+(: directional-light-shape-transform (-> directional-light-shape FlAffine3-
+                                         (List directional-light-shape)))
+(define (directional-light-shape-transform a t)
   (list a))

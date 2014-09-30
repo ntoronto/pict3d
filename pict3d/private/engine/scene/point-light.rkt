@@ -175,7 +175,7 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: point-light-shape-transform (-> point-light-shape FlAffine3- FlAffine3- (List point-light-shape)))
-(define (point-light-shape-transform a t tinv)
+(: point-light-shape-transform (-> point-light-shape FlAffine3- (List point-light-shape)))
+(define (point-light-shape-transform a t)
   (match-define (point-light-shape passes color intensity position radius) a)
   (list (point-light-shape (box 'lazy) color intensity (flt3apply/pos t position) radius)))
