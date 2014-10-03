@@ -94,7 +94,8 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
         [else
          (define fbo (gl-framebuffer (u32vector-ref (glGenFramebuffers 1) 0)
                                      width height (make-hasheqv attachments)))
-         (manage-gl-object fbo (λ ([handle : Natural]) (glDeleteFramebuffers 1 (u32vector handle))))
+         (manage-gl-object fbo (λ ([handle : Natural])
+                                 (glDeleteFramebuffers 1 (u32vector handle))))
          
          (with-gl-framebuffer fbo
            (for ([att  (in-list attachments)])
@@ -118,4 +119,5 @@ GL_TEXTURE_FIXED_SAMPLE_LOCATIONS is not GL_TRUE for all attached textures."]
   (call-with-gl-object (λ () body ...)
                        current-gl-framebuffer
                        obj-stx
-                       (λ ([handle : Natural]) (glBindFramebuffer GL_FRAMEBUFFER handle))))
+                       (λ ([handle : Natural])
+                         (glBindFramebuffer GL_FRAMEBUFFER handle))))

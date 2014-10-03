@@ -59,9 +59,7 @@ Try state grouping on a test application using `equal?` instead of `eq?`
 Constructive solid geometry (CSG) operations
 
 ? Physically-based transparency (i.e. proper transmission fractions)
-? Package transform and inverse into a struct
 ? Special-case transformation matrix struct for translation
-? Pinch rectangle sides (implement with a projective transformation for rects only)
 
 ======================================================================================================
 Hard

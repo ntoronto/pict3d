@@ -161,16 +161,16 @@
     
     ;(: get-managed-gl-context (-> GL-Context))
     (define/public (get-managed-gl-context)
-      (define ctxt (send (send this get-dc) get-gl-context))
       (define mctxt managed-ctxt)
-      (cond [(or (not ctxt) (not (send ctxt ok?)))
-             (error 'get-managed-context "no GL context is available")]
-            [(or (not mctxt)
-                 (not (eq? ctxt (gl-context-context mctxt))))
-             (let ([mctxt  (managed-gl-context ctxt)])
-               (set! managed-ctxt mctxt)
-               mctxt)]
-            [else  mctxt]))
+      (cond [mctxt  mctxt]
+            [else
+             (define ctxt (send (send this get-dc) get-gl-context))
+             (cond [(or (not ctxt) (not (send ctxt ok?)))
+                    (error 'pict3d-canvas% "no GL context is available")]
+                   [else
+                    (let ([mctxt  (managed-gl-context ctxt)])
+                      (set! managed-ctxt mctxt)
+                      mctxt)])]))
     
     (define/override (on-paint)
       (define-values (width height) (get-gl-window-size))
