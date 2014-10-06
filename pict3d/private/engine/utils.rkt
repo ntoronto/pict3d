@@ -227,7 +227,7 @@
   (define cache (make-weak-hasheq))
   
   (λ args
-    (define ctxt (get-current-gl-context 'cache-singleton/context))
+    (define ctxt (get-current-managed-gl-context 'cache-singleton/context))
     
     (: apply-f (-> (List A ...) B))
     (define (apply-f args)
@@ -247,7 +247,7 @@
   (: cache (HashTable GL-Context (U #f B)))
   (define cache (make-weak-hasheq))
   (λ ()
-    (define ctxt (get-current-gl-context 'cache-thunk/context))
+    (define ctxt (get-current-managed-gl-context 'cache-thunk/context))
     (define entry (hash-ref! cache ctxt (λ () #f)))
     (cond [entry  entry]
           [else

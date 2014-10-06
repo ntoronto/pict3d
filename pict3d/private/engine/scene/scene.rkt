@@ -243,7 +243,6 @@ for `Scene`.
     [(solid-shape? a)
      (cond
        [(triangle-shape? a)   (triangle-shape-rect a)]
-       [(quad-shape? a)       (quad-shape-rect a)]
        [(rectangle-shape? a)  (rectangle-shape-rect a)]
        [(sphere-shape? a)     (sphere-shape-rect a)])]
     [(light-shape? a)
@@ -345,7 +344,6 @@ for `Scene`.
     [(solid-shape? a)
      (cond
        [(triangle-shape? a)   (triangle-shape-transform a t)]
-       [(quad-shape? a)       (quad-shape-transform a t)]
        [(rectangle-shape? a)  (rectangle-shape-transform a t)]
        [(sphere-shape? a)     (sphere-shape-transform a t)])]
     [(light-shape? a)
@@ -383,7 +381,6 @@ for `Scene`.
        [(solid-shape? a)
         (cond
           [(triangle-shape? a)   (make-triangle-shape-passes a)]
-          [(quad-shape? a)       (make-quad-shape-passes a)]
           [(rectangle-shape? a)  (make-rectangle-shape-passes a)]
           [(sphere-shape? a)     (make-sphere-shape-passes a)])]
        [(light-shape? a)

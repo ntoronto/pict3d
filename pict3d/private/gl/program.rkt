@@ -59,16 +59,19 @@
 ;; Managed shaders and programs
 
 (struct gl-shader gl-object ([type : Integer] [code : String]) #:transparent)
-(struct gl-program gl-object ([struct : vao-struct] [shaders : (Listof gl-shader)]) #:transparent)
+(struct gl-program gl-object ([struct : vao-struct]
+                              [output-names : (Listof String)]
+                              [shaders : (Listof gl-shader)])
+  #:transparent)
 
 (: make-gl-shader (-> Integer String gl-shader))
 (define (make-gl-shader type code)
-  (get-current-gl-context 'make-gl-shader)
+  (get-current-managed-gl-context 'make-gl-shader)
   
   (define handle (glCreateShader type))
   (define shader (gl-shader handle type code))
   (manage-gl-object shader (λ ([handle : Natural]) (glDeleteShader handle)))
-   
+  
   (glShaderSource handle 1 (vector code) (s32vector -1))
   
   (glCompileShader handle)
@@ -80,12 +83,12 @@
   
   shader)
 
-(: make-gl-program (-> vao-struct (Listof gl-shader) gl-program))
-(define (make-gl-program struct shaders)
-  (get-current-gl-context 'make-gl-program)
+(: make-gl-program (-> vao-struct (Listof String) (Listof gl-shader) gl-program))
+(define (make-gl-program struct output-names shaders)
+  (get-current-managed-gl-context 'make-gl-program)
   
   (define handle (glCreateProgram))
-  (define program (gl-program handle struct shaders))
+  (define program (gl-program handle struct output-names shaders))
   (manage-gl-object program (λ ([handle : Natural]) (glDeleteProgram handle)))
   
   (for ([shader  (in-list shaders)])
@@ -94,6 +97,10 @@
   (for ([field  (in-list (vao-struct-fields struct))]
         [index : Natural  (in-naturals 0)])
     (glBindAttribLocation handle index (vao-field-name field)))
+  
+  (for ([name  (in-list output-names)]
+        [index : Natural  (in-naturals 0)])
+    (glBindFragDataLocation handle index name))
   
   (glLinkProgram handle)
   (define status (glGetProgramiv handle GL_LINK_STATUS))
@@ -107,7 +114,7 @@
   
   program)
 
-(define null-gl-program (gl-program 0 (make-vao-struct) empty))
+(define null-gl-program (gl-program 0 (make-vao-struct) empty empty))
 
 (: current-gl-program (Parameterof gl-program))
 (define current-gl-program (make-parameter null-gl-program))

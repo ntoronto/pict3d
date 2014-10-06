@@ -22,14 +22,16 @@
       (scene-transform-shapes
        (shape->scene (make-triangle-shape vs norm c e m #f))
        (rotate-z-flt3 (degrees->radians (* (fl i) +90.0))))))
-   (shape->scene
-    (make-quad-shape
-     (vector (flvector +1.0 +1.0 0.0)
-             (flvector +1.0 -1.0 0.0)
-             (flvector -1.0 -1.0 0.0)
-             (flvector -1.0 +1.0 0.0))
-     (flvector 0.0 0.0 1.0)
-     c e m #f))))
+   (scene-union*
+    (map
+     shape->scene
+     (make-quad-shapes
+      (vector (flvector +1.0 +1.0 0.0)
+              (flvector +1.0 -1.0 0.0)
+              (flvector -1.0 -1.0 0.0)
+              (flvector -1.0 +1.0 0.0))
+      (flvector 0.0 0.0 1.0)
+      c e m #f)))))
 
 (: make-unit-arrow-scene (-> FlVector FlVector material Scene))
 (define (make-unit-arrow-scene c e m)

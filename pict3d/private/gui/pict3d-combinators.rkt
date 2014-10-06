@@ -193,13 +193,16 @@
 (define (quad v1 v2 v3 v4 [back? #f])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3) (->flv3 v4)))
   (define norm (flv3polygon-normal vs))
-  (shape->pict3d
-   (make-quad-shape vs
-                    (if norm norm (flvector 0.0 0.0 0.0))
-                    (current-color)
-                    (current-emitted)
-                    (current-material)
-                    (and back? #t))))
+  (scene->pict3d
+   (scene-union*
+    (map
+     shape->scene
+     (make-quad-shapes vs
+                       (if norm norm (flvector 0.0 0.0 0.0))
+                       (current-color)
+                       (current-emitted)
+                       (current-material)
+                       (and back? #t))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle

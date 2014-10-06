@@ -23,7 +23,7 @@
 
 (define-syntax-rule (call-with-gl-state body-thunk param obj set-state!)
   (let ()
-    (get-current-gl-context 'call-with-gl-state)
+    (get-current-managed-gl-context 'call-with-gl-state)
     (define old (param))
     (cond [(eq? old obj)  (body-thunk)]
           [else  (set-state! obj)

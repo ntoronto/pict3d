@@ -115,11 +115,11 @@ code
   (string-append
    impostor-bounds-code
    #<<code
-float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
+float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax, int vertex_id) {
   rect bbx = impostor_bounds(view, proj, wmin, wmax);
 
   // output the correct vertices for a triangle strip
-  switch (gl_VertexID) {
+  switch (vertex_id) {
   case 0:
     gl_Position = vec4(bbx.mins.xy, 0.0, 1.0);
     break;
@@ -131,34 +131,6 @@ float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
     break;
   default:
     gl_Position = vec4(bbx.maxs.xy, 0.0, 1.0);
-    break;
-  }
-
-  return bbx.is_degenerate;
-}
-code
-   "\n\n"))
-
-(define output-impostor-quad-vertex-code
-  (string-append
-   impostor-bounds-code
-   #<<code
-float output_impostor_quad(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
-  rect bbx = impostor_bounds(view, proj, wmin, wmax);
-
-  // output the correct vertices for a quad
-  switch (gl_VertexID % 4) {
-  case 0:
-    gl_Position = vec4(bbx.mins.xy, 0.0, 1.0);
-    break;
-  case 1:
-    gl_Position = vec4(bbx.maxs.x, bbx.mins.y, 0.0, 1.0);
-    break;
-  case 2:
-    gl_Position = vec4(bbx.maxs.xy, 0.0, 1.0);
-    break;
-  default:
-    gl_Position = vec4(bbx.mins.x, bbx.maxs.y, 0.0, 1.0);
     break;
   }
 
@@ -205,10 +177,12 @@ code
    depth-fragment-code
    pack-unpack-normal-code
    #<<code
+out vec4 out_mat;
+
 void output_mat(vec3 dir, float roughness, float z) {
   gl_FragDepth = get_frag_depth(z);
-  //gl_FragColor = vec4(pack_normal(normalize(dir)), 1.0, roughness);
-  gl_FragColor = vec4(normalize(dir), roughness);
+  //out_mat = vec4(pack_normal(normalize(dir)), 1.0, roughness);
+  out_mat = vec4(normalize(dir), roughness);
 }
 code
    "\n\n"))
@@ -217,9 +191,11 @@ code
   (string-append
    depth-fragment-code
    #<<code
+out vec4 out_color;
+
 void output_opaq(vec3 color, float z) {
   gl_FragDepth = get_frag_depth(z);
-  gl_FragColor = vec4(color, 1.0);
+  out_color = vec4(color, 1.0);
 }
 code
    "\n\n"))
@@ -228,12 +204,15 @@ code
   (string-append
    depth-fragment-code
    #<<code
+out vec4 out_color;
+out float out_weight;
+
 void output_tran(vec3 color, float a, float z) {
   //float weight = a * clamp(10/(1e-5 + pow(abs(z)/5,2) + pow(abs(z)/200,6)), 1e-2, 3e3);     // (7)
   float weight = max(1e-5, a * exp2(z));
   gl_FragDepth = get_frag_depth(z);
-  gl_FragData[0] = vec4(color * a, a) * weight;
-  gl_FragData[1] = vec4(weight);
+  out_color = vec4(color * a, a) * weight;
+  out_weight = weight;
 }
 code
    "\n\n"))
@@ -273,18 +252,21 @@ float specular(vec3 N, vec3 L, vec3 V, float dotLN, float dotVN, float m) {
   return sqrt(dotLN/dotVN) / (12.566371 * mm) * exp((dotHNsqr - 1.0) / (mm * dotHNsqr));
 }
 
+out vec4 out_diffuse;
+out vec4 out_specular;
+
 void output_light(vec3 light, surface s, vec3 L, vec3 V) {
   vec3 N = s.normal;
 
   // Diffuse
   float dotNL = dot(N,L);
   if (dotNL < 1e-7) discard;
-  gl_FragData[0] = vec4(light * dotNL, 1.0);
+  out_diffuse = vec4(light * dotNL, 1.0);
 
   // Specular
   float dotNV = dot(N,V);
   if (dotNV < 1e-7) discard;
-  gl_FragData[1] = vec4(light * specular(N,L,V,dotNL,dotNV,max(0.03125,s.roughness)), 1.0);
+  out_specular = vec4(light * specular(N,L,V,dotNL,dotNV,max(0.03125,s.roughness)), 1.0);
 }
 code
    "\n\n"))

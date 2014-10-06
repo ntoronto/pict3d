@@ -61,7 +61,7 @@
 
 (: call-with-gl-texture (All (A) (-> (-> A) gl-texture A)))
 (define (call-with-gl-texture body-thunk tex)
-  (get-current-gl-context 'with-gl-texture)
+  (get-current-managed-gl-context 'with-gl-texture)
   (define old (hash-ref (current-gl-textures)
                         (current-gl-active-texture)
                         (λ () null-gl-texture)))

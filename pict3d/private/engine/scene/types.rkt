@@ -28,15 +28,6 @@
    [back? : Boolean])
   #:transparent)
 
-(struct quad-shape solid-shape
-  ([vertices : (Vectorof FlVector)]
-   [normals : (U FlVector (Vectorof FlVector))]
-   [colors : (U FlVector (Vectorof FlVector))]
-   [emitted-colors : (U FlVector (Vectorof FlVector))]
-   [materials : (U material (Vectorof material))]
-   [back? : Boolean])
-  #:transparent)
-
 (struct rectangle-shape solid-shape
   ([rect : Nonempty-FlRect3]
    [color : FlVector]
@@ -62,7 +53,6 @@
   #:transparent)
 
 (define-type Shape (U triangle-shape
-                      quad-shape
                       rectangle-shape
                       sphere-shape
                       directional-light-shape

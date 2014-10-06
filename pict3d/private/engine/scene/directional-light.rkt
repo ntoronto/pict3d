@@ -106,6 +106,7 @@ code
   
   (define program
     (make-gl-program struct
+                     (list "out_diffuse" "out_specular")
                      (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
   

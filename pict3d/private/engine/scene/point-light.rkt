@@ -44,7 +44,7 @@
 (define point-light-vertex-code
   (string-append
    "#version 130\n\n"
-   output-impostor-quad-vertex-code
+   output-impostor-strip-vertex-code
    model-vertex-code
    #<<code
 uniform mat4 view;
@@ -71,7 +71,7 @@ void main() {
   frag_position = (trans * vec4(vert_position,1)).xyz;
   frag_radius = radius;
   frag_intensity = pow(vert_color / 255, vec3(2.2)) * vert_intensity_radius.x;
-  frag_is_degenerate = output_impostor_quad(trans, proj, wmin, wmax);
+  frag_is_degenerate = output_impostor_strip(trans, proj, wmin, wmax, gl_VertexID % 4);
 
   vec4 dir = unproj * gl_Position;
   frag_dir = vec3(dir.xy / dir.z, 1.0);
@@ -124,6 +124,7 @@ code
   
   (define program
     (make-gl-program struct
+                     (list "out_diffuse" "out_specular")
                      (list (make-gl-shader GL_VERTEX_SHADER point-light-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER point-light-fragment-code))))
   
@@ -155,7 +156,8 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params point-light-program-spec empty #t GL_QUADS (single-vertices 4 data)))
+     (vector (shape-params point-light-program-spec empty #t GL_TRIANGLE_STRIP
+                           (multi-vertices 4 data (vector 0) (s32vector 4))))
      #()
      #()
      #()

@@ -12,6 +12,7 @@
          gl-extensions
          gl-has-extension?
          gl-version-at-least?
+         gl-core-profile?
          gl-type?
          gl-vector->type
          gl-vector->length
@@ -32,42 +33,50 @@
 (define (split-spaces str)
   (regexp-split #px"\\s+" str))
 
-(: gl-get-string (-> Integer String))
-(define (gl-get-string i)
+(: gl-get-string (->* [Integer] [Natural] String))
+(define (gl-get-string i [j #f])
   ;; When there's no GL context, glGetString returns NULL, and the FFI returns #f to Racket,
   ;; which causes glGetString to break its own return contract
   ;; This is a stupid way to handle this error case, but there aren't many options
   (with-handlers ([exn:fail:contract?  (λ (e) (error 'gl-get-string "not in a GL context"))])
-    (glGetString i)))
+    (cond [j     (glGetStringi i j)]
+          [else  (glGetString i)])))
 
-(: memo-thunk (All (A) (-> (-> A) (-> A))))
-;; Memoize like `delay` but don't memoize exceptions
-(define (memo-thunk f)
-  (let ([memo : (U A #f)  #f])
-    (λ ()
-      (let ([val memo])
-        (if val val (let ([val  (f)])
-                      (set! memo val)
-                      val))))))
+(: gl-version-hash (HashTable GL-Context<%> (Listof Integer)))
+(define gl-version-hash (make-weak-hasheq))
 
 (: gl-version (-> (Listof Integer)))
-(define gl-version
-  (memo-thunk
-   (λ ()
-     (define str (gl-get-string GL_VERSION))
-     (map (λ ([str : String])
-            (define n (string->number str))
-            (cond [(exact-integer? n)  n]
-                  [else  (error 'gl-version "bad version string: ~v~n" str)]))
-          (regexp-split #px"\\." (car (split-spaces str)))))))
+(define (gl-version)
+  (define ctxt (get-current-gl-context))
+  (if ctxt
+      (hash-ref!
+       gl-version-hash
+       ctxt
+       (λ ()
+         (define str (gl-get-string GL_VERSION))
+         (map (λ ([str : String])
+                (define n (string->number str))
+                (cond [(exact-integer? n)  n]
+                      [else  (error 'gl-version "bad version string: ~v~n" str)]))
+              (regexp-split #px"\\." (car (split-spaces str))))))
+      (error 'gl-version "not in a GL context")))
+
+(: gl-extensions-hash (HashTable GL-Context<%> (Setof Symbol)))
+(define gl-extensions-hash (make-weak-hasheq))
 
 (: gl-extensions (-> (Setof Symbol)))
-(define gl-extensions
-  (memo-thunk
-   (λ ()
-     (list->seteq
-      (for/list : (Listof Symbol) ((ext (in-list (split-spaces (gl-get-string GL_EXTENSIONS)))))
-        (string->symbol ext))))))
+(define (gl-extensions)
+  (define ctxt (get-current-gl-context))
+  (if ctxt
+      (hash-ref!
+       gl-extensions-hash
+       ctxt
+       (λ ()
+         (define num (s32vector-ref (glGetIntegerv GL_NUM_EXTENSIONS) 0))
+         (list->seteq
+          (for/list : (Listof Symbol) ([j  (in-range num)])
+            (string->symbol (gl-get-string GL_EXTENSIONS (assert j index?)))))))
+      (error 'gl-extensions "not in a GL context")))
 
 (: gl-has-extension? (-> Symbol Boolean))
 (define (gl-has-extension? ext)
@@ -89,6 +98,25 @@
 (: gl-version-at-least? (-> (Listof Integer) Boolean))
 (define (gl-version-at-least? version)
   (version>= (gl-version) version))
+
+(: gl-core-hash (HashTable GL-Context<%> Boolean))
+(define gl-core-hash (make-weak-hasheq))
+
+(: gl-core-profile? (-> Boolean))
+(define (gl-core-profile?)
+  (define ctxt (get-current-gl-context))
+  (if ctxt
+      (hash-ref!
+       gl-core-hash
+       ctxt
+       (λ ()
+         (cond [(gl-version-at-least? '(3 2))
+                (define profile-mask (s32vector-ref (glGetIntegerv GL_CONTEXT_PROFILE_MASK) 0))
+                (= 1 (bitwise-and profile-mask 1))]
+               [(gl-version-at-least? '(3 1))
+                (not (gl-has-extension? 'GL_ARB_compatibility))]
+               [else  #f])))
+      (error 'gl-core-profile? "not in a GL context")))
 
 (define gl-types
   (make-hasheqv 

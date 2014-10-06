@@ -40,12 +40,12 @@
         [else
          (error 'call-with-gl-context "already in another managed OpenGL context")]))
 
-(define (get-current-gl-context name)
+(define (get-current-managed-gl-context name)
   (define ctxt (current-gl-context))
   (if ctxt ctxt (error name "not in a managed OpenGL context (use with-gl-context)")))
 
 (define (gl-swap-buffers)
-  (define ctxt (get-current-gl-context 'gl-swap-buffers))
+  (define ctxt (get-current-managed-gl-context 'gl-swap-buffers))
   (send (gl-context-context ctxt) swap-buffers))
 
 ;; ===================================================================================================

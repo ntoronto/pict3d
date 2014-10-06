@@ -43,7 +43,7 @@
 (define sphere-mat-vertex-code
   (string-append
    "#version 130\n\n"
-   output-impostor-quad-vertex-code
+   output-impostor-strip-vertex-code
    model-vertex-code
    #<<code
 uniform mat4 view;
@@ -54,7 +54,7 @@ uniform mat4 unproj;
 in vec4 sphere0;
 in vec4 sphere1;
 in vec4 sphere2;
-in vec4 vert_roughness_inside;
+in vec4 vert_roughness_inside_id;
 
 flat out vec4 frag_trans_z;
 flat out mat3 frag_untrans;
@@ -73,9 +73,10 @@ void main() {
   
   frag_trans_z = transpose(trans)[2];
   frag_untrans = mat3(untrans);
-  frag_roughness = vert_roughness_inside.x / 255;
-  frag_inside = vert_roughness_inside.y;
-  frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
+  frag_roughness = vert_roughness_inside_id.x / 255;
+  frag_inside = vert_roughness_inside_id.y;
+  int vert_id = int(vert_roughness_inside_id.z);
+  frag_is_degenerate = output_impostor_strip(trans, proj, vec3(-1.0), vec3(+1.0), vert_id);
   
   vec4 dir = unproj * gl_Position;
   frag_dir = mat3(untrans) * (dir.xyz / dir.w);
@@ -126,10 +127,11 @@ code
      (make-vao-field "sphere0" 4 GL_FLOAT)
      (make-vao-field "sphere1" 4 GL_FLOAT)
      (make-vao-field "sphere2" 4 GL_FLOAT)
-     (make-vao-field "vert_roughness_inside" 4 GL_UNSIGNED_BYTE)))
+     (make-vao-field "vert_roughness_inside_id" 4 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
+                     (list "out_mat")
                      (list (make-gl-shader GL_VERTEX_SHADER sphere-mat-vertex-code)
                            (make-gl-shader GL_FRAGMENT_SHADER sphere-mat-fragment-code))))
   
@@ -149,7 +151,7 @@ code
 (define sphere-draw-vertex-code
   (string-append
    "#version 130\n\n"
-   output-impostor-quad-vertex-code
+   output-impostor-strip-vertex-code
    rgb-hsv-code
    model-vertex-code
    #<<code
@@ -164,7 +166,7 @@ in vec4 sphere2;
 in vec4 vert_rcolor;    // vec4(r, g, b, a)
 in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
 in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
-in float vert_inside;
+in vec2 vert_inside_id; // vec2(inside, id)
 
 flat out vec4 frag_trans_z;
 flat out vec3 frag_rcolor;
@@ -193,8 +195,9 @@ void main() {
   frag_ambient = vert_material.x / 255;
   frag_diffuse = vert_material.y / 255;
   frag_specular = vert_material.z / 255;
-  frag_inside = vert_inside;
-  frag_is_degenerate = output_impostor_quad(trans, proj, vec3(-1.0), vec3(+1.0));
+  frag_inside = vert_inside_id.x;
+  int vert_id = int(vert_inside_id.y);
+  frag_is_degenerate = output_impostor_strip(trans, proj, vec3(-1.0), vec3(+1.0), vert_id);
 
   vec4 vdir = unproj * gl_Position;
   frag_start = untrans[3].xyz;
@@ -305,66 +308,47 @@ void main() {
 code
    ))
 
+(define draw-program-struct
+  (make-vao-struct
+   (make-vao-field "sphere0" 4 GL_FLOAT)
+   (make-vao-field "sphere1" 4 GL_FLOAT)
+   (make-vao-field "sphere2" 4 GL_FLOAT)
+   (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+   (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+   (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+   (make-vao-field "vert_inside_id" 2 GL_UNSIGNED_BYTE)))
+
+(define draw-program-uniforms
+  (list (cons "view" 'view)
+        (cons "proj" 'proj)
+        (cons "unview" 'unview)
+        (cons "unproj" 'unproj)
+        (cons "width" 'width)
+        (cons "height" 'height)
+        (cons "ambient" 'ambient)
+        (cons "diffuse" 'diffuse)
+        (cons "specular" 'specular)))
+
 (define-singleton (sphere-opaq-program-spec)
-  (define struct
-    (make-vao-struct
-     (make-vao-field "sphere0" 4 GL_FLOAT)
-     (make-vao-field "sphere1" 4 GL_FLOAT)
-     (make-vao-field "sphere2" 4 GL_FLOAT)
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_inside" 1 GL_UNSIGNED_BYTE)))
-  
-  (define program
-    (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER sphere-opaq-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "unview" 'unview)
-          (cons "unproj" 'unproj)
-          (cons "width" 'width)
-          (cons "height" 'height)
-          (cons "ambient" 'ambient)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
-  
-  (program-spec program uniforms))
+  (program-spec
+   (make-gl-program draw-program-struct
+                    (list "out_color")
+                    (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
+                          (make-gl-shader GL_FRAGMENT_SHADER sphere-opaq-fragment-code)))
+   draw-program-uniforms))
 
 (define-singleton (sphere-tran-program-spec)
-  (define struct
-    (make-vao-struct
-     (make-vao-field "sphere0" 4 GL_FLOAT)
-     (make-vao-field "sphere1" 4 GL_FLOAT)
-     (make-vao-field "sphere2" 4 GL_FLOAT)
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_inside" 1 GL_UNSIGNED_BYTE)))
-  
-  (define program
-    (make-gl-program struct
-                     (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER sphere-tran-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "unview" 'unview)
-          (cons "unproj" 'unproj)
-          (cons "width" 'width)
-          (cons "height" 'height)
-          (cons "ambient" 'ambient)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
-  
-  (program-spec program uniforms))
+  (program-spec
+   (make-gl-program draw-program-struct
+                    (list "out_color" "out_weight")
+                    (list (make-gl-shader GL_VERTEX_SHADER sphere-draw-vertex-code)
+                          (make-gl-shader GL_FRAGMENT_SHADER sphere-tran-fragment-code)))
+   draw-program-uniforms))
 
 ;; ===================================================================================================
 ;; Sphere shape passes
+
+(define vertex-ids '(0 1 2 2 1 3))
 
 (: make-sphere-shape-passes (-> sphere-shape Passes))
 (define (make-sphere-shape-passes a)
@@ -374,34 +358,47 @@ code
   (define roughness (flonum->byte (material-roughness m)))
   (define inside (if inside? 1 0))
   
-  (define mat-datum-size (+ affine-size 4))  ; last two bytes are unused
-  (define mat-data-size (* 4 mat-datum-size))
+  (define mat-datum-size (+ affine-size 4))  ; last byte is unused
+  (define mat-data-size (* 6 mat-datum-size))
   (define mat-data (make-bytes mat-data-size))
   (memcpy (u8vector->cpointer mat-data) affine-ptr affine-size)
   (bytes-set! mat-data affine-size roughness)
   (bytes-set! mat-data (unsafe-fx+ 1 affine-size) inside)
-  (for ([j  (in-range 1 4)])
-    (bytes-copy! mat-data (unsafe-fx* j mat-datum-size) mat-data 0 mat-datum-size))
+  (bytes-set! mat-data (unsafe-fx+ 2 affine-size) 0)
+  (for ([j  (in-range 1 6)]
+        [id  (in-list (rest vertex-ids))])
+    (bytes-copy! mat-data (unsafe-fx* j mat-datum-size) mat-data 0 mat-datum-size)
+    (bytes-set! mat-data
+                (unsafe-fx+ (unsafe-fx* j mat-datum-size)
+                            (unsafe-fx+ 2 affine-size))
+                id))
   
   (define draw-datum-size
     (vao-struct-size (gl-program-struct (program-spec-program (sphere-opaq-program-spec)))))
-  (define draw-data-size (* 4 draw-datum-size))
+  (define draw-data-size (* 6 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
   (define-values (ecolor i.lo) (pack-emitted e))
-  (let* ([i  0]
-         [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-size)
-                    (unsafe-fx+ i affine-size))]
-         [i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
-                    (unsafe-fx+ i 4))]
-         [i  (begin (bytes-copy! draw-data i ecolor 0 4)
-                    (unsafe-fx+ i 4))])
-    (bytes-set! draw-data i (flonum->byte (material-ambient m)))
-    (bytes-set! draw-data (unsafe-fx+ i 1) (flonum->byte (material-diffuse m)))
-    (bytes-set! draw-data (unsafe-fx+ i 2) (flonum->byte (material-specular m)))
-    (bytes-set! draw-data (unsafe-fx+ i 3) i.lo)
-    (bytes-set! draw-data (unsafe-fx+ i 4) inside))
-  (for ([j  (in-range 1 4)])
-    (bytes-copy! draw-data (unsafe-fx* j draw-datum-size) draw-data 0 draw-datum-size))
+  (define i
+    (let* ([i  0]
+           [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-size)
+                      (unsafe-fx+ i affine-size))]
+           [i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
+                      (unsafe-fx+ i 4))]
+           [i  (begin (bytes-copy! draw-data i ecolor 0 4)
+                      (unsafe-fx+ i 4))])
+      (bytes-set! draw-data i (flonum->byte (material-ambient m)))
+      (bytes-set! draw-data (unsafe-fx+ i 1) (flonum->byte (material-diffuse m)))
+      (bytes-set! draw-data (unsafe-fx+ i 2) (flonum->byte (material-specular m)))
+      (bytes-set! draw-data (unsafe-fx+ i 3) i.lo)
+      (bytes-set! draw-data (unsafe-fx+ i 4) inside)
+      (bytes-set! draw-data (unsafe-fx+ i 5) 0)
+      (unsafe-fx+ i 5)))
+  (for ([j  (in-range 1 6)]
+        [id  (in-list (rest vertex-ids))])
+    (bytes-copy! draw-data (unsafe-fx* j draw-datum-size) draw-data 0 draw-datum-size)
+    (bytes-set! draw-data
+                (unsafe-fx+ (unsafe-fx* j draw-datum-size) i)
+                id))
   
   (define transparent? (< (flvector-ref c 3) 1.0))
   
@@ -412,16 +409,16 @@ code
          #()
          #()
          #()
-         (vector (shape-params sphere-mat-program-spec empty #t GL_QUADS
-                               (single-vertices 4 mat-data)))
-         (vector (shape-params sphere-tran-program-spec empty #t GL_QUADS
-                               (single-vertices 4 draw-data))))
+         (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
+                               (single-vertices 6 mat-data)))
+         (vector (shape-params sphere-tran-program-spec empty #t GL_TRIANGLES
+                               (single-vertices 6 draw-data))))
         (vector
          #()
-         (vector (shape-params sphere-mat-program-spec empty #t GL_QUADS
-                               (single-vertices 4 mat-data)))
-         (vector (shape-params sphere-opaq-program-spec empty #t GL_QUADS
-                               (single-vertices 4 draw-data)))
+         (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
+                               (single-vertices 6 mat-data)))
+         (vector (shape-params sphere-opaq-program-spec empty #t GL_TRIANGLES
+                               (single-vertices 6 draw-data)))
          #()
          #())))
   passes)

@@ -28,7 +28,7 @@
 
 (: manage-gl-object (-> gl-object (-> Natural Any) Void))
 (define (manage-gl-object obj delete)
-  (define ctxt (get-current-gl-context 'make-gl-object))
+  (define ctxt (get-current-managed-gl-context 'make-gl-object))
   (hash-set! gl-object-contexts obj ctxt)
   (register-finalizer
    obj

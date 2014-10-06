@@ -8,7 +8,7 @@ Light min radius (test with cartoon lighting and use for debug lights)
 Reorder arguments in `call-with-*` functions and macros
 
 Fix `send-multi-vertices`
- * Make it send a per-vertex model transformation
+ ? Remove altogether
  * Check for > 1M vertexes and split drawing (like `send-single-vertices` does)
 
 pict3d% GUI
@@ -33,7 +33,7 @@ Medium
 
 Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
 
-Fix pict3d% editor lock problem (may not be an issue anymore since printing snips)
+Fix intermittent pict3d% editor lock problem
 
 Speed up vector operations (settle for < 4 ulps error)
 
@@ -79,12 +79,3 @@ Abstract the process of applying rendering passes
 Find a good way to wire shaders with rendering passes
 
 S-expression-based shader language that compiles to GLSL and can be run on the CPU for debugging
-
-======================================================================================================
-
-Deprecated stuff I use
- * glBegin/glEnd (in `draw-fullscreen-quad`)
- * gl_TexCoord
- * default vertex shader
- * gl_FragData
- * GL_QUADS (replace with triangles, and use a byte to indicate corner position)

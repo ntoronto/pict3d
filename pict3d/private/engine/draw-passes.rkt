@@ -21,6 +21,67 @@
 (define bloom-levels '(1 2 4 8))
 
 ;; ===================================================================================================
+
+(define fullscreen-vertex-code
+  #<<code
+#version 130
+
+in vec2 vert_position;
+in vec2 vert_texcoord;
+
+smooth out vec2 frag_texcoord;
+
+void main() {
+  gl_Position = vec4(vert_position, 0, 1);
+  frag_texcoord = vert_texcoord;
+}
+code
+  )
+
+(define fullscreen-fragment-code
+  #<<code
+#version 130
+uniform sampler2D rgba;
+
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
+void main() {
+  out_color = texture(rgba, frag_texcoord);
+}
+code
+  )
+
+(define fullscreen-vertex-struct
+  (make-vao-struct
+   (make-vao-field "vert_position" 2 GL_FLOAT)
+   (make-vao-field "vert_texcoord" 2 GL_FLOAT)))
+
+(define-singleton (fullscreen-program)
+  (make-gl-program (make-vao-struct)
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
+
+(: draw-fullscreen-quad (-> Flonum Flonum Void))
+(define (draw-fullscreen-quad tex-w tex-h)
+  (define vertex-data
+    (f32vector -1.0 -1.0 0.0 0.0
+               +1.0 -1.0 tex-w 0.0
+               -1.0 +1.0 0.0 tex-h
+               +1.0 +1.0 tex-w tex-h))
+  
+  (define vao (make-gl-vertex-array))
+  (with-gl-vertex-array vao
+    (define buf (make-gl-array-buffer))
+    (with-gl-array-buffer buf
+      (vao-struct-bind-attributes fullscreen-vertex-struct)
+      (glBufferData GL_ARRAY_BUFFER (* 4 (f32vector-length vertex-data)) vertex-data GL_STATIC_DRAW))
+    
+    (glDrawArrays GL_TRIANGLE_STRIP 0 4)))
+
+;; ===================================================================================================
 ;; Fragment shaders for transparency blending and bloom
 
 (define blend-fragment-code
@@ -30,15 +91,24 @@
 uniform sampler2D rgba;
 uniform sampler2D weight;
 
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
 void main() {
-  vec2 st = gl_TexCoord[0].st;
-  float w = texture(weight, st).r;
+  float w = texture(weight, frag_texcoord).r;
   if (w == 0.0) discard;
-  vec4 accum = texture(rgba, st);
-  gl_FragColor = accum / w;
+  vec4 accum = texture(rgba, frag_texcoord);
+  out_color = accum / w;
 }
 code
   )
+
+(define-singleton (blend-program)
+  (make-gl-program (make-vao-struct)
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
 
 (define bloom-extract-fragment-code
   (string-append
@@ -47,15 +117,24 @@ code
    #<<code
 uniform sampler2D rgba;
 
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
 void main() {
-  vec2 st = gl_TexCoord[0].st;
-  vec4 color = texture(rgba, st);
+  vec4 color = texture(rgba, frag_texcoord);
   vec3 hsv = rgb_to_hsv(color.rgb);
   vec3 bloom = vec3(hsv.xy, max(hsv.z - color.a, 0));  // keep intensity >= alpha
-  gl_FragColor = vec4(hsv_to_rgb(bloom), 0.0);
+  out_color = vec4(hsv_to_rgb(bloom), 0.0);
 }
 code
   ))
+
+(define-singleton (bloom-extract-program)
+  (make-gl-program (make-vao-struct)
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
 
 (define bloom-combine-fragment-code
   (string-append
@@ -66,24 +145,33 @@ uniform sampler2D color_tex;
 uniform sampler2D bloom_tex;
 uniform float bloom_frac;
 
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
 vec3 tone_map(vec3 color) {
   return pow(color, vec3(1/2.2));
 }
 
 void main() {
-  vec2 st = gl_TexCoord[0].st;
-  vec4 color = texture(color_tex, st);
+  vec4 color = texture(color_tex, frag_texcoord);
   vec3 hsv = rgb_to_hsv(color.rgb);
   vec3 rgb = hsv_to_rgb(vec3(hsv.xy, min(color.a, hsv.z)));
-  vec4 bloom = texture(bloom_tex, st) * bloom_frac;
+  vec4 bloom = texture(bloom_tex, frag_texcoord) * bloom_frac;
   color = vec4(rgb + bloom.rgb, color.a);
   color = clamp(color, vec4(0), vec4(1));
   color = vec4(tone_map(color.rgb), color.a);
   color = vec4(color.rgb, max(max(color.a, color.r), max(color.g, color.b)));
-  gl_FragColor = color;
+  out_color = color;
 }
 code
    ))
+
+(define-singleton (bloom-combine-program)
+  (make-gl-program (make-vao-struct)
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
 
 (define blur-vert-fragment-code
   #<<code
@@ -92,19 +180,28 @@ code
 uniform sampler2D rgba;
 uniform int height;
 
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
 void main() {
-    vec2 xy = gl_TexCoord[0].st;
     float s = 1.0/height;
-    vec4 color = texture(rgba, xy)*1.5
-               + texture(rgba, xy + vec2(0,-1.5*s))*2.0
-               + texture(rgba, xy + vec2(0,+1.5*s))*2.0
-               + texture(rgba, xy + vec2(0,-3.5*s))*1.0
-               + texture(rgba, xy + vec2(0,+3.5*s))*1.0
+    vec4 color = texture(rgba, frag_texcoord)*1.5
+               + texture(rgba, frag_texcoord + vec2(0,-1.5*s))*2.0
+               + texture(rgba, frag_texcoord + vec2(0,+1.5*s))*2.0
+               + texture(rgba, frag_texcoord + vec2(0,-3.5*s))*1.0
+               + texture(rgba, frag_texcoord + vec2(0,+3.5*s))*1.0
                ;
-    gl_FragColor = color / 7.5;
+    out_color = color / 7.5;
 }
 code
   )
+
+(define-singleton (blur-vert-program)
+  (make-gl-program (make-vao-struct)
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
 
 (define blur-horz-fragment-code
   #<<code
@@ -113,39 +210,28 @@ code
 uniform sampler2D rgba;
 uniform int width;
 
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
 void main() {
-    vec2 xy = gl_TexCoord[0].st;
     float s = 1.0/width;
-    vec4 color = texture(rgba, xy)*1.5
-               + texture(rgba, xy + vec2(-1.5*s,0))*2.0
-               + texture(rgba, xy + vec2(+1.5*s,0))*2.0
-               + texture(rgba, xy + vec2(-3.5*s,0))*1.0
-               + texture(rgba, xy + vec2(+3.5*s,0))*1.0
+    vec4 color = texture(rgba, frag_texcoord)*1.5
+               + texture(rgba, frag_texcoord + vec2(-1.5*s,0))*2.0
+               + texture(rgba, frag_texcoord + vec2(+1.5*s,0))*2.0
+               + texture(rgba, frag_texcoord + vec2(-3.5*s,0))*1.0
+               + texture(rgba, frag_texcoord + vec2(+3.5*s,0))*1.0
                ;
-    gl_FragColor = color / 7.5;
+    out_color = color / 7.5;
 }
 code
   )
 
-(define-singleton (blend-program)
-  (make-gl-program (make-vao-struct)
-                   (list (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
-
-(define-singleton (bloom-extract-program)
-  (make-gl-program (make-vao-struct)
-                   (list (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
-
-(define-singleton (bloom-combine-program)
-  (make-gl-program (make-vao-struct)
-                   (list (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
-
-(define-singleton (blur-vert-program)
-  (make-gl-program (make-vao-struct)
-                   (list (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
-
 (define-singleton (blur-horz-program)
   (make-gl-program (make-vao-struct)
-                   (list (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
+                   (list "out_color")
+                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+                         (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
 
 ;; ===================================================================================================
 ;; Framebuffers
@@ -256,6 +342,11 @@ code
   (glDepthMask write?)
   (glClearDepth 0.0))
 
+(: gl-setup-state (-> Void))
+(define (gl-setup-state)
+  (unless (gl-core-profile?)
+    (glEnable GL_TEXTURE_2D)))
+
 (: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural
                         FlAffine3- FlTransform3
                         FlVector FlVector Flonum
@@ -263,6 +354,8 @@ code
 (define (draw-draw-passes passes width height view* proj* background ambient-color ambient-intensity)
   ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
   (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
+  
+  (gl-setup-state)
   
   (define view (->flprojective3 view*))
   (define proj (->flprojective3 proj*))
@@ -273,8 +366,6 @@ code
   
   (define znear (flprojective3-z-near proj))
   (define zfar  (flprojective3-z-far  proj))
-  
-  (glEnable GL_TEXTURE_2D)
   
   (define-values (bloom-width bloom-height)
     (let ([s  (bloom-buffer-size)])
@@ -303,15 +394,6 @@ code
   (define tex-height (fl (/ height dheight)))
   (define bloom-tex-width (fl (/ bloom-width bloom-dwidth)))
   (define bloom-tex-height (fl (/ bloom-height bloom-dheight)))
-  
-  (: draw-fullscreen-quad (-> Flonum Flonum Void))
-  (define (draw-fullscreen-quad tex-w tex-h)
-    (glBegin GL_TRIANGLE_STRIP)
-    (glTexCoord2f  0.0   0.0)  (glVertex2f -1.0 -1.0)
-    (glTexCoord2f tex-w  0.0)  (glVertex2f +1.0 -1.0)
-    (glTexCoord2f  0.0  tex-h) (glVertex2f -1.0 +1.0)
-    (glTexCoord2f tex-w tex-h) (glVertex2f +1.0 +1.0)
-    (glEnd))
   
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
@@ -450,7 +532,7 @@ code
   ;; With framebuffer that already contains opaque pixels and their depths
   (with-gl-framebuffer draw-fbo
     (glViewport 0 0 width height)
-    (glEnable GL_TEXTURE_2D)
+    ;(glEnable GL_TEXTURE_2D)
     ;; Write transparent pixels' weighted averages
     (define program (blend-program))
     (with-gl-program program
@@ -479,9 +561,8 @@ code
         (draw-fullscreen-quad tex-width tex-height))))
   
   (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
-    (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST)
-    ;; Some stupid ATI drivers don't generate mipmaps unless this enable is done immediately before:
-    (glEnable GL_TEXTURE_2D)
+    (when (not (gl-core-profile?))
+      (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST))
     (glGenerateMipmap GL_TEXTURE_2D))
   
   (with-gl-framebuffer mat-fbo
@@ -507,8 +588,11 @@ code
     
     (with-gl-framebuffer bloom-fbo
       (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
-      (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
-        (draw-fullscreen-quad tex-width tex-height)))
+      (define program (fullscreen-program))
+      (with-gl-program program
+        (gl-program-uniform program "rgba" (uniform-int 0))
+        (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
+          (draw-fullscreen-quad tex-width tex-height))))
     
     ;; Ping-pong horizontal and vertical blur, alternating between "bloom-fbo => blur-fbo"
     ;; and "blur-fbo => bloom-fbo"
@@ -537,8 +621,11 @@ code
     (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
-      (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-        (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))
+      (define program (fullscreen-program))
+      (with-gl-program program
+        (gl-program-uniform program "rgba" (uniform-int 0))
+        (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
+          (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom)))))
     )
   
   ;; ----------------------------------------------------------------------------------------------
@@ -552,7 +639,6 @@ code
                 alpha)
   (glClear GL_COLOR_BUFFER_BIT)
   
-  (glEnable GL_TEXTURE_2D)
   (define program (bloom-combine-program))
   (with-gl-program program
     (glDisable GL_DEPTH_TEST)
@@ -568,14 +654,18 @@ code
             (gl-program-uniform program "color_tex" (uniform-int 0))
             (gl-program-uniform program "bloom_tex" (uniform-int 1))
             (draw-fullscreen-quad tex-width tex-height))))))
+
   #|
-  (glViewport 0 0 width height)
-  (glClearColor 0.0 0.0 0.0 0.0)
-  (glClear GL_COLOR_BUFFER_BIT)
-  (glEnable GL_TEXTURE_2D)
-  (glDisable GL_BLEND)
-  (glDisable GL_DEPTH_TEST)
-  (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-    (draw-fullscreen-quad tex-width tex-height))
+  (define program (fullscreen-program))
+  (with-gl-program program
+    (glViewport 0 0 width height)
+    (glClearColor 0.0 0.0 0.0 0.0)
+    (glClear GL_COLOR_BUFFER_BIT)
+    (glDisable GL_BLEND)
+    (glDisable GL_DEPTH_TEST)
+    (with-gl-active-texture GL_TEXTURE0
+      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+        (gl-program-uniform program "rgba" (uniform-int 0))
+        (draw-fullscreen-quad tex-width tex-height))))
   |#
   )
