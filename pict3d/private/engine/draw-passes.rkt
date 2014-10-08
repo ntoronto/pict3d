@@ -58,28 +58,42 @@ code
    (make-vao-field "vert_position" 2 GL_FLOAT)
    (make-vao-field "vert_texcoord" 2 GL_FLOAT)))
 
+(define fullscreen-vertex-data
+  (f32vector -1.0 -1.0 0.0 0.0
+             +1.0 -1.0 1.0 0.0
+             -1.0 +1.0 0.0 1.0
+             +1.0 +1.0 1.0 1.0))
+
+(define fullscreen-data-length (* 4 (f32vector-length fullscreen-vertex-data)))
+
 (define-singleton (fullscreen-program)
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
                          (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
 
-(: draw-fullscreen-quad (-> Flonum Flonum Void))
-(define (draw-fullscreen-quad tex-w tex-h)
-  (define vertex-data
-    (f32vector -1.0 -1.0 0.0 0.0
-               +1.0 -1.0 tex-w 0.0
-               -1.0 +1.0 0.0 tex-h
-               +1.0 +1.0 tex-w tex-h))
-  
+(define-singleton/context (fullscreen-vao)
+  (printf "creating vao for fullscreen compositing passes~n")
   (define vao (make-gl-vertex-array))
   (with-gl-vertex-array vao
     (define buf (make-gl-array-buffer))
     (with-gl-array-buffer buf
       (vao-struct-bind-attributes fullscreen-vertex-struct)
-      (glBufferData GL_ARRAY_BUFFER (* 4 (f32vector-length vertex-data)) vertex-data GL_STATIC_DRAW))
-    
-    (glDrawArrays GL_TRIANGLE_STRIP 0 4)))
+      (glBufferData GL_ARRAY_BUFFER fullscreen-data-length 0 GL_DYNAMIC_DRAW))
+    (list vao buf)))
+
+(: draw-fullscreen-quad (-> Flonum Flonum Void))
+(define (draw-fullscreen-quad tex-w tex-h)
+  (f32vector-set! fullscreen-vertex-data  6 tex-w)
+  (f32vector-set! fullscreen-vertex-data 11 tex-h)
+  (f32vector-set! fullscreen-vertex-data 14 tex-w)
+  (f32vector-set! fullscreen-vertex-data 15 tex-h)
+  
+  (match-define (list vao buf) (fullscreen-vao))
+  (with-gl-vertex-array vao
+    (with-gl-array-buffer buf
+      (glBufferSubData GL_ARRAY_BUFFER 0 fullscreen-data-length fullscreen-vertex-data)
+      (glDrawArrays GL_TRIANGLE_STRIP 0 4))))
 
 ;; ===================================================================================================
 ;; Fragment shaders for transparency blending and bloom

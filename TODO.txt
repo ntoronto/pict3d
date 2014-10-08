@@ -1,6 +1,8 @@
 ======================================================================================================
 Easy
 
+Use attrib divisor on 3.3
+
 Stop sharing contexts
 
 Better types for positions and directions
@@ -8,10 +10,6 @@ Better types for positions and directions
 Light min radius (test with cartoon lighting and use for debug lights)
 
 Reorder arguments in `call-with-*` functions and macros
-
-Fix `send-multi-vertices`
- ? Remove altogether
- * Check for > 1M vertexes and split drawing (like `send-single-vertices` does)
 
 pict3d% GUI
  * Point hovered over, plane normal at that point (after simple collision detection, or use to test)
@@ -47,6 +45,8 @@ New shape constructors
  * heightmap/terrain (try a geometry shader)
  * smooth existing shape (snap extremely close vertices, interpolate normals)
  * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
+ * extrusion
+ * CSG
 
 New kinds of Vertices
  * vao-vertices (need to key these on GL context)
@@ -57,8 +57,6 @@ New kinds of Vertices
 Simple collision detection
 
 Try state grouping on a test application using `equal?` instead of `eq?`
-
-Constructive solid geometry (CSG) operations
 
 ? Physically-based transparency (i.e. proper transmission fractions)
 ? Special-case transformation matrix struct for translation
