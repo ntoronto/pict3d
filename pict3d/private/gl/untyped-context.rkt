@@ -6,6 +6,8 @@
 
 (provide (all-defined-out))
 
+(define pict3d-legacy-contexts? (make-parameter #f))
+
 ;; ===================================================================================================
 ;; Managed OpenGL contexts
 
@@ -81,7 +83,7 @@
 
 (define (get-master-gl-context/bitmap)
   (define config (new gl-config%))
-  (send config set-legacy? #t)
+  (send config set-legacy? (pict3d-legacy-contexts?))
   (define bm (make-gl-bitmap master-context-max-width master-context-max-height config))
   (define dc (make-object bitmap-dc% bm))
   (define ctxt (send dc get-gl-context))
@@ -102,7 +104,7 @@
 
 (define (get-master-gl-context/frame)
   (define config (new gl-config%))
-  (send config set-legacy? #t)
+  (send config set-legacy? (pict3d-legacy-contexts?))
   (define frame (new frame%
                      [label "Master GL context frame"]
                      [width   master-context-max-width]

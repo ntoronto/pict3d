@@ -2,6 +2,7 @@
 
 (require/typed
  "untyped-context.rkt"
+ [pict3d-legacy-contexts?  (Parameterof Boolean)]
  [#:struct gl-context ([number : Natural])]
  [gl-context-ok?  (-> gl-context Boolean)]
  [gl-delete-later  (-> gl-context Symbol Natural (-> Natural Any) Void)]
@@ -13,7 +14,8 @@
 
 (define-type GL-Context gl-context)
 
-(provide GL-Context
+(provide pict3d-legacy-contexts?
+         GL-Context
          gl-context?
          gl-context-ok?
          gl-delete-later
