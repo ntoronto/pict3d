@@ -30,11 +30,29 @@
 
 (define current-gl-context (make-parameter #f))
 
+(struct garbage (name handle delete) #:transparent)
+
+;(: gl-context-garbage (HashTable gl-context (Listof garbage)))
+(define gl-context-garbage (make-weak-hasheq))
+
+(define (gl-delete-later ctxt name handle delete)
+  (define gs (hash-ref gl-context-garbage ctxt (λ () empty)))
+  (hash-set! gl-context-garbage ctxt (cons (garbage name handle delete) gs)))
+
+(define (clean-gl-garbage ctxt)
+  (define gs (hash-ref gl-context-garbage ctxt (λ () empty)))
+  (for ([g  (in-list gs)])
+    (match-define (garbage name handle delete) g)
+    (delete handle))
+  (hash-set! gl-context-garbage ctxt empty))
+
 (define (call-with-gl-context thunk new-ctxt)
   (define ctxt (current-gl-context))
   (cond [(not ctxt)
          (send (gl-context-context new-ctxt) call-as-current
-               (λ () (parameterize ([current-gl-context  new-ctxt]) (thunk))))]
+               (λ () (parameterize ([current-gl-context  new-ctxt])
+                       (clean-gl-garbage new-ctxt)
+                       (thunk))))]
         [(eq? new-ctxt ctxt)
          (send (gl-context-context new-ctxt) call-as-current thunk)]
         [else
