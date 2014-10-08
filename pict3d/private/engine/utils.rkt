@@ -180,49 +180,11 @@
   bs)
 
 ;; ===================================================================================================
-;; Single-value memoization
-
-(: cache-singleton (All (B A ...) (-> (-> A ... B) (-> A ... B))))
-(define (cache-singleton f)
-  (: entry (U #f (Pair (List A ...) B)))
-  (define entry #f)
-  (λ args
-    (define e entry)
-    (cond [(and e (equal? args (car e)))  (cdr e)]
-          [else
-           (define value (apply f args))
-           (set! entry (cons args value))
-           value])))
-
-(: cache-thunk (All (B) (-> (-> B) (-> B))))
-(define (cache-thunk f)
-  (: entry (U #f B))
-  (define entry #f)
-  (λ ()
-    (let ([e  entry])
-      (if e e (let ([e  (f)])
-                (set! entry e)
-                e)))))
-
-(define-syntax (define-singleton stx)
-  (syntax-case stx (:)
-    [(_ (name) body ...)
-     (syntax/loc stx
-       (define name
-         (cache-thunk (λ () body ...))))]
-    [(_ (name arg ...) body ...)
-     (syntax/loc stx
-       (define name
-         (cache-singleton (λ (arg ...) body ...))))]))
-
-;; ===================================================================================================
 ;; Context-sensitive, single-value memoization
 
-(: cache-singleton/context (All (B A ...) (-> (-> (List A ...) (List A ...)
-                                                  (U (List A ...) Boolean))
-                                              (-> A ... B)
+(: cache-singleton/context (All (B A ...) (-> (-> A ... B)
                                               (-> A ... B))))
-(define (cache-singleton/context lte f)
+(define (cache-singleton/context f)
   (: cache (HashTable GL-Context (U #f (Pair (List A ...) B))))
   (define cache (make-weak-hasheq))
   
@@ -238,7 +200,7 @@
     (define entry (hash-ref! cache ctxt (λ () #f)))
     (cond [(not entry)  (apply-f args)]
           [else
-           (define res (lte args (car entry)))
+           (define res (equal? args (car entry)))
            (cond [(eq? res #t)  (cdr entry)]
                  [else  (apply-f (if res res args))])])))
 
@@ -261,13 +223,10 @@
      (syntax/loc stx
        (define name
          (cache-thunk/context (λ () body ...))))]
-    [(_ (name arg ...) #:lte lte body ...)
-     (syntax/loc stx
-       (define name
-         (cache-singleton/context lte (λ (arg ...) body ...))))]
     [(_ (name arg ...) body ...)
      (syntax/loc stx
-       (define-singleton/context (name arg ...) #:lte equal? body ...))]))
+       (define name
+         (cache-singleton/context (λ (arg ...) body ...))))]))
 
 ;; ===================================================================================================
 

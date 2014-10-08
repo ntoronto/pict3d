@@ -146,10 +146,4 @@
            (cond [ctxt  ctxt]
                  [else
                   (error 'get-master-gl-context
-                         "could not get an OpenGL 3.0 context")])])]))))
-
-(define (make-shared-gl-config)
-  (define config (new gl-config%))
-  (send config set-legacy? #f)
-  (send config set-share-context (gl-context-context (get-master-gl-context)))
-  config)
+                         "could not get an OpenGL 30 context")])])]))))

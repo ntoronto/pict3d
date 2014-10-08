@@ -184,7 +184,9 @@ void main() {
 code
    ))
 
-(define-singleton (polygon-mat-program-spec)
+(define-singleton/context (polygon-mat-program-spec)
+  (printf "creating polygon material pass program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
@@ -299,7 +301,9 @@ void main() {
 code
    ))
 
-(define-singleton (polygon-opaq-program-spec)
+(define-singleton/context (polygon-opaq-program-spec)
+  (printf "creating polygon opaque color pass program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
@@ -322,7 +326,9 @@ code
   
   (program-spec program uniforms))
 
-(define-singleton (polygon-tran-program-spec)
+(define-singleton/context (polygon-tran-program-spec)
+  (printf "creating polygon transparent color pass program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)

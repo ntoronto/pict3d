@@ -1,9 +1,11 @@
 ======================================================================================================
 Easy
 
-Use attrib divisor on 3.3
+Add legacy? parameter
 
-Stop sharing contexts
+Stop using gl-data->bytes
+
+Use attrib divisor on 3.3
 
 Better types for positions and directions
 

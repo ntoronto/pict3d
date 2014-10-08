@@ -94,7 +94,7 @@
           [stretchable-height  #t])
     (init-field [pict  empty-pict3d])
     
-    (define config (make-shared-gl-config))
+    (define config (new gl-config%))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]

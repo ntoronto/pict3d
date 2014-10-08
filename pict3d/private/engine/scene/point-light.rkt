@@ -116,7 +116,9 @@ void main() {
 code
    ))
 
-(define-singleton (point-light-program-spec)
+(define-singleton/context (point-light-program-spec)
+  (printf "creating point light program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "vert_position" 3 GL_FLOAT)

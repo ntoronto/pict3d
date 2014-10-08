@@ -66,7 +66,8 @@ code
 
 (define fullscreen-data-length (* 4 (f32vector-length fullscreen-vertex-data)))
 
-(define-singleton (fullscreen-program)
+(define-singleton/context (fullscreen-program)
+  (printf "creating fullscreen program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -118,7 +119,8 @@ void main() {
 code
   )
 
-(define-singleton (blend-program)
+(define-singleton/context (blend-program)
+  (printf "creating weighted transparency blend program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -144,7 +146,8 @@ void main() {
 code
   ))
 
-(define-singleton (bloom-extract-program)
+(define-singleton/context (bloom-extract-program)
+  (printf "creating overbright extraction program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -181,7 +184,8 @@ void main() {
 code
    ))
 
-(define-singleton (bloom-combine-program)
+(define-singleton/context (bloom-combine-program)
+  (printf "creating bloom compositing program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -211,7 +215,8 @@ void main() {
 code
   )
 
-(define-singleton (blur-vert-program)
+(define-singleton/context (blur-vert-program)
+  (printf "creating vertical blur program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -241,7 +246,8 @@ void main() {
 code
   )
 
-(define-singleton (blur-horz-program)
+(define-singleton/context (blur-horz-program)
+  (printf "creating horizontal blur program~n")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -261,31 +267,31 @@ code
   (* (quotient (+ w 63) 64) 64))
 
 (define-singleton/context (get-depth-buffer [width : Natural] [height : Natural])
-  (printf "new ~a × ~a depth-buffer~n" width height)
+  (printf "creating ~a × ~a depth-buffer~n" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
 (define-singleton/context (get-tran-depth-buffer [width : Natural] [height : Natural])
-  (printf "new ~a × ~a tran-depth-buffer~n" width height)
+  (printf "creating ~a × ~a tran-depth-buffer~n" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
 (define-singleton/context (get-mat-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a mat-fbo~n" width height)
+  (printf "creating ~a × ~a mat-fbo~n" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-depth-buffer width height)))))
 
 (define-singleton/context (get-tran-mat-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a tran-mat-fbo~n" width height)
+  (printf "creating ~a × ~a tran-mat-fbo~n" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-tran-depth-buffer width height)))))
 
 (define-singleton/context (get-light-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a light-fbo~n" width height)
+  (printf "creating ~a × ~a light-fbo~n" width height)
   (define diff (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define spec (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define fbo
@@ -297,7 +303,7 @@ code
   fbo)
 
 (define-singleton/context (get-tran-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a tran-fbo~n" width height)
+  (printf "creating ~a × ~a tran-fbo~n" width height)
   (define rgbv (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define alpha (make-gl-texture-2d width height GL_R16F GL_RED GL_FLOAT texture-params))
   (define fbo
@@ -310,7 +316,7 @@ code
   fbo)
 
 (define-singleton/context (get-draw-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a draw-fbo~n" width height)
+  (printf "creating ~a × ~a draw-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define fbo
     (make-gl-framebuffer width height
@@ -321,7 +327,7 @@ code
   fbo)
 
 (define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a reduce-fbo~n" width height)
+  (printf "creating ~a × ~a reduce-fbo~n" width height)
   (define color (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT
                                     (list (cons GL_TEXTURE_WRAP_S GL_CLAMP_TO_EDGE)
                                           (cons GL_TEXTURE_WRAP_T GL_CLAMP_TO_EDGE)
@@ -336,12 +342,12 @@ code
         (cons GL_TEXTURE_MAG_FILTER GL_LINEAR)))
 
 (define-singleton/context (get-bloom-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a bloom-fbo~n" width height)
+  (printf "creating ~a × ~a bloom-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 
 (define-singleton/context (get-blur-fbo [width : Natural] [height : Natural])
-  (printf "new ~a × ~a blur-fbo~n" width height)
+  (printf "creating ~a × ~a blur-fbo~n" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 

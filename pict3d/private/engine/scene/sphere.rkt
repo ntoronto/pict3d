@@ -121,7 +121,9 @@ void main() {
 code
    ))
 
-(define-singleton (sphere-mat-program-spec)
+(define-singleton/context (sphere-mat-program-spec)
+  (printf "creating sphere material program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "sphere0" 4 GL_FLOAT)
@@ -329,7 +331,8 @@ code
         (cons "diffuse" 'diffuse)
         (cons "specular" 'specular)))
 
-(define-singleton (sphere-opaq-program-spec)
+(define-singleton/context (sphere-opaq-program-spec)
+  (printf "creating sphere opaque color pass program~n")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color")
@@ -337,7 +340,8 @@ code
                           (make-gl-shader GL_FRAGMENT_SHADER sphere-opaq-fragment-code)))
    draw-program-uniforms))
 
-(define-singleton (sphere-tran-program-spec)
+(define-singleton/context (sphere-tran-program-spec)
+  (printf "creating sphere transparent color pass program~n")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color" "out_weight")

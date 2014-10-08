@@ -7,16 +7,14 @@
          ;; The following can't have contracts (e.g. no predicate for (Instance GL-Context<%>))
          (only-in "untyped-context.rkt"
                   managed-gl-context
-                  gl-context-context
-                  make-shared-gl-config))
+                  gl-context-context))
 
 (provide (all-from-out "typed-context.rkt")
          with-gl-context
          call-with-gl-state
          (contract-out
           [managed-gl-context  (-> (is-a?/c gl-context<%>) gl-context?)]
-          [gl-context-context  (-> gl-context? (is-a?/c gl-context<%>))]
-          [make-shared-gl-config  (-> (is-a?/c gl-config%))]))
+          [gl-context-context  (-> gl-context? (is-a?/c gl-context<%>))]))
 
 (define-syntax-rule (with-gl-context new-ctxt body ...)
   (call-with-gl-context (λ () body ...) new-ctxt))

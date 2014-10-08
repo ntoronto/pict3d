@@ -103,7 +103,9 @@ void main() {
 code
    ))
 
-(define-singleton (directional-light-program-spec)
+(define-singleton/context (directional-light-program-spec)
+  (printf "creating directional light program~n")
+  
   (define struct
     (make-vao-struct
      (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE)))
