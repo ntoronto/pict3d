@@ -34,6 +34,27 @@
                         [ambient-intensity : Flonum]
                         ) #:transparent)
 
+(define (render cmd canvas)
+  (match-define (render-command pict width height
+                                znear zfar fov-degrees
+                                background ambient-color ambient-intensity)
+    cmd)
+  ;; Get the view matrix
+  (define view (pict3d-view-transform pict))
+  ;; Compute the projection matrix
+  (define fov-radians (degrees->radians fov-degrees))
+  (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+  
+  ;; Lock everything up for drawing
+  (call-with-gl-context
+   (λ ()
+     ;; Draw the scene and swap buffers
+     (draw-scene (pict3d-scene pict) width height
+                 view proj
+                 background ambient-color ambient-intensity)
+     (gl-swap-buffers))
+   (send canvas get-managed-gl-context)))
+
 ;(: make-canvas-render-thread (-> (Instance Pict3D-Canvas%) (Async-Channelof render-command) Thread))
 (define (make-canvas-render-thread canvas ch)
   ;(: render-thread-loop (-> Void))
@@ -50,26 +71,7 @@
     ;(values
     ;(profile
     (time
-     (match-define (render-command pict width height
-                                   znear zfar fov-degrees
-                                   background ambient-color ambient-intensity)
-       cmd)
-     ;; Get the view matrix
-     (define view (pict3d-view-transform pict))
-     ;; Compute the projection matrix
-     (define fov-radians (degrees->radians fov-degrees))
-     (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
-     
-     ;; Lock everything up for drawing
-     (call-with-gl-context
-      (λ ()
-        ;; Draw the scene and swap buffers
-        (draw-scene (pict3d-scene pict) width height
-                    view proj
-                    background ambient-color ambient-intensity)
-        (gl-swap-buffers))
-      (send canvas get-managed-gl-context))
-     )
+     (render cmd))
     (render-thread-loop))
   
   (thread render-thread-loop))
@@ -148,6 +150,11 @@
       (set! background (current-pict3d-background))
       (set! ambient-color (current-pict3d-ambient-color))
       (set! ambient-intensity (current-pict3d-ambient-intensity))
+      (render (render-command new-pict width height
+                              z-near z-far fov-degrees
+                              background ambient-color ambient-intensity)
+              this)
+      #;
       (async-channel-put
        render-queue
        (render-command new-pict width height

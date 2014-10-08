@@ -54,6 +54,7 @@ uniform mat4 unproj;
 in vec3 vert_position;
 in vec2 vert_intensity_radius;
 in vec3 vert_color;
+in float vert_id;
 
 flat out vec3 frag_position;
 flat out float frag_radius;
@@ -71,7 +72,7 @@ void main() {
   frag_position = (trans * vec4(vert_position,1)).xyz;
   frag_radius = radius;
   frag_intensity = pow(vert_color / 255, vec3(2.2)) * vert_intensity_radius.x;
-  frag_is_degenerate = output_impostor_strip(trans, proj, wmin, wmax, gl_VertexID % 4);
+  frag_is_degenerate = output_impostor_strip(trans, proj, wmin, wmax, int(vert_id));
 
   vec4 dir = unproj * gl_Position;
   frag_dir = vec3(dir.xy / dir.z, 1.0);
@@ -120,7 +121,8 @@ code
     (make-vao-struct
      (make-vao-field "vert_position" 3 GL_FLOAT)
      (make-vao-field "vert_intensity_radius" 2 GL_FLOAT)
-     (make-vao-field "vert_color" 3 GL_UNSIGNED_BYTE)))
+     (make-vao-field "vert_color" 3 GL_UNSIGNED_BYTE)
+     (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
@@ -140,24 +142,27 @@ code
 ;; ===================================================================================================
 ;; Point light shape passes
 
+(: vertex-ids (Vectorof Index))
+(define vertex-ids #(0 1 2 2 1 3))
+
 (: make-point-light-shape-passes (-> point-light-shape Passes))
 (define (make-point-light-shape-passes a)
   (match-define (point-light-shape _ color intensity position radius) a)
   
-  (: datum GL-Data)
-  (define datum
+  (define data
     (gl-data->bytes
-     (list (flvector->f32vector position)
-           (f32vector intensity radius)
-           (pack-color color))))
-  
-  (define data (gl-data->bytes ((inst make-list GL-Data) 4 datum)))
+     ((inst append* (U F32Vector Bytes))
+      (for/list ([id  (in-range 4)])
+        (list (flvector->f32vector position)
+              (f32vector intensity radius)
+              (pack-color color)
+              (bytes id))))))
   
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params point-light-program-spec empty #t GL_TRIANGLE_STRIP
-                           (multi-vertices 4 data (vector 0) (s32vector 4))))
+     (vector (shape-params point-light-program-spec empty #t GL_TRIANGLES
+                           (vertices 4 data vertex-ids)))
      #()
      #()
      #()

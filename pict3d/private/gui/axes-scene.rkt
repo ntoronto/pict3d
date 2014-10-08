@@ -74,19 +74,21 @@
    (flvector 0.1 0.1 1.0 2.5)
    axis-material))
 
+(define unfrozen-axes-scene
+  (assert
+   (scene-union*
+    (list (shape->scene
+           (make-sphere-shape
+            (scale-flt3 (flvector 0.03 0.03 0.03))
+            (flvector 0.0 0.0 0.0 1.0)
+            (flvector 1.0 1.0 1.0 2.0)
+            axis-material
+            #f))
+          x-axis-scene
+          y-axis-scene
+          z-axis-scene))
+   nonempty-scene?))
+
 (define axes-scene
   (shape->scene
-   (make-frozen-scene-shape
-    (assert
-     (scene-union*
-      (list (shape->scene
-             (make-sphere-shape
-              (scale-flt3 (flvector 0.03 0.03 0.03))
-              (flvector 0.0 0.0 0.0 1.0)
-              (flvector 1.0 1.0 1.0 2.0)
-              axis-material
-              #f))
-            x-axis-scene
-            y-axis-scene
-            z-axis-scene))
-     nonempty-scene?))))
+   (make-frozen-scene-shape unfrozen-axes-scene)))

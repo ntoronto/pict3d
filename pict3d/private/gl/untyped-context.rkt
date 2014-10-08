@@ -63,28 +63,28 @@
 
 (define (get-master-gl-context/bitmap)
   (define config (new gl-config%))
-  (send config set-legacy? #f)
+  (send config set-legacy? #t)
   (define bm (make-gl-bitmap master-context-max-width master-context-max-height config))
   (define dc (make-object bitmap-dc% bm))
   (define ctxt (send dc get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
          (log-warning "get-master-gl-context: could not obtain bitmap OpenGL context")]
-        [(send ctxt call-as-current (λ () (gl-version-at-least? '(3 0))))
-         (match-define (list major minor) (send ctxt call-as-current (λ () (gl-version))))
-         (log-info "get-master-gl-context: obtained OpenGL ~a.~a bitmap context" major minor)
+        [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
+         (define version (send ctxt call-as-current gl-version))
+         (log-info "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
          (set! master-bitmap bm)
          (set! master-dc dc)
          (let ([ctxt  (managed-gl-context ctxt)])
            (set! master-context ctxt)
            ctxt)]
         [else
-         (match-define (list major minor) (send ctxt call-as-current (λ () (gl-version))))
-         (log-warning "get-master-gl-context: obtained OpenGL ~a.~a bitmap context" major minor)
+         (define version (send ctxt call-as-current gl-version))
+         (log-warning "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
          #f]))
 
 (define (get-master-gl-context/frame)
   (define config (new gl-config%))
-  (send config set-legacy? #f)
+  (send config set-legacy? #t)
   (define frame (new frame%
                      [label "Master GL context frame"]
                      [width   master-context-max-width]
@@ -100,16 +100,16 @@
   (define ctxt (send (send canvas get-dc) get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
          (log-warning "get-master-gl-context: could not obtain canvas OpenGL context")]
-        [(send ctxt call-as-current (λ () (gl-version-at-least? '(3 0))))
-         (match-define (list major minor) (send ctxt call-as-current (λ () (gl-version))))
-         (log-info "get-master-gl-context: obtained OpenGL ~a.~a canvas context" major minor)
+        [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
+         (define version (send ctxt call-as-current gl-version))
+         (log-info "get-master-gl-context: obtained OpenGL ~a canvas context" version)
          (set! master-frame frame)
          (let ([ctxt  (managed-gl-context ctxt)])
            (set! master-context ctxt)
            ctxt)]
         [else
-         (match-define (list major minor) (send ctxt call-as-current (λ () (gl-version))))
-         (log-warning "get-master-gl-context: obtained OpenGL ~a.~a canvas context" major minor)
+         (define version (send ctxt call-as-current gl-version))
+         (log-warning "get-master-gl-context: obtained OpenGL ~a canvas context" version)
          #f]))
 
 (define (get-master-gl-context)

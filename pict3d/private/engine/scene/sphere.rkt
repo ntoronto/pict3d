@@ -348,7 +348,8 @@ code
 ;; ===================================================================================================
 ;; Sphere shape passes
 
-(define vertex-ids '(0 1 2 2 1 3))
+(: vertex-ids (Vectorof Index))
+(define vertex-ids #(0 1 2 2 1 3))
 
 (: make-sphere-shape-passes (-> sphere-shape Passes))
 (define (make-sphere-shape-passes a)
@@ -359,23 +360,22 @@ code
   (define inside (if inside? 1 0))
   
   (define mat-datum-size (+ affine-size 4))  ; last byte is unused
-  (define mat-data-size (* 6 mat-datum-size))
+  (define mat-data-size (* 4 mat-datum-size))
   (define mat-data (make-bytes mat-data-size))
   (memcpy (u8vector->cpointer mat-data) affine-ptr affine-size)
   (bytes-set! mat-data affine-size roughness)
   (bytes-set! mat-data (unsafe-fx+ 1 affine-size) inside)
   (bytes-set! mat-data (unsafe-fx+ 2 affine-size) 0)
-  (for ([j  (in-range 1 6)]
-        [id  (in-list (rest vertex-ids))])
+  (for ([j  (in-range 1 4)])
     (bytes-copy! mat-data (unsafe-fx* j mat-datum-size) mat-data 0 mat-datum-size)
     (bytes-set! mat-data
                 (unsafe-fx+ (unsafe-fx* j mat-datum-size)
                             (unsafe-fx+ 2 affine-size))
-                id))
+                j))
   
   (define draw-datum-size
     (vao-struct-size (gl-program-struct (program-spec-program (sphere-opaq-program-spec)))))
-  (define draw-data-size (* 6 draw-datum-size))
+  (define draw-data-size (* 4 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
   (define-values (ecolor i.lo) (pack-emitted e))
   (define i
@@ -393,12 +393,11 @@ code
       (bytes-set! draw-data (unsafe-fx+ i 4) inside)
       (bytes-set! draw-data (unsafe-fx+ i 5) 0)
       (unsafe-fx+ i 5)))
-  (for ([j  (in-range 1 6)]
-        [id  (in-list (rest vertex-ids))])
+  (for ([j  (in-range 1 4)])
     (bytes-copy! draw-data (unsafe-fx* j draw-datum-size) draw-data 0 draw-datum-size)
     (bytes-set! draw-data
                 (unsafe-fx+ (unsafe-fx* j draw-datum-size) i)
-                id))
+                j))
   
   (define transparent? (< (flvector-ref c 3) 1.0))
   
@@ -410,15 +409,15 @@ code
          #()
          #()
          (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
-                               (single-vertices 6 mat-data)))
+                               (vertices 4 mat-data vertex-ids)))
          (vector (shape-params sphere-tran-program-spec empty #t GL_TRIANGLES
-                               (single-vertices 6 draw-data))))
+                               (vertices 4 draw-data vertex-ids))))
         (vector
          #()
          (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
-                               (single-vertices 6 mat-data)))
+                               (vertices 4 mat-data vertex-ids)))
          (vector (shape-params sphere-opaq-program-spec empty #t GL_TRIANGLES
-                               (single-vertices 6 draw-data)))
+                               (vertices 4 draw-data vertex-ids)))
          #()
          #())))
   passes)

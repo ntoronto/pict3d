@@ -418,15 +418,15 @@ code
          #()
          #()
          (vector (shape-params polygon-mat-program-spec empty #f GL_TRIANGLES
-                               (single-vertices 3 mat-data)))
+                               (vertices 3 mat-data #f)))
          (vector (shape-params polygon-tran-program-spec empty #f GL_TRIANGLES
-                               (single-vertices 3 draw-data))))
+                               (vertices 3 draw-data #f))))
         (vector
          #()
          (vector (shape-params polygon-mat-program-spec empty #f GL_TRIANGLES
-                               (single-vertices 3 mat-data)))
+                               (vertices 3 mat-data #f)))
          (vector (shape-params polygon-opaq-program-spec empty #f GL_TRIANGLES
-                               (single-vertices 3 draw-data)))
+                               (vertices 3 draw-data #f)))
          #()
          #())))
   passes)

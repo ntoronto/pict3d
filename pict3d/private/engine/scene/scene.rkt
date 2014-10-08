@@ -421,126 +421,120 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Passes
 
-(: merge-single-vertices (-> program-spec
-                             (List-Hash String (U Symbol Uniform))
-                             Boolean
-                             Integer
-                             (Vectorof shape-params)
-                             Nonnegative-Fixnum
-                             Nonnegative-Fixnum
-                             (U (List shape-params) Null)))
-(define (merge-single-vertices pd uniforms two-sided? mode ps start end)
-  (define vertex-count
-    (for/fold ([vertex-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-      (define v (shape-params-vertices (unsafe-vector-ref ps i)))
-      (if (single-vertices? v)
-          (unsafe-fx+ vertex-count (vertices-vertex-count v))
-          vertex-count)))
+(: get-vertex-count (-> Boolean
+                        (Vectorof shape-params)
+                        Nonnegative-Fixnum
+                        Nonnegative-Fixnum
+                        Nonnegative-Fixnum))
+(define (get-vertex-count indexed? ps start end)
+  (for/fold ([vertex-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (unsafe-vector-ref ps i)))
+    (if (eq? indexed? (and (vertices-indexes v) #t))
+        (unsafe-fx+ vertex-count (vertices-vertex-count v))
+        vertex-count)))
+
+(: get-index-count (-> (Vectorof shape-params)
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum))
+(define (get-index-count ps start end)
+  (for/fold ([index-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (unsafe-vector-ref ps i)))
+    (define indexes (vertices-indexes v))
+    (if indexes
+        (unsafe-fx+ index-count (vector-length indexes))
+        index-count)))
+
+(: merge-vertex-data (-> program-spec
+                         Boolean
+                         (Vectorof shape-params)
+                         Nonnegative-Fixnum
+                         Nonnegative-Fixnum
+                         Nonnegative-Fixnum
+                         Bytes))
+(define (merge-vertex-data pd indexed? ps start end vertex-count)
+  (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
+  (define buffer-size (unsafe-fx* vertex-count struct-size))
+  (define all-vertex-data (make-bytes buffer-size))
+  (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))
+  ;; Copy the vertex data into the buffer
+  (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (unsafe-vector-ref ps i)))
+    (cond
+      [(eq? indexed? (and (vertices-indexes v) #t))
+       (define vertex-count (vertices-vertex-count v))
+       (define vertex-data (vertices-vertex-data v))
+       (memcpy all-vertex-data-ptr
+               (unsafe-fx* vertex-num struct-size)
+               (u8vector->cpointer vertex-data)
+               (unsafe-fx* vertex-count struct-size)
+               _byte)
+       (unsafe-fx+ vertex-num vertex-count)]
+      [else
+       vertex-num]))
+  all-vertex-data)
+
+(: merge-indexes (-> (Vectorof shape-params)
+                     Nonnegative-Fixnum
+                     Nonnegative-Fixnum
+                     (Vectorof Index)))
+(define (merge-indexes ps start end)
+  (define index-count (get-index-count ps start end))
+  (define all-indexes ((inst make-vector Index) index-count))
   
+  ;; Copy the index data into the buffer, shifted
+  (for/fold ([vertex-num : Nonnegative-Fixnum  0]
+             [index-num : Nonnegative-Fixnum 0]
+             ) ([i  (in-range start end)])
+    (define v (shape-params-vertices (unsafe-vector-ref ps i)))
+    (define indexes (vertices-indexes v))
+    (cond
+      [indexes
+       (define vertex-count (vertices-vertex-count v))
+       (define index-count (vector-length indexes))
+       (for ([j  (in-range index-count)])
+         (define idx (unsafe-vector-ref indexes j))
+         (vector-set! all-indexes
+                      (unsafe-fx+ index-num j)
+                      (assert (unsafe-fx+ vertex-num idx) index?)))
+       (values (unsafe-fx+ vertex-num vertex-count)
+               (unsafe-fx+ index-num index-count))]
+      [else
+       (values vertex-num
+               index-num)]))
+  all-indexes)
+
+(: merge-vertices (-> program-spec
+                      Boolean
+                      (List-Hash String (U Symbol Uniform))
+                      Boolean
+                      Integer
+                      (Vectorof shape-params)
+                      Nonnegative-Fixnum
+                      Nonnegative-Fixnum
+                      (Listof shape-params)))
+(define (merge-vertices pd indexed? uniforms two-sided? mode ps start end)
+  (define vertex-count (get-vertex-count indexed? ps start end))
   (cond
+    [(> vertex-count max-shape-vertex-count)
+     (define mid (unsafe-fxquotient (unsafe-fx+ start end) 2))
+     (when (or (= start mid) (= end mid))
+       (error 'merge-vertices
+              "cannot merge a single shape with more than ~a vertices; given ~a vertices"
+              max-shape-vertex-count
+              vertex-count))
+     (append
+      (merge-vertices pd indexed? uniforms two-sided? mode ps start mid)
+      (merge-vertices pd indexed? uniforms two-sided? mode ps mid end))]
     [(> vertex-count 0)
      ;; Allocate enough space for all the vertex data
-     (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
-     (define buffer-size (unsafe-fx* vertex-count struct-size))
-     (define all-vertex-data (make-bytes buffer-size))
-     (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))
-     ;; Copy the vertex data into the buffer
-     (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-       (define v (shape-params-vertices (unsafe-vector-ref ps i)))
-       (cond
-         [(single-vertices? v)
-          (define vertex-count (vertices-vertex-count v))
-          (define vertex-data (vertices-vertex-data v))
-          (memcpy all-vertex-data-ptr
-                  (unsafe-fx* vertex-num struct-size)
-                  (u8vector->cpointer vertex-data)
-                  (unsafe-fx* vertex-count struct-size)
-                  _byte)
-          (unsafe-fx+ vertex-num vertex-count)]
-         [else
-          vertex-num]))
+     (define all-vertex-data (merge-vertex-data pd indexed? ps start end vertex-count))
+     (define all-indexes (if indexed? (merge-indexes ps start end) #f))
      
-     (define verts (single-vertices (assert vertex-count index?) all-vertex-data))
+     (define verts (vertices (assert vertex-count index?) all-vertex-data all-indexes))
      (list (shape-params (λ () pd) uniforms two-sided? mode verts))]
     [else
      empty]))
-
-(: merge-multi-vertices (-> program-spec
-                            (List-Hash String (U Symbol Uniform))
-                            Boolean
-                            Integer
-                            (Vectorof shape-params)
-                            Nonnegative-Fixnum
-                            Nonnegative-Fixnum
-                            (U (List shape-params) Null)))
-(define (merge-multi-vertices pd uniforms two-sided? mode ps start end)
-  (define-values (vertex-count prim-count)
-    (for/fold ([vertex-count : Nonnegative-Fixnum  0]
-               [prim-count : Nonnegative-Fixnum  0]
-               ) ([i  (in-range start end)])
-      (define v (shape-params-vertices (unsafe-vector-ref ps i)))
-      (if (multi-vertices? v)
-          (values
-           (unsafe-fx+ vertex-count (vertices-vertex-count v))
-           (unsafe-fx+ prim-count (min (vector-length (multi-vertices-starts v))
-                                       (s32vector-length (multi-vertices-counts v)))))
-          (values vertex-count prim-count))))
-  
-  (cond
-    [(and (> vertex-count 0) (> prim-count 0))
-     ;; Allocate enough space for all the vertex data
-     (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
-     (define buffer-size (unsafe-fx* vertex-count struct-size))
-     (define all-vertex-data (make-bytes buffer-size))
-     (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))
-     (define all-starts ((inst make-vector Nonnegative-Fixnum) prim-count 0))
-     (define all-counts (make-s32vector prim-count))
-     (define all-counts-ptr (s32vector->cpointer all-counts))
-     ;; Copy the vertex data into the buffer
-     (for/fold ([vertex-num : Nonnegative-Fixnum  0]
-                [prim-num : Nonnegative-Fixnum  0]
-                ) ([i  (in-range start end)])
-       (define v (shape-params-vertices (unsafe-vector-ref ps i)))
-       (cond
-         [(multi-vertices? v)
-          (define vertex-count (vertices-vertex-count v))
-          (define vertex-data (vertices-vertex-data v))
-          (define starts (multi-vertices-starts v))
-          (define counts (multi-vertices-counts v))
-          (define prim-count (min (vector-length starts) (s32vector-length counts)))
-          ;; Copy the vertex data directly
-          (memcpy all-vertex-data-ptr
-                  (unsafe-fx* vertex-num struct-size)
-                  (u8vector->cpointer vertex-data)
-                  (unsafe-fx* vertex-count struct-size)
-                  _byte)
-          ;; Copy the starts, shifted by the number of vertices already copied
-          (for ([j  (in-range prim-count)])
-            (define start (unsafe-vector-ref starts j))
-            (define shifted-j (unsafe-fx+ prim-num j))
-            (define shifted-start (unsafe-fx+ vertex-num start))
-            (unsafe-vector-set! all-starts shifted-j shifted-start))
-          ;; Copy the counts directly
-          (memcpy all-counts-ptr
-                  (unsafe-fx* prim-num 4)
-                  (s32vector->cpointer counts)
-                  (unsafe-fx* prim-count 4)
-                  _byte)
-          ;; Increment the counters
-          (values (unsafe-fx+ vertex-num vertex-count)
-                  (unsafe-fx+ prim-num prim-count))]
-         [else
-          (values vertex-num prim-num)]))
-     
-     (list (shape-params (λ () pd)
-                         uniforms
-                         two-sided?
-                         mode
-                         (multi-vertices (assert vertex-count index?)
-                                         all-vertex-data
-                                         all-starts
-                                         all-counts)))]
-    [else  empty]))
 
 (: make-frozen-scene-shape-passes (-> frozen-scene-shape Passes))
 (define (make-frozen-scene-shape-passes a)
@@ -583,8 +577,8 @@ for `Scene`.
                                         shape-params-mode))]
             [mode  (in-value (span-key s))])
            (append
-            (merge-single-vertices pd uniforms face mode ps (span-start s) (span-end s))
-            (merge-multi-vertices  pd uniforms face mode ps (span-start s) (span-end s))))))))))
+            (merge-vertices pd #f uniforms face mode ps (span-start s) (span-end s))
+            (merge-vertices pd #t uniforms face mode ps (span-start s) (span-end s))))))))))
 
 ;; ===================================================================================================
 ;; Bounding box

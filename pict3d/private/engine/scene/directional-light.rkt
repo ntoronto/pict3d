@@ -46,11 +46,13 @@
 
 uniform mat4 unproj;
 
+in float vert_id;
+
 smooth out vec3 frag_dir;
 
 void main() {
     // output the right vertices for a triangle strip
-  switch (gl_VertexID % 4) {
+  switch (int(vert_id)) {
   case 0:
     gl_Position = vec4(-1.0, -1.0, 0.0, 1.0);
     break;
@@ -102,7 +104,9 @@ code
    ))
 
 (define-singleton (directional-light-program-spec)
-  (define struct (make-vao-struct))
+  (define struct
+    (make-vao-struct
+     (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE)))
   
   (define program
     (make-gl-program struct
@@ -121,6 +125,11 @@ code
 ;; ===================================================================================================
 ;; Directional light shape passes
 
+(define data (list->bytes '(0 1 2 3)))
+
+(: vertex-ids (Vectorof Index))
+(define vertex-ids #(0 1 2 2 1 3))
+
 (: make-directional-light-shape-passes (-> directional-light-shape Passes))
 (define (make-directional-light-shape-passes a)
   (match-define (directional-light-shape _ color intensity direction) a)
@@ -133,8 +142,8 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params directional-light-program-spec uniforms #t GL_TRIANGLE_STRIP
-                           (multi-vertices 4 #"" (vector 0) (s32vector 4))))
+     (vector (shape-params directional-light-program-spec uniforms #t GL_TRIANGLES
+                           (vertices 4 data vertex-ids)))
      #()
      #()
      #()

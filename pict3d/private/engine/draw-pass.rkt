@@ -7,39 +7,29 @@
          (except-in typed/opengl/ffi cast ->)
          "../utils.rkt"
          "../gl.rkt"
+         "../ffi.rkt"
          "affine.rkt"
          "types.rkt"
          "utils.rkt")
 
 (provide  (struct-out vertices)
-          (struct-out single-vertices)
-          (struct-out multi-vertices)
-          Vertices
           (struct-out shape-params)
           (struct-out draw-passes)
           empty-shape-params
           Passes
-          draw-pass)
+          draw-pass
+          max-shape-vertex-count)
 
 ;; ===================================================================================================
 ;; Vertex data - contents are shader-specific
 
 (struct vertices
   ([vertex-count : Index]
-   [vertex-data : Bytes])  ; data to send, already converted to bytes
+   [vertex-data : Bytes]  ; vertex data to send, already converted to bytes
+   [indexes : (U #f (Vectorof Index))])
   #:transparent)
 ;; The length of `vertex-data` must be no less than `vertex-count` times the struct size!
-
-(struct single-vertices vertices ()
-  #:transparent)
-
-(struct multi-vertices vertices
-  ([starts : (Vectorof Nonnegative-Fixnum)]   ; primitive start indexes
-   [counts : S32Vector])  ; primitive vertex counts
-  #:transparent)
-
-(define-type Vertices (U single-vertices
-                         multi-vertices))
+;; The elements in `index-data` must be less than `vertex-count`!
 
 ;; ===================================================================================================
 ;; Drawing pass data
@@ -54,7 +44,7 @@
                       [uniforms : (List-Hash String (U Symbol Uniform))]
                       [two-sided? : Boolean]
                       [mode : Integer]
-                      [vertices : Vertices])
+                      [vertices : vertices])
   #:transparent)
 
 ;; 2. Shapes' Passes are extracted from a scene, along with the transform that should be applied by
@@ -70,7 +60,7 @@
   #:transparent)
 
 (define empty-shape-params
-  (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (single-vertices 0 #"")))
+  (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (vertices 0 #"" #f)))
 
 (: empty-draw-params draw-params)
 (define empty-draw-params
@@ -81,10 +71,12 @@
 (struct vertex-buffer ([vao : gl-vertex-array]
                        [vertex-buf : (U #f gl-array-buffer)]
                        [transform-buf : (U #f gl-array-buffer)]
-                       [vertex-count : Index]))
+                       [index-buf : (U #f gl-index-buffer)]
+                       [vertex-count : Index]
+                       [index-count : Index]))
 
-(: make-vertex-buffer (-> Index Index Boolean vertex-buffer))
-(define (make-vertex-buffer struct-size vertex-count transform?)
+(: make-vertex-buffer (-> Index Index Index Boolean vertex-buffer))
+(define (make-vertex-buffer struct-size vertex-count index-count transform?)
   (define vao (make-gl-vertex-array))
   
   (define vertex-buf-size (* struct-size vertex-count))
@@ -104,27 +96,51 @@
            transform-buf]
           [else  #f]))
   
-  (vertex-buffer vao vertex-buf transform-buf vertex-count))
+  (define index-buf-size (* 2 index-count))
+  (define index-buf
+    (cond [(> index-buf-size 0)
+           (define index-buf (make-gl-index-buffer))
+           (with-gl-index-buffer index-buf
+             (glBufferData GL_ELEMENT_ARRAY_BUFFER index-buf-size 0 GL_STREAM_DRAW))
+           index-buf]
+          [else  #f]))
+  
+  (vertex-buffer vao vertex-buf transform-buf index-buf vertex-count index-count))
 
-(: vertex-buffers (HashTable GL-Context (HashTable vao-struct vertex-buffer)))
+(: vertex-buffers (HashTable GL-Context (HashTable vao-struct (Vector (U vertex-buffer #f)
+                                                                      (U vertex-buffer #f)))))
 (define vertex-buffers (make-weak-hasheq))
 
-(: get-vertex-buffer (-> gl-program Nonnegative-Fixnum vertex-buffer))
-(define (get-vertex-buffer program vertex-count)
+(: get-vertex-buffer (-> gl-program Nonnegative-Fixnum Nonnegative-Fixnum vertex-buffer))
+(define (get-vertex-buffer program vertex-count index-count)
   (define hash (hash-ref! vertex-buffers (get-current-managed-gl-context 'get-vertex-buffer)
-                          (λ () ((inst make-weak-hasheq vao-struct vertex-buffer)))))
+                          (λ () ((inst make-weak-hasheq
+                                       vao-struct
+                                       (Vector (U vertex-buffer #f) (U vertex-buffer #f)))))))
   (define struct (gl-program-struct program))
-  (define vbuffer (hash-ref hash struct #f))
-  (cond [(and vbuffer (<= vertex-count (vertex-buffer-vertex-count vbuffer)))  vbuffer]
+  (define vbuffers ((inst hash-ref! vao-struct (Vector (U vertex-buffer #f) (U vertex-buffer #f)))
+                    hash
+                    struct
+                    (λ () (vector #f #f))))
+  (define vbuffers-idx (if (= index-count 0) 0 1))
+  (define vbuffer (vector-ref vbuffers vbuffers-idx))
+  (cond [(and vbuffer
+              (<= vertex-count (vertex-buffer-vertex-count vbuffer))
+              (<= index-count (vertex-buffer-index-count vbuffer)))
+         vbuffer]
         [else
          (define _model0 (glGetAttribLocation (gl-object-handle program) "_model0"))
          (define _model1 (glGetAttribLocation (gl-object-handle program) "_model1"))
          (define _model2 (glGetAttribLocation (gl-object-handle program) "_model2"))
          (define transform? (and (>= _model0 0) (>= _model1 0) (>= _model2 0)))
          
-         (define buffer-count (assert (next-pow2 vertex-count) index?))
-         (printf "creating vao for ~v (~v) vertices~n" buffer-count vertex-count)
-         (define vbuffer (make-vertex-buffer (vao-struct-size struct) buffer-count transform?))
+         (define vertex-count2 (assert (next-pow2 vertex-count) index?))
+         (define index-count2 (if (= index-count 0) 0 (assert (next-pow2 index-count) index?)))
+         (printf "creating vao for ~v (~v) vertices, ~v (~v) indexes~n" 
+                 vertex-count2 vertex-count
+                 index-count2 index-count)
+         (define vbuffer
+           (make-vertex-buffer (vao-struct-size struct) vertex-count2 index-count2 transform?))
          
          (with-gl-vertex-array (vertex-buffer-vao vbuffer)
            (define vbuf (vertex-buffer-vertex-buf vbuffer))
@@ -142,11 +158,8 @@
                (glVertexAttribPointer _model1 4 GL_FLOAT #f affine-size (* 4 4))
                (glVertexAttribPointer _model2 4 GL_FLOAT #f affine-size (* 8 4)))))
          
-         (hash-set! hash struct vbuffer)
+         (vector-set! vbuffers vbuffers-idx vbuffer)
          vbuffer]))
-
-(define get-all-starts (make-cached-vector 'get-all-starts make-s32vector s32vector-length))
-(define get-all-counts (make-cached-vector 'get-all-counts make-s32vector s32vector-length))
 
 (: gl-map-buffer-range/stream (-> Integer Integer CPointer))
 (define (gl-map-buffer-range/stream target size)
@@ -168,231 +181,196 @@
    cpointer?))
 
 ;; ===================================================================================================
-;; Vertex drawing of fixed-length primitives (e.g. points, lines, triangles)
+;; Vertex drawing of fixed-length primitives (e.g. points, lines, triangles, quads)
 
 (define get-tmp-transform-data
   (make-cached-vector 'get-tmp-transform-data make-bytes bytes-length))
 
-(: send-single-vertices (-> gl-program
-                            Integer
+(define max-shape-vertex-count 65536)
+
+(define get-tmp-index-data
+  (make-cached-vector 'get-tmp-index-data make-u16vector u16vector-length))
+
+(: get-vertex-count (-> Boolean
+                        (Vectorof draw-params)
+                        Nonnegative-Fixnum
+                        Nonnegative-Fixnum 
+                        Nonnegative-Fixnum))
+(define (get-vertex-count indexed? ps start end)
+  (for/fold ([vertex-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
+    (define count (vertices-vertex-count v))
+    (define indexes (vertices-indexes v))
+    (if (eq? indexed? (and indexes #t))
+        (unsafe-fx+ vertex-count count)
+        vertex-count)))
+
+(: get-vertex-count-max (-> Boolean
                             (Vectorof draw-params)
                             Nonnegative-Fixnum
-                            Nonnegative-Fixnum
-                            Void))
-(define (send-single-vertices program mode ps start end)
-  ;; Compute the total number of single vertices to send to the GPU
-  (define-values (vertex-count vertex-count-max)
-    (for/fold ([vertex-count : Nonnegative-Fixnum  0]
-               [vertex-count-max : Nonnegative-Fixnum  0]
-               ) ([i  (in-range start end)])
-      (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
-      (define count (vertices-vertex-count v))
-      (if (single-vertices? v)
-          (values (unsafe-fx+ vertex-count count)
-                  (unsafe-fxmax vertex-count-max count))
-          (values vertex-count
-                  vertex-count-max))))
+                            Nonnegative-Fixnum 
+                            Nonnegative-Fixnum))
+(define (get-vertex-count-max indexed? ps start end)
+  (for/fold ([vertex-count-max : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
+    (define count (vertices-vertex-count v))
+    (define indexes (vertices-indexes v))
+    (if (eq? indexed? (and indexes #t))
+        (unsafe-fxmax vertex-count-max count)
+        vertex-count-max)))
+
+(: get-index-count (-> (Vectorof draw-params)
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum 
+                       Nonnegative-Fixnum))
+(define (get-index-count ps start end)
+  (for/fold ([index-count : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
+    (define indexes (vertices-indexes v))
+    (if indexes
+        (unsafe-fx+ index-count (vector-length indexes))
+        index-count)))
+
+(: send-vertex-data (-> gl-array-buffer
+                        gl-program
+                        Boolean
+                        (Vectorof draw-params)
+                        Nonnegative-Fixnum
+                        Nonnegative-Fixnum
+                        Nonnegative-Fixnum
+                        Any))
+(define (send-vertex-data vbuf program indexed? ps start end vertex-count)
+  (gl-bind-array-buffer vbuf)
+  ;; Map the vertex buffer into memory
+  (define struct-size (vao-struct-size (gl-program-struct program)))
+  (define buffer-size (unsafe-fx* struct-size vertex-count))
+  (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
+  ;; Copy the vertex data into the buffer
+  (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
+    (cond
+      [(eq? indexed? (and (vertices-indexes v) #t))
+       (define vertex-count (vertices-vertex-count v))
+       (define vertex-data (vertices-vertex-data v))
+       (memcpy all-vertex-data-ptr
+               (unsafe-fx* vertex-num struct-size)
+               (u8vector->cpointer vertex-data)
+               (unsafe-fx* vertex-count struct-size)
+               _byte)
+       (unsafe-fx+ vertex-num vertex-count)]
+      [else
+       vertex-num]))
+  ;; Unmap the vertex buffer (i.e. send the vertex data)
+  (glUnmapBuffer GL_ARRAY_BUFFER))
+
+(: send-transform-data (-> gl-array-buffer
+                           Boolean
+                           (Vectorof draw-params)
+                           Nonnegative-Fixnum
+                           Nonnegative-Fixnum
+                           Nonnegative-Fixnum
+                           Any))
+(define (send-transform-data tbuf indexed? ps start end vertex-count)
+  (gl-bind-array-buffer tbuf)
+  ;; Map the transform buffer into memory
+  (define buffer-size (unsafe-fx* affine-size vertex-count))
+  (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
   
+  (define vertex-count-max (get-vertex-count-max indexed? ps start end))
+  (define tmp-transform-data (get-tmp-transform-data (unsafe-fx* vertex-count-max affine-size)))
+  (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
+  
+  ;; Copy the transform data into the buffer
+  (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
+    (define p (unsafe-vector-ref ps i))
+    (define v (shape-params-vertices (draw-params-shape-params p)))
+    (cond
+      [(eq? indexed? (and (vertices-indexes v) #t))
+       (define vertex-count (vertices-vertex-count v))
+       (define transform-data (affine-data (draw-params-transform p)))
+       (memcpy* tmp-transform-data-ptr 0
+                (f32vector->cpointer transform-data) affine-size
+                vertex-count)
+       (memcpy all-transform-data-ptr (unsafe-fx* vertex-num affine-size)
+               tmp-transform-data-ptr (unsafe-fx* vertex-count affine-size))
+       (unsafe-fx+ vertex-num vertex-count)]
+      [else
+       vertex-num]))
+  ;; Unmap the transform buffer (i.e. send the transform data)
+  (glUnmapBuffer GL_ARRAY_BUFFER))
+
+(: send-index-data (-> gl-index-buffer
+                       (Vectorof draw-params)
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum
+                       Any))
+(define (send-index-data ibuf ps start end index-count)
+  (define tmp-index-data (get-tmp-index-data index-count))
+  (define tmp-index-data-ptr (u16vector->cpointer tmp-index-data))
+  
+  ;; Copy the index data into the temporary buffer, shifted
+  (for/fold ([vertex-num : Nonnegative-Fixnum  0]
+             [index-num : Nonnegative-Fixnum 0]
+             ) ([i  (in-range start end)])
+    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
+    (define indexes (vertices-indexes v))
+    (cond
+      [indexes
+       (define vertex-count (vertices-vertex-count v))
+       (define index-count (vector-length indexes))
+       (for ([j  (in-range index-count)])
+         (define idx (unsafe-vector-ref indexes j))
+         (unsafe-u16vector-set! tmp-index-data
+                                (unsafe-fx+ index-num j)
+                                (unsafe-fx+ vertex-num idx)))
+       (values (unsafe-fx+ vertex-num vertex-count)
+               (unsafe-fx+ index-num index-count))]
+      [else
+       (values vertex-num
+               index-num)]))
+  
+  (gl-bind-index-buffer ibuf)
+  (define buffer-size (unsafe-fx* 2 index-count))
+  (define all-index-data-ptr (gl-map-buffer-range/stream GL_ELEMENT_ARRAY_BUFFER buffer-size))
+  (memcpy all-index-data-ptr 0 tmp-index-data-ptr buffer-size)
+  ;; Unmap the index buffer (i.e. send the index data)
+  (glUnmapBuffer GL_ELEMENT_ARRAY_BUFFER))
+
+(: send-vertices (-> gl-program
+                     Integer
+                     Boolean
+                     (Vectorof draw-params)
+                     Nonnegative-Fixnum
+                     Nonnegative-Fixnum
+                     Void))
+(define (send-vertices program mode indexed? ps start end)
+  (define vertex-count (get-vertex-count indexed? ps start end))
   (cond
-    [(> vertex-count (* 1024 1024))
+    [(> vertex-count max-shape-vertex-count)
      (define mid (unsafe-fxquotient (unsafe-fx+ start end) 2))
      (when (or (= start mid) (= end mid))
        (error 'send-single-vertices
               "cannot draw a single shape with more than ~a vertices; given ~a vertices"
-              (* 1024 1024)
+              max-shape-vertex-count
               vertex-count))
-     (send-single-vertices program mode ps start mid)
-     (send-single-vertices program mode ps mid end)]
+     (send-vertices program mode indexed? ps start mid)
+     (send-vertices program mode indexed? ps mid end)]
     [(> vertex-count 0)
-     (define tmp-transform-data
-       (get-tmp-transform-data (unsafe-fx* vertex-count-max affine-size)))
-     (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
-     
+     (define index-count (if indexed? (get-index-count ps start end) 0))
      ;; Get (and cache) a VAO with a big enough buffer
-     (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program vertex-count))
+     (match-define (vertex-buffer vao vbuf tbuf ibuf _ _)
+       (get-vertex-buffer program vertex-count index-count))
      
      ;; With the vertex array object (not using with-gl-vertex-array for performance reasons)...
      (gl-bind-vertex-array vao)
-     
-     ;; Write the vertex data
-     (when vbuf
-       (gl-bind-array-buffer vbuf)
-       ;; Map the vertex buffer into memory
-       (define struct-size (vao-struct-size (gl-program-struct program)))
-       (define buffer-size (unsafe-fx* struct-size vertex-count))
-       (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-       ;; Copy the vertex data into the buffer
-       (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-         (define p (unsafe-vector-ref ps i))
-         (define v (shape-params-vertices (draw-params-shape-params p)))
-         (cond
-           [(single-vertices? v)
-            (define vertex-count (vertices-vertex-count v))
-            (define vertex-data (vertices-vertex-data v))
-            (memcpy all-vertex-data-ptr
-                    (unsafe-fx* vertex-num struct-size)
-                    (u8vector->cpointer vertex-data)
-                    (unsafe-fx* vertex-count struct-size)
-                    _byte)
-            (unsafe-fx+ vertex-num vertex-count)]
-           [else
-            vertex-num]))
-       ;; Unamp the vertex buffer (i.e. send the vertex data)
-       (glUnmapBuffer GL_ARRAY_BUFFER))
-     
-     ;; Write the transform data
-     (when tbuf
-       (gl-bind-array-buffer tbuf)
-       ;; Map the transform buffer into memroy
-       (define buffer-size (unsafe-fx* affine-size vertex-count))
-       (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-       ;; Copy the transform data into the buffer
-       (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-         (define p (unsafe-vector-ref ps i))
-         (define v (shape-params-vertices (draw-params-shape-params p)))
-         (cond
-           [(single-vertices? v)
-            (define vertex-count (vertices-vertex-count v))
-            (define transform-data (affine-data (draw-params-transform p)))
-            (memcpy* tmp-transform-data-ptr 0
-                     (f32vector->cpointer transform-data) affine-size
-                     vertex-count)
-            (memcpy all-transform-data-ptr (unsafe-fx* vertex-num affine-size)
-                    tmp-transform-data-ptr (unsafe-fx* vertex-count affine-size))
-            (unsafe-fx+ vertex-num vertex-count)]
-           [else
-            vertex-num]))
-       ;; Unamp the transform buffer (i.e. send the transform data)
-       (glUnmapBuffer GL_ARRAY_BUFFER))
-     
-     (glDrawArrays mode 0 vertex-count)]))
-
-;; ===================================================================================================
-;; Vertex drawing of variable-length primitives (e.g. line strips, triangle strips)
-
-(: send-multi-vertices (-> gl-program
-                           Integer
-                           (Vectorof draw-params)
-                           Nonnegative-Fixnum
-                           Nonnegative-Fixnum
-                           Void))
-(define (send-multi-vertices program mode ps start end)
-  ;; Compute the total number of vertexes and primitives to send to the GPU
-  (define-values (vertex-count vertex-count-max prim-count)
-    (for/fold ([vertex-count : Nonnegative-Fixnum  0]
-               [vertex-count-max : Nonnegative-Fixnum  0]
-               [prim-count : Nonnegative-Fixnum  0]
-               ) ([i  (in-range start end)])
-      (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
-      (define count (vertices-vertex-count v))
-      (if (multi-vertices? v)
-          (values
-           (unsafe-fx+ vertex-count count)
-           (unsafe-fxmax vertex-count-max count)
-           (unsafe-fx+ prim-count (min (vector-length (multi-vertices-starts v))
-                                       (s32vector-length (multi-vertices-counts v)))))
-          (values vertex-count
-                  vertex-count-max
-                  prim-count))))
-  
-  (when (and (> vertex-count 0) (> prim-count 0))
-    ;; Allocate space for starts and counts
-    (define all-starts (get-all-starts prim-count))
-    (define all-counts (get-all-counts prim-count))
-    (define all-counts-ptr (s32vector->cpointer all-counts))
-    ;; Copy starts (shifted) and counts
-    (for/fold ([vertex-num : Nonnegative-Fixnum  0]
-               [prim-num : Nonnegative-Fixnum  0]
-               ) ([i  (in-range start end)])
-      (define p (unsafe-vector-ref ps i))
-      (define v (shape-params-vertices (draw-params-shape-params p)))
-      (cond
-        [(multi-vertices? v)
-         (define vertex-count (vertices-vertex-count v))
-         (define starts (multi-vertices-starts v))
-         (define counts (multi-vertices-counts v))
-         (define prim-count (min (vector-length starts) (s32vector-length counts)))
-         ;; Copy the starts, shifted by the number of vertices
-         (for ([j  (in-range prim-count)])
-           (define start (unsafe-vector-ref starts j))
-           (define shifted-j (unsafe-fx+ prim-num j))
-           (define shifted-start (unsafe-fx+ vertex-num start))
-           (s32vector-set! all-starts shifted-j shifted-start))
-         ;; Copy the counts directly
-         (memcpy all-counts-ptr
-                 (unsafe-fx* prim-num 4)
-                 (s32vector->cpointer counts)
-                 (unsafe-fx* prim-count 4)
-                 _byte)
-         ;; Increment the counters
-         (values (unsafe-fx+ vertex-num vertex-count)
-                 (unsafe-fx+ prim-num prim-count))]
-        [else
-         (values vertex-num prim-num)]))
-    
-    (define tmp-transform-data
-      (get-tmp-transform-data (unsafe-fx* vertex-count-max affine-size)))
-    (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
-    
-    ;; Get (and cache) a VAO with a big enough buffer
-    (match-define (vertex-buffer vao vbuf tbuf _) (get-vertex-buffer program vertex-count))
-    
-    ;; With the vertex array object (not using with-gl-vertex-array for performance reasons)...
-    (gl-bind-vertex-array vao)
-    
-    ;; Write the vertex data
-    (when vbuf
-      (gl-bind-array-buffer vbuf)
-      ;; Map the vertex array into memory
-      (define struct-size (vao-struct-size (gl-program-struct program)))
-      (define buffer-size (unsafe-fx* struct-size vertex-count))
-      (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-      ;; Copy the vertex data into the buffer
-      (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-        (define p (unsafe-vector-ref ps i))
-        (define v (shape-params-vertices (draw-params-shape-params p)))
-        (cond
-          [(multi-vertices? v)
-           (define vertex-count (vertices-vertex-count v))
-           (define vertex-data (vertices-vertex-data v))
-           ;; Copy the vertex data directly
-           (memcpy all-vertex-data-ptr
-                   (unsafe-fx* vertex-num struct-size)
-                   (u8vector->cpointer vertex-data)
-                   (unsafe-fx* vertex-count struct-size)
-                   _byte)
-           (unsafe-fx+ vertex-num vertex-count)]
-          [else
-           vertex-num]))
-      ;; Unmap the vertex buffer (i.e. send the vertex data)
-      (glUnmapBuffer GL_ARRAY_BUFFER))
-    
-    ;; Write the transform data
-    (when tbuf
-      (gl-bind-array-buffer tbuf)
-      ;; Map the transform buffer into memroy
-      (define buffer-size (unsafe-fx* affine-size vertex-count))
-      (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-      ;; Copy the transform data into the buffer
-      (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-        (define p (unsafe-vector-ref ps i))
-        (define v (shape-params-vertices (draw-params-shape-params p)))
-        (cond
-          [(multi-vertices? v)
-           (define vertex-count (vertices-vertex-count v))
-           (define transform-data (affine-data (draw-params-transform p)))
-           (memcpy* tmp-transform-data-ptr 0
-                    (f32vector->cpointer transform-data) affine-size
-                    vertex-count)
-           (memcpy all-transform-data-ptr (unsafe-fx* vertex-num affine-size)
-                   tmp-transform-data-ptr (unsafe-fx* vertex-count affine-size))
-           (unsafe-fx+ vertex-num vertex-count)]
-          [else
-           vertex-num]))
-      ;; Unamp the transform buffer (i.e. send the transform data)
-      (glUnmapBuffer GL_ARRAY_BUFFER))
-    
-    (glMultiDrawArrays mode all-starts all-counts prim-count)))
+     ;; Send all the vertex data and indexes
+     (when vbuf (send-vertex-data vbuf program indexed? ps start end vertex-count))
+     (when tbuf (send-transform-data tbuf indexed? ps start end vertex-count))
+     (when (and indexed? ibuf) (send-index-data ibuf ps start end index-count))
+     ;; Draw!
+     (cond [indexed?  (glDrawElements mode index-count GL_UNSIGNED_SHORT 0)]
+           [else      (glDrawArrays mode 0 vertex-count)])]))
 
 ;; ===================================================================================================
 ;; Sending uniforms
@@ -455,8 +433,9 @@
             (define mode (span-key s))
             (define start (span-start s))
             (define end (span-end s))
-            (send-single-vertices program mode ps start end)
-            (send-multi-vertices  program mode ps start end))))))
+            (send-vertices program mode #f ps start end)
+            (send-vertices program mode #t ps start end))))))
+  (gl-bind-index-buffer null-gl-index-buffer)
   (gl-bind-array-buffer null-gl-array-buffer)
   (gl-bind-vertex-array null-gl-vertex-array)
   (gl-draw-face 'front))

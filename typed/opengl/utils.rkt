@@ -3,6 +3,8 @@
 (require racket/class
          racket/set
          racket/promise
+         racket/list
+         racket/string
          typed/racket/draw
          "typed.rkt"
          (except-in "ffi.rkt" -> cast))
@@ -42,10 +44,20 @@
     (cond [j     (glGetStringi i j)]
           [else  (glGetString i)])))
 
-(: gl-version-hash (HashTable GL-Context<%> (Listof Integer)))
+(: gl-version-hash (HashTable GL-Context<%> Natural))
 (define gl-version-hash (make-weak-hasheq))
 
-(: gl-version (-> (Listof Integer)))
+(: parse-version-string (-> String Natural))
+(define (parse-version-string str)
+  (define ns
+    (map (λ ([s : String])
+           (define n (string->number s))
+           (cond [(exact-nonnegative-integer? n)  n]
+                 [else  (error 'gl-version "bad version string: ~v~n" str)]))
+         (regexp-split #px"\\." (car (split-spaces str)))))
+  (+ (* (first ns) 10) (second ns)))
+
+(: gl-version (-> Natural))
 (define (gl-version)
   (define ctxt (get-current-gl-context))
   (if ctxt
@@ -53,12 +65,7 @@
        gl-version-hash
        ctxt
        (λ ()
-         (define str (gl-get-string GL_VERSION))
-         (map (λ ([str : String])
-                (define n (string->number str))
-                (cond [(exact-integer? n)  n]
-                      [else  (error 'gl-version "bad version string: ~v~n" str)]))
-              (regexp-split #px"\\." (car (split-spaces str))))))
+         (parse-version-string (gl-get-string GL_VERSION))))
       (error 'gl-version "not in a GL context")))
 
 (: gl-extensions-hash (HashTable GL-Context<%> (Setof Symbol)))
@@ -82,22 +89,9 @@
 (define (gl-has-extension? ext)
   (set-member? (gl-extensions) ext))
 
-(: version>= (-> (Listof Integer) (Listof Integer) Boolean))
-(define (version>= v1 v2)
-  (cond
-    ((null? v2) #t)
-    ((null? v1) #f)
-    (else
-      (let ((n1 (car v1))
-            (n2 (car v2)))
-        (cond 
-          ((= n1 n2)
-           (version>= (cdr v1) (cdr v2)))
-          (else (> n1 n2)))))))
-
-(: gl-version-at-least? (-> (Listof Integer) Boolean))
+(: gl-version-at-least? (-> Natural Boolean))
 (define (gl-version-at-least? version)
-  (version>= (gl-version) version))
+  (>= (gl-version) version))
 
 (: gl-core-hash (HashTable GL-Context<%> Boolean))
 (define gl-core-hash (make-weak-hasheq))
@@ -110,10 +104,10 @@
        gl-core-hash
        ctxt
        (λ ()
-         (cond [(gl-version-at-least? '(3 2))
+         (cond [(gl-version-at-least? 32)
                 (define profile-mask (s32vector-ref (glGetIntegerv GL_CONTEXT_PROFILE_MASK) 0))
                 (= 1 (bitwise-and profile-mask 1))]
-               [(gl-version-at-least? '(3 1))
+               [(gl-version-at-least? 31)
                 (not (gl-has-extension? 'GL_ARB_compatibility))]
                [else  #f])))
       (error 'gl-core-profile? "not in a GL context")))
@@ -223,13 +217,13 @@
     (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_LINEAR)
     (cond 
       ;; modern mipmap generation method
-      ((and mipmap (gl-version-at-least? '(3 0)))
+      ((and mipmap (gl-version-at-least? 30))
        (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_LINEAR_MIPMAP_LINEAR)
        (load-texture-data)
        (glGenerateMipmap GL_TEXTURE_2D))
       
       ;; old mipmap generation method
-      ((and mipmap (gl-version-at-least? '(1 4)))
+      ((and mipmap (gl-version-at-least? 14))
        (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_LINEAR_MIPMAP_LINEAR)
        (glTexParameteri GL_TEXTURE_2D GL_GENERATE_MIPMAP GL_TRUE)
        (load-texture-data))

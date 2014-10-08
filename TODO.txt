@@ -1,6 +1,8 @@
 ======================================================================================================
 Easy
 
+Stop sharing contexts
+
 Better types for positions and directions
 
 Light min radius (test with cartoon lighting and use for debug lights)
