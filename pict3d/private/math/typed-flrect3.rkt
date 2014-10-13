@@ -326,10 +326,11 @@
   (define xsize (- xmax xmin))
   (define ysize (- ymax ymin))
   (define zsize (- zmax zmin))
-  (cond [(>= xsize (max ysize zsize))  (values 0 (* 0.5 (+ xmin xmax)))]
-        [(>= ysize (max xsize zsize))  (values 1 (* 0.5 (+ ymin ymax)))]
-        [else                          (values 2 (* 0.5 (+ zmin zmax)))]))
-  
+  (cond [(and (flrational? xsize) (>= xsize (max ysize zsize)))  (values 0 (* 0.5 (+ xmin xmax)))]
+        [(and (flrational? ysize) (>= ysize (max xsize zsize)))  (values 1 (* 0.5 (+ ymin ymax)))]
+        [(flrational? zsize)  (values 2 (* 0.5 (+ zmin zmax)))]
+        [else  (values 0 0.0)]))
+
 (: nonempty-flrect3-transform (-> Nonempty-FlRect3 FlAffine3- Nonempty-FlRect3))
 (define (nonempty-flrect3-transform b t)
   (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values b))

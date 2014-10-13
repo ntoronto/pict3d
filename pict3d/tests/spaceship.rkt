@@ -96,7 +96,7 @@
      (map (λ ([vs : (List FlVector FlVector FlVector)]) (apply triangle vs)) vss))))
 
 (define num-planetoid-picts 20)
-(define num-planetoids 200)
+(define num-planetoids 500)
 
 (define planetoid-picts
   (build-vector
@@ -106,7 +106,7 @@
      (with-color (list (- 0.8 (* (random) 0.16))
                        (- 0.9 (* (random) 0.18))
                        (- 1.0 (* (random) 0.20)))
-       (freeze 
+       (freeze
         (combine
          (with-material '(0.01 0.29 0.70 0.1)
            (make-planetoid-pict))
@@ -166,19 +166,20 @@
 (define (run-anim)
   (for ([angle  (in-range 0 (* 5 360) 5)])
     (define pict
-      (set-basis
-       (combine
-        (combine*
-         (for/list ([p  (in-list planetoids)])
-           (match-define (planetoid pict pos axis speed) p)
-           (rotate (move (rotate pict axis (* speed angle)) pos)
-                   '(0 0 1)
-                   (* angle 0.1))))
-        sun)
-       'camera
-       (normal-basis '(0 -40 0) '(0 1 0))))
+      (time
+       (set-basis
+        (combine
+         (combine*
+          (for/list ([p  (in-list planetoids)])
+            (match-define (planetoid pict pos axis speed) p)
+            (rotate (move (rotate pict axis (* speed angle)) pos)
+                    '(0 0 1)
+                    (* angle 0.1))))
+         sun)
+        'camera
+        (normal-basis '(0 -40 0) '(0 1 0)))))
     (send canvas set-pict3d pict)
-    (sleep/yield (/ 16 1000))))
+    (yield)))
 
 (current-material '(0.05 0.75 0.25 0.1))
 

@@ -34,4 +34,5 @@
          [set-pict3d  (-> Pict3D Void)]
          [get-pict3d  (-> Pict3D)]
          [get-managed-gl-context  (-> GL-Context)]
+         [set-async-updates? (-> Boolean Void)]
          ))

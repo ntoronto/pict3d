@@ -107,8 +107,10 @@
        ;; Get the resulting pixels and set them into the snip's bitmap
        (define bs (get-the-bytes (* 4 width height)))
        (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-       (send snip set-argb-pixels bs))
-     )
+       (send snip set-argb-pixels bs)
+       )
+     (printf "heap: ~vM  " (exact-round (/ (current-memory-use) (* 1024 1024)))))
+    
     (render-thread-loop))
   
   (thread render-thread-loop))

@@ -68,10 +68,7 @@
           (define new-cmd (async-channel-try-get ch))
           (if new-cmd (loop new-cmd) cmd))))
     
-    ;(values
-    ;(profile
-    (time
-     (render cmd))
+    (render cmd canvas)
     (render-thread-loop))
   
   (thread render-thread-loop))
@@ -108,6 +105,11 @@
                [min-height  min-height]
                [stretchable-width   stretchable-width]
                [stretchable-height  stretchable-height])
+    
+    (define async-updates? #t)
+    
+    (define/public (set-async-updates? async?)
+      (set! async-updates? async?))
     
     ;(: render-queue (Async-Channel render-command))
     (define render-queue (make-async-channel))
@@ -150,16 +152,16 @@
       (set! background (current-pict3d-background))
       (set! ambient-color (current-pict3d-ambient-color))
       (set! ambient-intensity (current-pict3d-ambient-intensity))
-      (render (render-command new-pict width height
-                              z-near z-far fov-degrees
-                              background ambient-color ambient-intensity)
-              this)
-      #;
-      (async-channel-put
-       render-queue
-       (render-command new-pict width height
-                       z-near z-far fov-degrees
-                       background ambient-color ambient-intensity)))
+      (if async-updates?
+          (async-channel-put
+           render-queue
+           (render-command new-pict width height
+                           z-near z-far fov-degrees
+                           background ambient-color ambient-intensity))
+          (render (render-command new-pict width height
+                                  z-near z-far fov-degrees
+                                  background ambient-color ambient-intensity)
+                  this)))
     
     (define/public (get-pict3d) pict)
     
@@ -185,10 +187,14 @@
                       (equal? height last-height)))
         (set! last-width width)
         (set! last-height height)
-        (async-channel-put
-         render-queue
-         (render-command pict width height
-                         z-near z-far fov-degrees
-                         background ambient-color ambient-intensity))))
-
+        (if async-updates?
+            (async-channel-put
+             render-queue
+             (render-command pict width height
+                             z-near z-far fov-degrees
+                             background ambient-color ambient-intensity))
+            (render (render-command pict width height
+                                    z-near z-far fov-degrees
+                                    background ambient-color ambient-intensity)
+                    this))))
     ))
