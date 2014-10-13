@@ -1,34 +1,21 @@
-#lang typed/racket/base
+#lang s-exp typed-racket/base-env/extra-env-lang
 
 (require (for-syntax racket/base)
          (rename-in typed/racket/base [-> ->>])
          racket/include
-         (except-in "ffi.rkt" cast ->))
+         (except-in "ffi.rkt" cast ->)
+         "typed-types.rkt"
+         (for-syntax (submod "typed-types.rkt" #%type-decl)))
 
 (provide (all-defined-out)
-         gl-vector->info
-         gl-vector->cpointer
-         default-gl-procedure-loader
-         set-gl-procedure-loader!)
+         (all-from-out "typed-types.rkt"))
 
-;; A "gl-vector" is any homogenous vector of a type which is used with the OpenGL API.
-(define-type GLVector
-  (U Bytes S8Vector U16Vector S16Vector U32Vector S32Vector F32Vector F64Vector))
-
-(define-type GLPointer
-  (U CPointer Natural GLVector))
-
-(define-predicate gl-vector? GLVector)
-(define-predicate gl-pointer? GLPointer)
-
-(require/typed
- "untyped.rkt"
- [#:opaque GLSync GLsync?]
- [gl-vector->info  (->> GLVector (Values Natural (->> GLVector CPointer) (->> GLVector Index)))]
- [gl-vector->cpointer  (->> GLVector CPointer)]
- [default-gl-procedure-loader  (->> String (U CPointer Procedure #f))]
- [set-gl-procedure-loader!  (->> (->> String (U CPointer Procedure #f)) Void)]
- )
+(require (except-in "untyped.rkt"
+                    GLsync?
+                    gl-vector->info
+                    gl-vector->cpointer
+                    default-gl-procedure-loader
+                    set-gl-procedure-loader!))
 
 ;; ===================================================================================================
 
@@ -39,6 +26,9 @@
   (with-syntax ([([req-name type] ...)  requires]
                 [(prov-name ...)  provides])
     #'(begin
+        (type-environment
+         [req-name  (parse-type #'type)] ...)
+        #;
         (require/typed
          "untyped.rkt"
          [req-name type] ...)
@@ -55,7 +45,14 @@
   (syntax-rules ()
     ((_ name value)
      (begin
-       (: name Natural)
+       ;(: name Natural)
+       ;(define name value)
+       (begin-for-syntax
+         (set! requires (cons #'[name Natural] requires))
+         (set! provides (cons #'name provides))))
+     #;
+     (begin
+       ;(: name Natural)
        (define name value)
        (begin-for-syntax
          (set! provides (cons #'name provides)))))))
@@ -75,5 +72,18 @@
       (set! provides (cons #'name provides))))))
 
 (include "generated/gl_specs.inc")
+#|
+(define-const GL_ARRAY_BUFFER #x8892)
+(define-gl glBindBuffer
+  2
+  ((target : _int32) (buffer : _uint32) -> _void)
+  (->> Integer Natural Void)
+  check-gl-error)
+
+(define-const GL_FRONT #x0404)
+(define-const GL_BACK #x0405)
+(define-const GL_FRONT_AND_BACK #x0408)
+(define-gl glCullFace 1 ((mode : _int32) -> _void) (->> Integer Void) check-gl-error)
+|#
 
 (do-requires+provides)

@@ -33,8 +33,9 @@
                (load-get-proc-address (ffi-lib "opengl32") 
                                       '("wglGetProcAddress"))]
               [(macosx)
-               (load-get-proc-address (ffi-lib "/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL")
-                                      '())]
+               (load-get-proc-address
+                (ffi-lib "/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL")
+                '())]
               [else ;boldly assume everybody else uses X11
                 (load-get-proc-address (ffi-lib "libGL" '("1" ""))
                                        '("glXGetProcAddressARB" "glXGetProcAddress"))]))))
@@ -139,7 +140,8 @@
 
 ; Some functions take a pointer parameter, but when a VBO is bound the pointer
 ; is really interpreted as an integer offset.
-; On the Racket side, we want the function to simply accept either a pointer or an integer in that case.
+; On the Racket side, we want the function to simply accept either a pointer or an integer in that
+; case.
 ; So here is a conversion function to be used as a pre:-code sequence.
 (define (convert-vbo-pointer v)
   (cond
@@ -174,7 +176,7 @@
 (define error-messages (hasheqv
         GL_NO_ERROR "No error has been recorded."
         GL_INVALID_ENUM "An unacceptable value is specified for an enumerated argument."
-        GL_INVALID_VALUE "A numeric  argument is out of range."
+        GL_INVALID_VALUE "A numeric argument is out of range."
         GL_INVALID_OPERATION "The specified operation is not allowed in the current state."
         GL_STACK_OVERFLOW "This command would cause a stack overflow."
         GL_STACK_UNDERFLOW "This command would cause a stack underflow."
