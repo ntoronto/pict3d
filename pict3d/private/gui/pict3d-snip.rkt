@@ -58,7 +58,6 @@
                                        FlVector FlVector Flonum))]
          [get-scene  (-> Scene)]
          [get-bases  (-> Bases)]
-         [get-draw-passes (-> FlAffine3- FlTransform3 (Vectorof draw-passes))]
          [set-argb-pixels  (-> Bytes Void)]
          ))
 #;
@@ -72,7 +71,20 @@
 ;; ===================================================================================================
 ;; Rendering threads
 
-(define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
+(define get-the-bytes
+  (make-cached-vector 'get-the-bytes
+                      (λ (n)
+                        (printf "creating temp ARGB bytes of length ~v~n" n)
+                        (make-bytes n))
+                      bytes-length))
+
+(define-values (standard-over-light standard-under-light)
+  (let ([direction  (flvector -0.25 -0.5 -1.0)]
+        [color  (flvector 1.0 1.0 1.0)]
+        [intensity  1.0])
+    (values
+     (shape->scene (make-directional-light-shape color intensity direction))
+     (shape->scene (make-directional-light-shape color (* intensity 0.5) (flv3neg direction))))))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread snip ch)
@@ -100,16 +112,21 @@
      ;; Lock everything up for drawing
      (with-gl-context (get-master-gl-context)
        ;; Draw the scene and all its little extra bits (bases, etc.)
-       (draw-draw-passes (send snip get-draw-passes view proj)
-                         width height
-                         view proj
-                         background ambient-color ambient-intensity)
+       (define scenes
+         (list* (send snip get-scene)
+                axes-scene
+                standard-over-light
+                standard-under-light
+                (for/list ([name-p  (in-list (send snip get-bases))])
+                  (match-define (cons name p) name-p)
+                  (force (basis-scene p)))))
+       (draw-scenes scenes width height view proj background ambient-color ambient-intensity)
        ;; Get the resulting pixels and set them into the snip's bitmap
        (define bs (get-the-bytes (* 4 width height)))
        (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
        (send snip set-argb-pixels bs)
        )
-     (printf "heap: ~vM  " (exact-round (/ (current-memory-use) (* 1024 1024)))))
+     (printf "heap: ~aM  " (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 1)))
     
     (render-thread-loop))
   
@@ -323,14 +340,6 @@
 ;; ===================================================================================================
 ;; The snip
 
-(define-values (standard-over-light standard-under-light)
-  (let ([direction  (flvector -0.25 -0.5 -1.0)]
-        [color  (flvector 1.0 1.0 1.0)]
-        [intensity  1.0])
-    (values
-     (make-directional-light-shape color intensity direction)
-     (make-directional-light-shape color (* intensity 0.5) (flv3neg direction)))))
-
 (define blank-cursor (make-object cursor% 'blank))
 
 (define black-pen (make-object pen% "black" 1 'solid))
@@ -408,22 +417,6 @@
       (define admin (send this get-admin))
       (when admin
         (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
-    
-    (define/public (get-draw-passes view proj)
-      (define t (flt3compose proj view))
-      (define planes (flprojective3-frustum-planes (->flprojective3 t)))
-      (list->vector
-       (append (scene-draw-passes scene planes)
-               (scene-draw-passes axes-scene planes)
-               (list (draw-passes (shape-passes standard-over-light) identity-affine)
-                     (draw-passes (shape-passes standard-under-light) identity-affine))
-               (if bases
-                   (append*
-                    (for/list ([name-p  (in-list bases)])
-                      (match-define (cons name p) name-p)
-                      (scene-draw-passes (force (basis-scene p)) planes)))
-                   empty)))
-      )
     
     ;(: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)

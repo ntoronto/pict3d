@@ -18,7 +18,12 @@
           [pict3d->bitmap  (-> pict3d? (and/c index? (>/c 0)) (and/c index? (>/c 0))
                                (is-a?/c bitmap%))]))
 
-(define get-the-bytes (make-cached-vector 'get-the-bytes make-bytes bytes-length))
+(define get-the-bytes
+  (make-cached-vector 'get-the-bytes
+                      (λ (n)
+                        (printf "creating temp ARGB bytes of length ~v~n" n)
+                        (make-bytes n))
+                      bytes-length))
 
 ;(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 (define (pict3d->bitmap pict width height)

@@ -48,8 +48,8 @@
 
 (profile
  (let loop ([i 0])
-   (when (and (< i 1000) (send frame is-shown?))
-     (define start-time (fl (current-inexact-milliseconds)))
+   (when (and (< i 100) (send frame is-shown?))
+     ;(define start-time (fl (current-inexact-milliseconds)))
      (define cx (cos (degrees->radians i)))
      (define sx (sin (degrees->radians i)))
      (define cx2 (cos (* 2 (degrees->radians i))))
@@ -60,8 +60,10 @@
                      (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
      
      (define pict
+       ;(set-basis spheres 'camera camera-basis)
+       
        (combine
-        (set-basis frozen-spheres 'camera camera-basis)
+        (set-basis spheres 'camera camera-basis)
         (with-color "black"
           (with-emitted '(1 1 1 4)
             (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
@@ -70,7 +72,7 @@
      ;(values
      (time
       (send canvas set-pict3d pict))
-     (define end-time (fl (current-inexact-milliseconds)))
-     (define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
-     (sleep/yield delay)
+     ;(define end-time (fl (current-inexact-milliseconds)))
+     ;(define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
+     ;(sleep/yield delay)
      (loop (+ i 1)))))

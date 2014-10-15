@@ -208,47 +208,67 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Tastes almost-but-not-quite-entirely-unlike map
 
-(: nonempty-scene-extract (All (B C) (-> Nonempty-Scene
-                                         C (-> C FlAffine3- C)
+(: nonempty-scene-for-each! (All (B) (-> Nonempty-Scene
                                          (Listof FlPlane3)
-                                         (-> Shape C B)
-                                         (Listof B))))
-(define (nonempty-scene-extract s c-id c-compose planes f)
+                                         (-> Shape affine Nonnegative-Fixnum Any)
+                                         Nonnegative-Fixnum
+                                         Nonnegative-Fixnum)))
+(define (nonempty-scene-for-each! s planes f start)
   (let loop ([s s]
-             [c : C  c-id]
-             [planes : (Listof FlPlane3)  planes]
-             [parent-inside? : Boolean  #f]
-             [res : (Listof B)  empty])
+             [t : affine  identity-affine]
+             [parent-planes : (Listof FlPlane3)  planes]
+             [i : Nonnegative-Fixnum  start])
     (: side (U 'inside 'outside 'both))
     (define side
-      (cond [parent-inside?  'inside]
+      (cond [(empty? parent-planes)  'inside]
             [(< (scene-count s) 4)  'inside]
-            [else  (flrect3-classify/planes (scene-rect s) planes)]))
-    (define inside? (eq? side 'inside))
+            [else  (flrect3-classify/planes (scene-rect s) parent-planes)]))
+    (define planes (if (eq? side 'inside) empty parent-planes))
     (cond
-      [(eq? side 'outside)   res]
+      [(eq? side 'outside)   i]
       [(scene-leaf? s)
-       (cons (f (scene-leaf-shape s) c) res)]
+       (f (scene-leaf-shape s) t i)
+       (unsafe-fx+ i 1)]
       [(scene-node? s)
-       (let* ([res  (loop (scene-node-neg s) c planes inside? res)]
-              [res  (loop (scene-node-pos s) c planes inside? res)])
-         res)]
+       (let* ([i  (loop (scene-node-neg s) t planes i)]
+              [i  (loop (scene-node-pos s) t planes i)])
+         i)]
       [(scene-tran? s)
-       (match-define (scene-tran _ _ t0 s0) s)
-       (define new-c (c-compose c t0))
-       (define tinv0 (flt3inverse t0))
-       (define new-planes
-         (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
-           (define new-p (flt3apply/pln tinv0 p))
-           (if new-p (cons new-p planes) planes)))
-       (loop s0 new-c new-planes inside? res)])))
+       (define t0 (scene-tran-transform s))
+       (loop (scene-tran-scene s)
+             (affine-compose t t0)
+             (let ([tinv0  (flt3inverse t0)])
+               (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
+                 (define new-p (flt3apply/pln tinv0 p))
+                 (if new-p (cons new-p planes) planes)))
+             i)])))
 
-(: scene-extract (All (B C) (-> Scene C (-> C FlAffine3- C) (Listof FlPlane3) (-> Shape C B)
-                                (Listof B))))
-(define (scene-extract s c-id c-compose planes f)
+(: scene-first-shape (-> Nonempty-Scene Shape))
+(define (scene-first-shape s)
+  (cond [(scene-leaf? s)  (scene-leaf-shape s)]
+        [(scene-node? s)  (scene-first-shape (scene-node-neg s))]
+        [(scene-tran? s)  (scene-first-shape (scene-tran-scene s))]))
+
+(: scene-for-each! (-> Scene
+                       (Listof FlPlane3)
+                       (-> Shape affine Nonnegative-Fixnum Any)
+                       Nonnegative-Fixnum
+                       Nonnegative-Fixnum))
+(define (scene-for-each! s planes f start)
   (if (empty-scene? s)
-      empty
-      (nonempty-scene-extract s c-id c-compose planes f)))
+      start
+      (nonempty-scene-for-each! s planes f start)))
+
+(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape affine B) (Listof B))))
+(define (scene-extract s planes f)
+  (: bs (Listof B))
+  (define bs empty)
+  (scene-for-each! s
+                   planes
+                   (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                     (set! bs (cons (f a t) bs)))
+                   0)
+  bs)
 
 ;; ===================================================================================================
 ;; Shape bounding box
@@ -406,21 +426,49 @@ for `Scene`.
        [(frozen-scene-shape? a)
         (make-frozen-scene-shape-passes a)]))))
 
-(: scene-draw-passes (-> Scene (Listof FlPlane3) (Listof draw-passes)))
-(define (scene-draw-passes s planes)
-  ((inst scene-extract draw-passes affine)
-   s
-   identity-affine
-   affine-compose
-   planes
-   (λ ([a : Shape] [m : affine])
-     (draw-passes (shape-passes a) m))))
+(define get-scene-draw-passes
+  (make-cached-vector 'get-scene-draw-passes
+                      (λ ([n : Integer])
+                        (printf "creating draw-passes vector for ~v shapes~n" n)
+                        (build-vector n (λ (_) (draw-passes #() identity-affine))))
+                      vector-length))
 
 (: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
 (define (draw-scene s width height view proj background ambient-color ambient-intensity)
   (define t (flt3compose proj view))
   (define planes (flprojective3-frustum-planes (->flprojective3 t)))
-  (draw-draw-passes (list->vector (scene-draw-passes s planes)) width height
+  (define bs (get-scene-draw-passes (scene-count s)))
+  (define end
+    (scene-for-each! s
+                     planes
+                     (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                       (define b (vector-ref bs i))
+                       (set-draw-passes-passes! b (shape-passes a))
+                       (set-draw-passes-transform! b t))
+                     0))
+  (draw-draw-passes bs end width height
+                    view proj
+                    background ambient-color ambient-intensity))
+
+(: draw-scenes
+   (-> (Listof Scene) Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
+(define (draw-scenes ss width height view proj background ambient-color ambient-intensity)
+  (define t (flt3compose proj view))
+  (define planes (flprojective3-frustum-planes (->flprojective3 t)))
+  (define num
+    (for/fold ([num : Nonnegative-Fixnum  0]) ([s  (in-list ss)])
+      (unsafe-fx+ num (scene-count s))))
+  (define bs (get-scene-draw-passes num))
+  (define end
+    (for/fold ([end : Nonnegative-Fixnum  0]) ([s  (in-list ss)])
+      (scene-for-each! s
+                       planes
+                       (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                         (define b (vector-ref bs i))
+                         (set-draw-passes-passes! b (shape-passes a))
+                         (set-draw-passes-transform! b t))
+                       end)))
+  (draw-draw-passes bs end width height
                     view proj
                     background ambient-color ambient-intensity))
 
@@ -558,13 +606,11 @@ for `Scene`.
 (define (make-frozen-scene-shape-passes a)
   (define s (frozen-scene-shape-scene a))
   
-  (: transformed-passes (-> Shape FlAffine3- (Listof Passes)))
+  (: transformed-passes (-> Shape affine (Listof Passes)))
   (define (transformed-passes s t)
-    (map shape-passes (shape-transform s t)))
+    (map shape-passes (shape-transform s (affine-transform t))))
   
   (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3)
-                                     identity-flt3
-                                     flt3compose
                                      empty
                                      transformed-passes)))
   (define num-passes (apply max (map vector-length ps)))
@@ -612,7 +658,6 @@ for `Scene`.
 (define (frozen-scene-shape-transform a t)
   (append*
    (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t)
-                  identity-flt3
-                  flt3compose
                   empty
-                  shape-transform)))
+                  (λ ([a : Shape] [t : affine])
+                    (shape-transform a (affine-transform t))))))

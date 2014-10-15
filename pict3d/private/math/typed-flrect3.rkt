@@ -4,6 +4,7 @@
          racket/match
          racket/list
          math/flonum
+         math/base
          "flv3.rkt"
          "flv4.rkt"
          "flt3.rkt"
@@ -67,12 +68,11 @@
 ;; ===================================================================================================
 ;; Predicates, accessors and constructors
 
-(define empty-flrect3? Empty-FlRect3?)
 (define empty-flrect3 (Empty-FlRect3))
-
-(define nonempty-flrect3? Nonempty-FlRect3?)
-(define nonempty-flrect3-min Nonempty-FlRect3-min)
-(define nonempty-flrect3-max Nonempty-FlRect3-max)
+(define-syntax empty-flrect3? (make-rename-transformer #'Empty-FlRect3?))
+(define-syntax nonempty-flrect3? (make-rename-transformer #'Nonempty-FlRect3?))
+(define-syntax nonempty-flrect3-min (make-rename-transformer #'Nonempty-FlRect3-min))
+(define-syntax nonempty-flrect3-max (make-rename-transformer #'Nonempty-FlRect3-max))
 
 (: nonempty-flrect3 (-> FlVector FlVector Nonempty-FlRect3))
 (define (nonempty-flrect3 v1 v2)
@@ -244,39 +244,20 @@
 
 (: nonempty-flrect3-plane-side (-> Nonempty-FlRect3 FlPlane3 Rect-Plane-Sides))
 (define (nonempty-flrect3-plane-side b p)
-  ;; Fast, approximate test: fit a sphere, and see if the distance to its center is less than radius
-  (define c (nonempty-flrect3-center b))
-  (define r (* 0.5 (flv3mag (flv3- (nonempty-flrect3-max b)
-                                   (nonempty-flrect3-min b)))))
-  (define d (flplane3-point-dist p c))
-  (cond
-    ;; If r is subnormal, the relativization below could overflow
-    [(<= r +max-subnormal.0)
-     (cond [(< d -max-dist.0)  'neg]
-           [(< +max-dist.0 d)  'pos]
-           [else  'both])]
-    ;; Compare relativized
-    [(< (/ (- r d) (max r (abs d))) -max-dist.0)  'pos]
-    [(< (/ (+ r d) (max r (abs d))) -max-dist.0)  'neg]
-    [else
-     ;; It's close enough for the slower test, using signed relative distances to all 8 corners
-     (define vs (nonempty-flrect3-corners b))
-     (define ds (flplane3-relative-dists p vs))
-     (cond
-       [(not ds)  'both]
-       [else
-        (define-values (min-d max-d)
-          (for/fold ([min-d : Flonum  +inf.0] [max-d : Flonum  -inf.0]) ([d  (in-flvector ds)])
-            (values (min min-d d) (max max-d d))))
-        (define all-nonpositive? (<= max-d +max-dist.0))
-        (define all-nonnegative? (>= min-d -max-dist.0))
-        ;; Return the most precise answer possible
-        (cond [(and all-nonpositive? all-nonnegative?)  'zero]
-              [(< max-d -max-dist.0)  'neg]  ; all corners on negative side
-              [(> min-d +max-dist.0)  'pos]  ; all corners on positive side
-              [all-nonpositive?  'negzero]
-              [all-nonnegative?  'poszero]
-              [else  'both])])]))
+  (define-values (x1 y1 z1) (flv3-values (nonempty-flrect3-min b)))
+  (define-values (x2 y2 z2) (flv3-values (nonempty-flrect3-max b)))
+  (define-values (nx ny nz) (flv3-values (flplane3-normal p)))
+  (let-values ([(x1 x2)  (if (>= nx 0.0) (values x1 x2) (values x2 x1))]
+               [(y1 y2)  (if (>= ny 0.0) (values y1 y2) (values y2 y1))]
+               [(z1 z2)  (if (>= nz 0.0) (values z1 z2) (values z2 z1))])
+    (define d1 (+ (* nx x1) (* ny y1) (* nz z1) (flplane3-distance p)))
+    (cond
+      [(>= d1 0.0)  'pos]
+      [else
+       (define d2 (+ (* nx x2) (* ny y2) (* nz z2) (flplane3-distance p)))
+       (cond
+         [(<= d2 0.0)  'neg]
+         [else  'both])])))
 
 (: flrect3-plane-side (case-> (-> Nonempty-FlRect3 FlPlane3 Rect-Plane-Sides)
                               (-> FlRect3 FlPlane3 (U #f Rect-Plane-Sides))))

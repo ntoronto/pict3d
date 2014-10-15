@@ -367,11 +367,14 @@ code
   (unless (gl-core-profile?)
     (glEnable GL_TEXTURE_2D)))
 
-(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural
+(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural Natural
                         FlAffine3- FlTransform3
                         FlVector FlVector Flonum
                         Void))
-(define (draw-draw-passes passes width height view* proj* background ambient-color ambient-intensity)
+(define (draw-draw-passes passes num
+                          width height
+                          view* proj*
+                          background ambient-color ambient-intensity)
   ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
   (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
   
@@ -441,7 +444,7 @@ code
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
     ;; Draw pass 1
-    (draw-pass 1 passes standard-uniforms face))
+    (draw-pass 1 passes num standard-uniforms face))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 0 (light): Accumulate opaque geometry diffuse and specular reflectance
@@ -464,7 +467,7 @@ code
             ;; Draw pass 0
             (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
                    [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-              (draw-pass 0 passes standard-uniforms face)))))))
+              (draw-pass 0 passes num standard-uniforms face)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 2 (color): Draw opaque geometry with lighting
@@ -485,7 +488,7 @@ code
             ;; Draw pass 2
             (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
                    [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-              (draw-pass 2 passes standard-uniforms face)))))))
+              (draw-pass 2 passes num standard-uniforms face)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 3 (pre-light): Compute nearest transparent geometry depth, normals and specular powers
@@ -499,7 +502,7 @@ code
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
     ;; Draw pass 3
-    (draw-pass 3 passes standard-uniforms face))
+    (draw-pass 3 passes num standard-uniforms face))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 0 (light): Accumulate transparent geometry diffuse and specular reflectance
@@ -522,7 +525,7 @@ code
             ;; Draw pass 0
             (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
                    [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-              (draw-pass 0 passes standard-uniforms face)))))))
+              (draw-pass 0 passes num standard-uniforms face)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 4 (transparency): Accumulate transparent geometry weighted outputs
@@ -544,7 +547,7 @@ code
             ;; Draw pass 4
             (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
                    [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-              (draw-pass 4 passes standard-uniforms face)))))))
+              (draw-pass 4 passes num standard-uniforms face)))))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Draw weighted transparency output

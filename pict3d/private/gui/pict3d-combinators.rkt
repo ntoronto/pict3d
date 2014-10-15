@@ -397,11 +397,13 @@
 
 (: combine* (-> (Listof Pict3D) Pict3D))
 (define (combine* ss)
-  (pict3d (scene-union* (map pict3d-scene ss))
-          ((inst remove-duplicates (Pair Symbol Basis) Symbol)
-           (append* (reverse (map pict3d-bases ss)))
-           eq?
-           #:key car)))
+  (cond [(empty? ss)  empty-pict3d]
+        [else
+         (pict3d (scene-union* (map pict3d-scene ss))
+                 ((inst remove-duplicates (Pair Symbol Basis) Symbol)
+                  (append* (reverse (map pict3d-bases ss)))
+                  eq?
+                  #:key car))]))
 
 (: combine (-> Pict3D * Pict3D))
 (define (combine . ss)
