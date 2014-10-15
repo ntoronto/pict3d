@@ -252,38 +252,48 @@
 ;; ===================================================================================================
 ;; Fast grouping for state sorting
 
-(struct (K) span ([key : K]
-                  [start : Nonnegative-Fixnum]
-                  [end : Nonnegative-Fixnum]
-                  [current : Nonnegative-Fixnum])
-  #:transparent #:mutable)
+(struct span ([start : Nonnegative-Fixnum]
+              [end : Nonnegative-Fixnum]
+              [current : Nonnegative-Fixnum])
+  #:transparent
+  #:mutable)
+
+(define get-span-vector
+  (make-cached-vector
+   'get-keys
+   (λ ([n : Integer])
+     (printf "creating key vector of length ~v~n" n)
+     ((inst make-vector span) n (span 0 0 0)))
+   vector-length))
 
 (: group-by-key! (All (A K) (-> (Vectorof A)
-                                (-> Integer (Vectorof A))
                                 Nonnegative-Fixnum
                                 Nonnegative-Fixnum
                                 (-> A K)
-                                (Listof (span K)))))
-(define (group-by-key! xs get-swap-xs start end key)
-  (: spans (HashTable K (span K)))
+                                (Listof (Pair K span)))))
+(define (group-by-key! xs start end key)
+  (: spans (HashTable Any span))
   (define spans (make-hasheq))
   
-  (: ss (Listof (span K)))
-  (define ss
-    (for/fold ([ss : (Listof (span K))  empty]) ([i  (in-range start end)])
-      (define k (key (vector-ref xs i)))
-      (define s (hash-ref spans k #f))
-      (cond [s  (set-span-end! s (unsafe-fx+ 1 (span-end s)))
-                ss]
-            [else  (define s (span k 0 1 0))
-                   (hash-set! spans k s)
-                   (cons s ss)])))
+  (define span-vec (get-span-vector (vector-length xs)))
   
-  (define len (- end start))
-  (define swap-xs (get-swap-xs len))
-  (vector-copy! swap-xs 0 xs start end)
+  (: kss (Listof (Pair K span)))
+  (define kss
+    (reverse
+     (for/fold ([kss : (Listof (Pair K span))  empty]) ([i  (in-range start end)])
+       (define x (unsafe-vector-ref xs i))
+       (define k (key x))
+       (define s (hash-ref spans k #f))
+       (cond [s  (set-span-end! s (unsafe-fx+ 1 (span-end s)))
+                 (unsafe-vector-set! span-vec i s)
+                 kss]
+             [else  (define s (span 0 1 0))
+                    (hash-set! spans k s)
+                    (unsafe-vector-set! span-vec i s)
+                    (cons (cons k s) kss)]))))
   
-  (for/fold ([n : Nonnegative-Fixnum  start]) ([s  (in-list ss)])
+  (for/fold ([n : Nonnegative-Fixnum  start]) ([ks  (in-list kss)])
+    (define s (cdr ks))
     (define len (span-end s))
     (define next-n (unsafe-fx+ n len))
     (set-span-start! s n)
@@ -291,12 +301,21 @@
     (set-span-end! s next-n)
     next-n)
   
-  (for ([i  (in-range 0 len)])
-    (define x (unsafe-vector-ref swap-xs i))
-    (define k (key x))
-    (define s (hash-ref spans k))
-    (define n (span-current s))
-    (vector-set! xs n x)
-    (set-span-current! s (unsafe-fx+ n 1)))
+  (let loop ([i start])
+    (when (< i end)
+      (define x (unsafe-vector-ref xs i))
+      (define s (unsafe-vector-ref span-vec i))
+      (cond [(and (<= (span-start s) i) (< i (span-end s)))
+             (loop (unsafe-fx+ i 1))]
+            [else
+             (define n (span-current s))
+             (define xtmp (unsafe-vector-ref xs n))
+             (unsafe-vector-set! xs n x)
+             (unsafe-vector-set! xs i xtmp)
+             (define stmp (unsafe-vector-ref span-vec n))
+             (unsafe-vector-set! span-vec n s)
+             (unsafe-vector-set! span-vec i stmp)
+             (set-span-current! s (unsafe-fx+ n 1))
+             (loop i)])))
   
-  ss)
+  kss)

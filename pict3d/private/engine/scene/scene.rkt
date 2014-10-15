@@ -628,18 +628,18 @@ for `Scene`.
        (list->vector
         (append*
          (for*/list : (Listof (Listof shape-params))
-           ([s  (in-list (group-by-key! ps get-swap-params 0 (vector-length ps)
-                                        shape-params-program-spec))]
-            [pd  (in-value ((span-key s)))]
-            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                        shape-params-uniforms))]
-            [uniforms  (in-value (span-key s))]
-            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                        shape-params-two-sided?))]
-            [face  (in-value (span-key s))]
-            [s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                        shape-params-mode))]
-            [mode  (in-value (span-key s))])
+           ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program-spec))]
+            [pd  (in-value ((car ks)))]
+            [s   (in-value (cdr ks))]
+            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
+            [uniforms  (in-value (car ks))]
+            [s  (in-value (cdr ks))]
+            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-two-sided?))]
+            [face  (in-value (car ks))]
+            [s  (in-value (cdr ks))]
+            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-mode))]
+            [mode  (in-value (car ks))]
+            [s  (in-value (cdr ks))])
            (append
             (merge-vertices pd #f uniforms face mode ps (span-start s) (span-end s))
             (merge-vertices pd #t uniforms face mode ps (span-start s) (span-end s))))))))))

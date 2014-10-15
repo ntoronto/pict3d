@@ -215,20 +215,6 @@
         (unsafe-fx+ vertex-count count)
         vertex-count)))
 
-(: get-vertex-count-max (-> Boolean
-                            (Vectorof draw-params)
-                            Nonnegative-Fixnum
-                            Nonnegative-Fixnum 
-                            Nonnegative-Fixnum))
-(define (get-vertex-count-max indexed? ps start end)
-  (for/fold ([vertex-count-max : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
-    (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
-    (define count (vertices-vertex-count v))
-    (define indexes (vertices-indexes v))
-    (if (eq? indexed? (and indexes #t))
-        (unsafe-fxmax vertex-count-max count)
-        vertex-count-max)))
-
 (: get-index-count (-> (Vectorof draw-params)
                        Nonnegative-Fixnum
                        Nonnegative-Fixnum 
@@ -281,16 +267,11 @@
                            Nonnegative-Fixnum
                            Any))
 (define (send-transform-data tbuf indexed? ps start end vertex-count)
-  (gl-bind-array-buffer tbuf)
-  ;; Map the transform buffer into memory
+  ;; Copy the transform data into a temporary buffer - it must be done here because `memcpy*` also
+  ;; reads from the buffer, which can be very slow from memory-mapped IO intended for writes
   (define buffer-size (unsafe-fx* affine-size vertex-count))
-  (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-  
-  (define vertex-count-max (get-vertex-count-max indexed? ps start end))
-  (define tmp-transform-data (get-tmp-transform-data (unsafe-fx* vertex-count-max affine-size)))
+  (define tmp-transform-data (get-tmp-transform-data buffer-size))
   (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
-  
-  ;; Copy the transform data into the buffer
   (for/fold ([vertex-num : Nonnegative-Fixnum  0]) ([i  (in-range start end)])
     (define p (unsafe-vector-ref ps i))
     (define v (shape-params-vertices (draw-params-shape-params p)))
@@ -298,14 +279,16 @@
       [(eq? indexed? (and (vertices-indexes v) #t))
        (define vertex-count (vertices-vertex-count v))
        (define transform-data (affine-data (draw-params-transform p)))
-       (memcpy* tmp-transform-data-ptr 0
+       (memcpy* tmp-transform-data-ptr (unsafe-fx* vertex-num affine-size)
                 (f32vector->cpointer transform-data) affine-size
                 vertex-count)
-       (memcpy all-transform-data-ptr (unsafe-fx* vertex-num affine-size)
-               tmp-transform-data-ptr (unsafe-fx* vertex-count affine-size))
        (unsafe-fx+ vertex-num vertex-count)]
       [else
        vertex-num]))
+  ;; Map the transform buffer into memory and copy into it
+  (gl-bind-array-buffer tbuf)
+  (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
+  (memcpy all-transform-data-ptr 0 tmp-transform-data-ptr buffer-size)
   ;; Unmap the transform buffer (i.e. send the transform data)
   (glUnmapBuffer GL_ARRAY_BUFFER))
 
@@ -316,10 +299,9 @@
                        Nonnegative-Fixnum
                        Any))
 (define (send-index-data ibuf ps start end index-count)
+  ;; Copy the index data into the temporary buffer, shifted
   (define tmp-index-data (get-tmp-index-data index-count))
   (define tmp-index-data-ptr (u16vector->cpointer tmp-index-data))
-  
-  ;; Copy the index data into the temporary buffer, shifted
   (for/fold ([vertex-num : Nonnegative-Fixnum  0]
              [index-num : Nonnegative-Fixnum 0]
              ) ([i  (in-range start end)])
@@ -339,7 +321,7 @@
       [else
        (values vertex-num
                index-num)]))
-  
+  ;; Map the index buffer into memory and copy into it
   (gl-bind-index-buffer ibuf)
   (define buffer-size (unsafe-fx* 2 index-count))
   (define all-index-data-ptr (gl-map-buffer-range/stream GL_ELEMENT_ARRAY_BUFFER buffer-size))
@@ -397,14 +379,6 @@
 ;; ===================================================================================================
 ;; Drawing pass loop
 
-(define get-swap-params
-  (make-cached-vector
-   'get-swap-params
-   (λ ([n : Integer])
-     (printf "creating draw-params swap vector of length ~v~n" n)
-     ((inst make-vector draw-params) n (empty-draw-params)))
-   vector-length))
-
 (: send-draw-params (-> (Vectorof draw-params)
                         Nonnegative-Fixnum
                         Nonnegative-Fixnum
@@ -413,11 +387,12 @@
                         Void))
 (define (send-draw-params ps start end standard-uniforms face)
   ;; For each program...
-  (for ([s  (in-list (group-by-key! ps get-swap-params start end
-                                    (λ ([ts : draw-params])
-                                      (shape-params-program-spec
-                                       (draw-params-shape-params ts)))))])
-    (define pd ((span-key s)))
+  (for ([ks  (in-list (group-by-key! ps start end
+                                     (λ ([ts : draw-params])
+                                       (shape-params-program-spec
+                                        (draw-params-shape-params ts)))))])
+    (match-define (cons k s) ks)
+    (define pd (k))
     (define program (program-spec-program pd))
     (define uniforms (program-spec-uniforms pd))
     (with-gl-program program
@@ -425,23 +400,25 @@
       (gl-program-uniform program "zfar" (hash-ref standard-uniforms 'zfar))
       (gl-program-uniform program "log2_znear_zfar" (hash-ref standard-uniforms 'log2_znear_zfar))
       ;; For each set of shape uniforms...
-      (for ([s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                        (λ ([ts : draw-params])
-                                          (shape-params-uniforms (draw-params-shape-params ts)))))])
-        (send-uniforms program (span-key s) standard-uniforms)
+      (for ([ks  (in-list (group-by-key! ps (span-start s) (span-end s)
+                                         (λ ([ts : draw-params])
+                                           (shape-params-uniforms (draw-params-shape-params ts)))))])
+        (match-define (cons uniforms s) ks)
+        (send-uniforms program uniforms standard-uniforms)
         ;; For each kind of face...
-        (for ([s  (in-list ((inst group-by-key! draw-params Face)
-                            ps get-swap-params (span-start s) (span-end s)
-                            (λ ([ts : draw-params])
-                              (cond [(shape-params-two-sided? (draw-params-shape-params ts))  'both]
-                                    [(affine-consistent? (draw-params-transform ts))  face]
-                                    [else  (opposite-gl-face face)]))))])
-          (gl-draw-face (span-key s))
+        (for ([ks  (in-list ((inst group-by-key! draw-params Face)
+                             ps (span-start s) (span-end s)
+                             (λ ([ts : draw-params])
+                               (cond [(shape-params-two-sided? (draw-params-shape-params ts))  'both]
+                                     [(affine-consistent? (draw-params-transform ts))  face]
+                                     [else  (opposite-gl-face face)]))))])
+          (match-define (cons face s) ks)
+          (gl-draw-face face)
           ;; For each drawing mode...
-          (for ([s  (in-list (group-by-key! ps get-swap-params (span-start s) (span-end s)
-                                            (λ ([ts : draw-params])
-                                              (shape-params-mode (draw-params-shape-params ts)))))])
-            (define mode (span-key s))
+          (for ([ks  (in-list (group-by-key! ps (span-start s) (span-end s)
+                                             (λ ([ts : draw-params])
+                                               (shape-params-mode (draw-params-shape-params ts)))))])
+            (match-define (cons mode s) ks)
             (define start (span-start s))
             (define end (span-end s))
             (send-vertices program mode #f ps start end)
@@ -450,8 +427,6 @@
   (gl-bind-array-buffer null-gl-array-buffer)
   (gl-bind-vertex-array null-gl-vertex-array)
   (gl-draw-face 'front)
-  
-  (vector-fill! (get-swap-params 1) (empty-draw-params))
   )
 
 ;; ===================================================================================================

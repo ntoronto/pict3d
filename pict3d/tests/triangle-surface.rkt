@@ -1,10 +1,10 @@
 #lang racket
 
 (require racket/gui
-         math/base
          math/flonum
          pict3d
          pict3d/private/math/flv3
+         profile
          )
 
 (current-pict3d-width 512)
@@ -87,4 +87,12 @@
             (combine* ts)
             (combine* rects))))
 
-surface
+(define pict
+  (set-basis
+   surface
+   'camera
+   (normal-basis '(20 20 20) '(-1 -1 -1))))
+
+(profile
+ (for ([_  (in-range 500)])
+   (pict3d->bitmap pict 32 32)))

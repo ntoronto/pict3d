@@ -39,7 +39,7 @@
 
 (define frozen-spheres (freeze spheres))
 
-(define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
+(define frame (new frame% [label "Sphere Field"] [width 80] [height 60]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send canvas set-async-updates? #f)
 (send frame show #t)
@@ -49,30 +49,29 @@
 (profile
  (let loop ([i 0])
    (when (and (< i 100) (send frame is-shown?))
-     ;(define start-time (fl (current-inexact-milliseconds)))
-     (define cx (cos (degrees->radians i)))
-     (define sx (sin (degrees->radians i)))
-     (define cx2 (cos (* 2 (degrees->radians i))))
-     (define sx2 (sin (* 2 (degrees->radians i))))
-     
-     (define camera-basis
-       (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                     (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
-     
-     (define pict
-       ;(set-basis spheres 'camera camera-basis)
-       
-       (combine
-        (set-basis spheres 'camera camera-basis)
-        (with-color "black"
-          (with-emitted '(1 1 1 4)
-            (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-        (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
-     
-     ;(values
      (time
-      (send canvas set-pict3d pict))
-     ;(define end-time (fl (current-inexact-milliseconds)))
-     ;(define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
-     ;(sleep/yield delay)
+      ;(define start-time (fl (current-inexact-milliseconds)))
+      (define cx (cos (degrees->radians i)))
+      (define sx (sin (degrees->radians i)))
+      (define cx2 (cos (* 2 (degrees->radians i))))
+      (define sx2 (sin (* 2 (degrees->radians i))))
+      
+      (define camera-basis
+        (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
+                      (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+      
+      (define pict
+        ;(set-basis spheres 'camera camera-basis)
+        (combine
+         (set-basis spheres 'camera camera-basis)
+         (with-color "black"
+           (with-emitted '(1 1 1 4)
+             (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
+         (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
+      
+      (send canvas set-pict3d pict)
+      ;(define end-time (fl (current-inexact-milliseconds)))
+      ;(define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
+      ;(sleep/yield delay)
+      )
      (loop (+ i 1)))))
