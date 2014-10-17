@@ -137,6 +137,7 @@
 (define frame (new frame% [label "1"] [width 400] [height 400]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
+(send canvas set-async-updates? #f)
 
 (define sun
   (combine
@@ -163,23 +164,29 @@
                   (* (- (random) 0.5) 40.0))
             0.5)))
 
+(require/typed
+ profile
+ [profile-thunk  (-> (-> Void) Void)])
+
 (define (run-anim)
-  (for ([angle  (in-range 0 (* 5 360) 5)])
-    (define pict
-      (time
-       (set-basis
-        (combine
-         (combine*
-          (for/list ([p  (in-list planetoids)])
-            (match-define (planetoid pict pos axis speed) p)
-            (rotate (move (rotate pict axis (* speed angle)) pos)
-                    '(0 0 1)
-                    (* angle 0.1))))
-         sun)
-        'camera
-        (normal-basis '(0 -40 0) '(0 1 0)))))
-    (send canvas set-pict3d pict)
-    (yield)))
+  (profile-thunk
+   (λ ()
+     (for ([angle  (in-range 0 (* 5 360) 5)])
+       (time
+        (define pict
+          (set-basis
+           (combine
+            (combine*
+             (for/list ([p  (in-list planetoids)])
+               (match-define (planetoid pict pos axis speed) p)
+               (rotate (move (rotate pict axis (* speed angle)) pos)
+                       '(0 0 1)
+                       (* angle 0.1))))
+            sun)
+           'camera
+           (normal-basis '(0 -40 0) '(0 1 0))))
+        (send canvas set-pict3d pict))
+       (yield)))))
 
 (current-material '(0.05 0.75 0.25 0.1))
 

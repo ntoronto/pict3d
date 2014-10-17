@@ -62,6 +62,7 @@
       
       (define pict
         ;(set-basis spheres 'camera camera-basis)
+        
         (combine
          (set-basis spheres 'camera camera-basis)
          (with-color "black"

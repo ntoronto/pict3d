@@ -50,8 +50,8 @@ for `Scene`.
 
 (: make-nonempty-scene-node (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-scene-node s1 s2)
+  (define b (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
   (define c (fx+ (nonempty-scene-count s1) (nonempty-scene-count s2)))
-  (define b (flrect3-join (scene-rect s1) (scene-rect s2)))
   (scene-node b c s1 s2))
 
 (: make-scene-node (-> Scene Scene Scene))
@@ -74,31 +74,27 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Scene union with rebalancing
 
-(: scene-node-union-add (-> scene-node Nonempty-Scene Nonempty-Scene))
-(define (scene-node-union-add s1 s2)
-  (match-define (scene-node b c s11 s12) s1)
-  (define r11 (scene-rect s11))
-  (define r12 (scene-rect s12))
-  (define r2 (scene-rect s2))
-  (cond [(flrect3-contains-rect? r11 r2)
-         (scene-node b (fx+ c (scene-count s2)) (nonempty-scene-union s11 s2) s12)]
-        [(flrect3-contains-rect? r12 r2)
-         (scene-node b (fx+ c (scene-count s2)) s11 (nonempty-scene-union s12 s2))]
+(: scene-node-insert (-> scene-node Nonempty-Scene Nonempty-Scene))
+(define (scene-node-insert s1 s2)
+  (match-define (scene-node r c1 s11 s12) s1)
+  (define r2 (nonempty-scene-rect s2))
+  (cond [(flrect3-contains-rect? (nonempty-scene-rect s11) r2)
+         (scene-node r (unsafe-fx+ c1 (nonempty-scene-count s2)) (nonempty-scene-union s11 s2) s12)]
+        [(flrect3-contains-rect? (nonempty-scene-rect s12) r2)
+         (scene-node r (unsafe-fx+ c1 (nonempty-scene-count s2)) s11 (nonempty-scene-union s12 s2))]
         [else
-         (scene-rebalance (make-nonempty-scene-node s1 s2))]))
+         (nonempty-scene-union/rebalance s1 s2)]))
 
 (: nonempty-scene-union (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union s1 s2)
-  (define r1 (scene-rect s1))
-  (define r2 (scene-rect s2))
-  (cond [(flrect3-disjoint? r1 r2)
-         (make-nonempty-scene-node s1 s2)]
-        [(and (scene-node? s1) (flrect3-contains-rect? r1 r2))
-         (scene-node-union-add s1 s2)]
+  (define r1 (nonempty-scene-rect s1))
+  (define r2 (nonempty-scene-rect s2))
+  (cond [(and (scene-node? s1) (flrect3-contains-rect? r1 r2))
+         (scene-node-insert s1 s2)]
         [(and (scene-node? s2) (flrect3-contains-rect? r2 r1))
-         (scene-node-union-add s2 s1)]
+         (scene-node-insert s2 s1)]
         [else
-         (scene-rebalance (make-nonempty-scene-node s1 s2))]))
+         (nonempty-scene-union/rebalance s1 s2)]))
 
 (: scene-union (-> Scene Scene Scene))
 (define (scene-union s1 s2)
@@ -109,78 +105,65 @@ for `Scene`.
 (: scene-union* (-> (Listof Scene) Scene))
 (define (scene-union* ss)
   (define n (length ss))
-  (define s
-    (let loop : Scene ([ss : (Listof Scene)  ss] [n : Index  (length ss)])
-      (define n/2 (fxquotient n 2))
-      (define ss1 (take ss n/2))
-      (define ss2 (drop ss n/2))
-      (cond [(empty? ss1)  (first ss2)]
-            [(empty? ss2)  (first ss1)]  ; can't happen
-            [else
-             (let ([s1  (loop ss1 n/2)]
-                   [s2  (loop ss2 (assert (- n n/2) index?))])
-               (if (<= n 32)
-                   (scene-union s1 s2)
-                   (make-scene-node s1 s2)))])))
-  (cond [(empty-scene? s)  s]
-        [(<= n 32)  s]
-        [else  (scene-rebalance s)]))
+  (let loop : Scene ([ss : (Listof Scene)  ss] [n : Index  (length ss)])
+    (define n/2 (fxquotient n 2))
+    (define ss1 (take ss n/2))
+    (define ss2 (drop ss n/2))
+    (cond [(empty? ss1)  (first ss2)]
+          [(empty? ss2)  (first ss1)]  ; can't happen
+          [else
+           (let ([s1  (loop ss1 n/2)]
+                 [s2  (loop ss2 (assert (- n n/2) index?))])
+             (scene-union s1 s2))])))
 
 ;; ===================================================================================================
 ;; Rebalance
 
-(define max-index 268435455)
-
-(: scene-rebalance-split (-> Nonempty-Scene Index Flonum Index (Values Scene Scene)))
-(define (scene-rebalance-split s i x d)
-  (let loop ([s s] [d d])
+(: scene-rebalance-split (-> Nonempty-Scene Index Flonum (Values Scene Scene)))
+(define (scene-rebalance-split s i x)
+  (let loop ([s s])
     (define r (scene-rect s))
     (define xmin (flvector-ref (flrect3-min r) i))
     (define xmax (flvector-ref (flrect3-max r) i))
     (cond
       [(<= x xmin)  (values empty-scene s)]
       [(<= xmax x)  (values s empty-scene)]
-      [(or (= d 0) (scene-leaf? s) (scene-tran? s))
+      [(or (scene-leaf? s) (scene-tran? s))
        (if (< (- x xmin) (- xmax x))
            (values s empty-scene)
            (values empty-scene s))]
       [(scene-node? s)
        (define s1 (scene-node-neg s))
        (define s2 (scene-node-pos s))
-       (define-values (s11 s12) (loop s1 (- d 1)))
-       (define-values (s21 s22) (loop s2 (- d 1)))
+       (define-values (s11 s12) (loop s1))
+       (define-values (s21 s22) (loop s2))
        (let ([s1  (if (and (eq? s11 s1) (eq? s21 s2)) s (make-scene-node s11 s21))]
              [s2  (if (and (eq? s12 s1) (eq? s22 s2)) s (make-scene-node s12 s22))])
          (values s1 s2))])))
 
-(: scene-rebalance-children (-> Nonempty-Scene Index Nonempty-Scene))
-(define (scene-rebalance-children s d)
-  (match s
-    [(? scene-leaf? s)  s]
-    [(? scene-tran? s)  s]
-    [(scene-node b c s1 s2)
-     (define new-s1 (scene-rebalance s1 d))
-     (define new-s2 (scene-rebalance s2 d))
-     (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
-           [else  (scene-node b c new-s1 new-s2)])]))
-
-(: scene-rebalance (->* [Nonempty-Scene] [Index] Nonempty-Scene))
-(define (scene-rebalance s [d max-index])
-  (cond
-    [(or (= d 0) (scene-leaf? s) (scene-tran? s))  s]
-    [(scene-node? s)
-     (match-define (scene-node b c s1 s2) s)
-     (define-values (i x) (flrect3-longest-axis/center b))
-     (define-values (s11 s12) (scene-rebalance-split s1 i x d))
-     (define-values (s21 s22) (scene-rebalance-split s2 i x d))
-     (let ([s1  (make-scene-node s11 s21)]
-           [s2  (make-scene-node s12 s22)])
-       (cond [(empty-scene? s1)  (scene-rebalance-children (assert s2 nonempty-scene?)
-                                                           (- d 1))]
-             [(empty-scene? s2)  (scene-rebalance-children s1 (- d 1))]
-             [else  (scene-node b c
-                                (scene-rebalance s1 (- d 1))
-                                (scene-rebalance s2 (- d 1)))]))]))
+(: nonempty-scene-union/rebalance (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
+(define (nonempty-scene-union/rebalance s1 s2)
+  (define r (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
+  (define c (unsafe-fx+ (nonempty-scene-count s1) (nonempty-scene-count s2)))
+  (define-values (i x) (flrect3-longest-axis/center r))
+  (define-values (s11 s12) (scene-rebalance-split s1 i x))
+  (define-values (s21 s22) (scene-rebalance-split s2 i x))
+  (cond [(empty-scene? s11)
+         (if (or (empty-scene? s21) (empty-scene? s22))
+             (scene-node r c s1 s2)
+             (scene-node r c s21 (nonempty-scene-union/rebalance s1 s22)))]
+        [(empty-scene? s12)
+         (if (or (empty-scene? s21) (empty-scene? s22))
+             (scene-node r c s1 s2)
+             (scene-node r c (nonempty-scene-union/rebalance s1 s21) s22))]
+        [(empty-scene? s21)
+         (scene-node r c s11 (nonempty-scene-union/rebalance s12 s2))]
+        [(empty-scene? s22)
+         (scene-node r c (nonempty-scene-union/rebalance s11 s2) s12)]
+        [else
+         (scene-node r c
+                     (nonempty-scene-union/rebalance s11 s21)
+                     (nonempty-scene-union/rebalance s12 s22))]))
 
 ;; ===================================================================================================
 ;; Filter
