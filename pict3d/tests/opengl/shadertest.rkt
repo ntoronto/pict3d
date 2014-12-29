@@ -11,7 +11,7 @@
 (define program #f)
 
 (define (setup)
-  (if (or (gl-version-at-least? '(2 0))
+  (if (or (gl-version-at-least? 2)
           (gl-has-extension? 'GL_ARB_shader_objects))
     (set! program (create-program (load-shader "test.glsl" GL_FRAGMENT_SHADER)))
     (printf "This OpenGL does not support shaders, you'll get a plain white rectangle.~%")))
