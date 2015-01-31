@@ -67,7 +67,9 @@
 
 (define (gl-swap-buffers)
   (define ctxt (get-current-managed-gl-context 'gl-swap-buffers))
-  (send (gl-context-context ctxt) swap-buffers))
+  (send (gl-context-context ctxt) swap-buffers)
+  ;; Windows' gl-context%'s swap-buffers can currently return #t
+  (void))
 
 ;; ===================================================================================================
 ;; Master GL context
