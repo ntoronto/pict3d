@@ -21,7 +21,16 @@
 ;; Rendering threads
 
 (struct render-command
-  (pict3d width height z-near z-far fov-degrees background ambient-color ambient-intensity)
+  (pict3d
+   width
+   height
+   z-near
+   z-far
+   fov-degrees
+   background
+   ambient-color
+   ambient-intensity
+   ack-channel)
   #:transparent)
 
 #;
@@ -34,6 +43,7 @@
                         [background : FlVector]
                         [ambient-color : FlVector]
                         [ambient-intensity : Flonum]
+                        [ack-channel : (U #f (Channelof Boolean))]
                         ) #:transparent)
 
 (define (render cmd canvas)
@@ -42,7 +52,8 @@
      (λ ()
        (match-define (render-command pict width height
                                      znear zfar fov-degrees
-                                     background ambient-color ambient-intensity)
+                                     background ambient-color ambient-intensity
+                                     ack-channel)
          cmd)
        ;; Get the view matrix
        (define view (pict3d-view-transform pict))
@@ -58,7 +69,11 @@
                       view proj
                       background ambient-color ambient-intensity)
           (gl-swap-buffers))
-        (send canvas get-managed-gl-context)))
+        (send canvas get-managed-gl-context))
+       
+       ;; Send an ACK if the other side is waiting for one
+       (when ack-channel
+         (channel-put ack-channel #t)))
      empty))
   
   (log-pict3d-debug "<canvas> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
@@ -130,11 +145,6 @@
     ;(: render-thread Thread)
     (define render-thread (make-canvas-render-thread this render-queue))
     
-    ;(: last-width (U #f Index))
-    ;(: last-height (U #f Index))
-    (define last-width #f)
-    (define last-height #f)
-    
     ;(: get-gl-window-size (-> (Values Index Index)))
     (define (get-gl-window-size)
       (define-values (w h) (send (send this get-dc) get-size))
@@ -154,27 +164,33 @@
     (define ambient-color (current-pict3d-ambient-color))
     (define ambient-intensity (current-pict3d-ambient-intensity))
     
+    (define (do-render new-pict width height
+                       z-near z-far fov-degrees
+                       background ambient-color ambient-intensity
+                       async?)
+      (define ack-channel (if async? #f (make-channel)))
+      (async-channel-put
+       render-queue
+       (render-command new-pict width height
+                       z-near z-far fov-degrees
+                       background ambient-color ambient-intensity
+                       ack-channel))
+      (when ack-channel
+        (channel-get ack-channel)))
+    
     (define/public (set-pict3d new-pict)
       (set! pict new-pict)
       (define-values (width height) (get-gl-window-size))
-      (set! last-width width)
-      (set! last-height height)
       (set! z-near (current-pict3d-z-near))
       (set! z-far (current-pict3d-z-far))
       (set! fov-degrees (current-pict3d-fov-degrees))
       (set! background (current-pict3d-background))
       (set! ambient-color (current-pict3d-ambient-color))
       (set! ambient-intensity (current-pict3d-ambient-intensity))
-      (if async-updates?
-          (async-channel-put
-           render-queue
-           (render-command new-pict width height
-                           z-near z-far fov-degrees
-                           background ambient-color ambient-intensity))
-          (render (render-command new-pict width height
-                                  z-near z-far fov-degrees
-                                  background ambient-color ambient-intensity)
-                  this)))
+      (do-render new-pict width height
+                 z-near z-far fov-degrees
+                 background ambient-color ambient-intensity
+                 async-updates?))
     
     (define/public (get-pict3d) pict)
     
@@ -215,18 +231,8 @@
     
     (define/override (on-paint)
       (define-values (width height) (get-gl-window-size))
-      (when (not (and (equal? width last-width)
-                      (equal? height last-height)))
-        (set! last-width width)
-        (set! last-height height)
-        (if async-updates?
-            (async-channel-put
-             render-queue
-             (render-command pict width height
-                             z-near z-far fov-degrees
-                             background ambient-color ambient-intensity))
-            (render (render-command pict width height
-                                    z-near z-far fov-degrees
-                                    background ambient-color ambient-intensity)
-                    this))))
+      (do-render pict width height
+                 z-near z-far fov-degrees
+                 background ambient-color ambient-intensity
+                 #t))
     ))
