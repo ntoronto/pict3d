@@ -13,6 +13,13 @@
 (provide (all-defined-out))
 
 ;; ===================================================================================================
+;; GLSL version crap
+
+(: glsl-version-string (-> String))
+(define (glsl-version-string)
+  (format "#version ~a" (gl-shading-language-version)))
+
+;; ===================================================================================================
 ;; Vertex array object structs
 
 (: gl-type-size-hash (HashTable Integer Index))
@@ -65,7 +72,9 @@
   #:transparent)
 
 (: make-gl-shader (-> Integer String gl-shader))
-(define (make-gl-shader type code)
+(define (make-gl-shader type orig-code)
+  (define code (string-append (glsl-version-string) "\n\n" orig-code))
+  
   (get-current-managed-gl-context 'make-gl-shader)
   
   (define handle (glCreateShader type))

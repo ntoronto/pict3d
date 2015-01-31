@@ -142,7 +142,6 @@
 
 (define polygon-mat-vertex-code
   (string-append
-   "#version 130\n\n"
    model-vertex-code
    #<<code
 uniform mat4 view;
@@ -172,7 +171,6 @@ code
 
 (define polygon-mat-fragment-code
   (string-append
-   "#version 130\n\n"
    output-mat-fragment-code
    #<<code
 smooth in vec4 frag_position;
@@ -212,7 +210,6 @@ code
 
 (define polygon-draw-vertex-code
   (string-append
-   "#version 130\n\n"
    model-vertex-code
    rgb-hsv-code
    #<<code
@@ -250,7 +247,6 @@ code
 
 (define polygon-opaq-fragment-code
   (string-append
-   "#version 130\n\n"
    output-opaq-fragment-code
    #<<code
 uniform vec3 ambient;
@@ -277,7 +273,6 @@ code
 
 (define polygon-tran-fragment-code
   (string-append
-   "#version 130\n\n"
    output-tran-fragment-code
    #<<code
 uniform vec3 ambient;

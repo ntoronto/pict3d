@@ -1,7 +1,7 @@
 ======================================================================================================
 Easy
 
-Add legacy? parameter
+Make shapes have default color until explicitly colorized (like in pict)
 
 Stop using gl-data->bytes
 

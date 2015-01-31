@@ -43,7 +43,6 @@
 
 (define sphere-mat-vertex-code
   (string-append
-   "#version 130\n\n"
    output-impostor-strip-vertex-code
    model-vertex-code
    #<<code
@@ -88,7 +87,6 @@ code
 
 (define sphere-mat-fragment-code
   (string-append
-   "#version 130\n\n"
    output-mat-fragment-code
    ray-trace-fragment-code
    #<<code
@@ -153,7 +151,6 @@ code
 
 (define sphere-draw-vertex-code
   (string-append
-   "#version 130\n\n"
    output-impostor-strip-vertex-code
    rgb-hsv-code
    model-vertex-code
@@ -211,7 +208,6 @@ code
 
 (define sphere-opaq-fragment-code
   (string-append
-   "#version 130\n\n"
    output-opaq-fragment-code
    ray-trace-fragment-code
    #<<code
@@ -262,7 +258,6 @@ code
 
 (define sphere-tran-fragment-code
   (string-append
-   "#version 130\n\n"
    output-tran-fragment-code
    ray-trace-fragment-code
    #<<code

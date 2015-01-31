@@ -43,8 +43,6 @@
 (define directional-light-vertex-code
   (string-append
    #<<code
-#version 130
-
 uniform mat4 unproj;
 
 in float vert_id;
@@ -76,7 +74,6 @@ code
 
 (define directional-light-fragment-code
   (string-append
-   "#version 130\n\n"
    light-fragment-code
    #<<code
 uniform mat4 unview;

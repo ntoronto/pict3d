@@ -25,8 +25,6 @@
 
 (define fullscreen-vertex-code
   #<<code
-#version 130
-
 in vec2 vert_position;
 in vec2 vert_texcoord;
 
@@ -41,7 +39,6 @@ code
 
 (define fullscreen-fragment-code
   #<<code
-#version 130
 uniform sampler2D rgba;
 
 smooth in vec2 frag_texcoord;
@@ -102,8 +99,6 @@ code
 
 (define blend-fragment-code
   #<<code
-#version 130
-
 uniform sampler2D rgba;
 uniform sampler2D weight;
 
@@ -129,7 +124,6 @@ code
 
 (define bloom-extract-fragment-code
   (string-append
-   "#version 130\n\n"
    rgb-hsv-code
    #<<code
 uniform sampler2D rgba;
@@ -156,7 +150,6 @@ code
 
 (define bloom-combine-fragment-code
   (string-append
-   "#version 130\n\n"
    rgb-hsv-code
    #<<code
 uniform sampler2D color_tex;
@@ -194,8 +187,6 @@ code
 
 (define blur-vert-fragment-code
   #<<code
-#version 130
-
 uniform sampler2D rgba;
 uniform int height;
 
@@ -225,8 +216,6 @@ code
 
 (define blur-horz-fragment-code
   #<<code
-#version 130
-
 uniform sampler2D rgba;
 uniform int width;
 

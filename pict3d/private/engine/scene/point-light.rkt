@@ -44,7 +44,6 @@
 
 (define point-light-vertex-code
   (string-append
-   "#version 130\n\n"
    output-impostor-strip-vertex-code
    model-vertex-code
    #<<code
@@ -83,7 +82,6 @@ code
 
 (define point-light-fragment-code
   (string-append
-   "#version 130\n\n"
    light-fragment-code
    #<<code
 uniform sampler2D depth;

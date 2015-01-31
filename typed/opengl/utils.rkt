@@ -11,6 +11,7 @@
 
 (provide gl-get-string
          gl-version
+         gl-shading-language-version
          gl-extensions
          gl-has-extension?
          gl-version-at-least?
@@ -67,6 +68,30 @@
        (λ ()
          (parse-version-string (gl-get-string GL_VERSION))))
       (error 'gl-version "not in a GL context")))
+
+(: gl-shading-language-version-hash (HashTable GL-Context<%> Natural))
+(define gl-shading-language-version-hash (make-weak-hasheq))
+
+(: parse-shading-language-version-string (-> String Natural))
+(define (parse-shading-language-version-string str)
+  (define ns
+  (map (λ ([s : String])
+         (define n (string->number s))
+         (cond [(exact-nonnegative-integer? n)  n]
+               [else  (error 'gl-version "bad version string: ~v~n" str)]))
+       (regexp-split #px"\\." (car (split-spaces str)))))
+  (+ (* (first ns) 100) (second ns)))
+
+(: gl-shading-language-version (-> Natural))
+(define (gl-shading-language-version)
+  (define ctxt (get-current-gl-context))
+  (if ctxt
+      (hash-ref!
+       gl-shading-language-version-hash
+       ctxt
+       (λ ()
+         (parse-shading-language-version-string (gl-get-string GL_SHADING_LANGUAGE_VERSION))))
+      (error 'gl-shading-language-version "not in a GL context")))
 
 (: gl-extensions-hash (HashTable GL-Context<%> (Setof Symbol)))
 (define gl-extensions-hash (make-weak-hasheq))
