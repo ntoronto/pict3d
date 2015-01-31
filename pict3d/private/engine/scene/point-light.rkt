@@ -11,6 +11,7 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
+         "../../utils.rkt"
          "../draw-pass.rkt"
          "../shader-lib.rkt"
          "../types.rkt"
@@ -117,7 +118,7 @@ code
    ))
 
 (define-singleton/context (point-light-program-spec)
-  (printf "creating point light program~n")
+  (log-pict3d-info "creating point light program")
   
   (define struct
     (make-vao-struct

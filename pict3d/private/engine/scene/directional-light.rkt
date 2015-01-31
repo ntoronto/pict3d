@@ -9,6 +9,7 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
+         "../../utils.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-lib.rkt"
@@ -104,7 +105,7 @@ code
    ))
 
 (define-singleton/context (directional-light-program-spec)
-  (printf "creating directional light program~n")
+  (log-pict3d-info "creating directional light program")
   
   (define struct
     (make-vao-struct

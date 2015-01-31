@@ -13,6 +13,7 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
+         "../../utils.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-lib.rkt"
@@ -185,7 +186,7 @@ code
    ))
 
 (define-singleton/context (polygon-mat-program-spec)
-  (printf "creating polygon material pass program~n")
+  (log-pict3d-info "creating polygon material pass program")
   
   (define struct
     (make-vao-struct
@@ -302,7 +303,7 @@ code
    ))
 
 (define-singleton/context (polygon-opaq-program-spec)
-  (printf "creating polygon opaque color pass program~n")
+  (log-pict3d-info "creating polygon opaque color pass program")
   
   (define struct
     (make-vao-struct
@@ -327,7 +328,7 @@ code
   (program-spec program uniforms))
 
 (define-singleton/context (polygon-tran-program-spec)
-  (printf "creating polygon transparent color pass program~n")
+  (log-pict3d-info "creating polygon transparent color pass program")
   
   (define struct
     (make-vao-struct

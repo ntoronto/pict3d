@@ -412,7 +412,7 @@ for `Scene`.
 (define get-scene-draw-passes
   (make-cached-vector 'get-scene-draw-passes
                       (λ ([n : Integer])
-                        (printf "creating draw-passes vector for ~v shapes~n" n)
+                        (log-pict3d-info "creating draw-passes vector for ~v shapes" n)
                         (build-vector n (λ (_) (draw-passes #() identity-affine))))
                       vector-length))
 

@@ -9,6 +9,7 @@
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../gl.rkt"
+         "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
          )
@@ -35,25 +36,33 @@
                         ) #:transparent)
 
 (define (render cmd canvas)
-  (match-define (render-command pict width height
-                                znear zfar fov-degrees
-                                background ambient-color ambient-intensity)
-    cmd)
-  ;; Get the view matrix
-  (define view (pict3d-view-transform pict))
-  ;; Compute the projection matrix
-  (define fov-radians (degrees->radians fov-degrees))
-  (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+  (define-values (_ cpu real gc)
+    (time-apply
+     (λ ()
+       (match-define (render-command pict width height
+                                     znear zfar fov-degrees
+                                     background ambient-color ambient-intensity)
+         cmd)
+       ;; Get the view matrix
+       (define view (pict3d-view-transform pict))
+       ;; Compute the projection matrix
+       (define fov-radians (degrees->radians fov-degrees))
+       (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
+       
+       ;; Lock everything up for drawing
+       (call-with-gl-context
+        (λ ()
+          ;; Draw the scene and swap buffers
+          (draw-scene (pict3d-scene pict) width height
+                      view proj
+                      background ambient-color ambient-intensity)
+          (gl-swap-buffers))
+        (send canvas get-managed-gl-context)))
+     empty))
   
-  ;; Lock everything up for drawing
-  (call-with-gl-context
-   (λ ()
-     ;; Draw the scene and swap buffers
-     (draw-scene (pict3d-scene pict) width height
-                 view proj
-                 background ambient-color ambient-intensity)
-     (gl-swap-buffers))
-   (send canvas get-managed-gl-context)))
+  (log-pict3d-debug "<pict3d-canvas%> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
+                    (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 2)
+                    cpu real gc))
 
 ;(: make-canvas-render-thread (-> (Instance Pict3D-Canvas%) (Async-Channelof render-command) Thread))
 (define (make-canvas-render-thread canvas ch)

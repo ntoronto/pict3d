@@ -74,7 +74,7 @@
 (define get-the-bytes
   (make-cached-vector 'get-the-bytes
                       (λ (n)
-                        (printf "creating temp ARGB bytes of length ~v~n" n)
+                        (log-pict3d-info "creating temp ARGB bytes of length ~v" n)
                         (make-bytes n))
                       bytes-length))
 
@@ -98,35 +98,40 @@
           (cond [new-view  (loop new-view)]
                 [else  view]))))
     
-    ;(values
-    ;(profile
-    (time
-     ;; Compute a projection matrix
-     (define-values (width height znear zfar fov-degrees background ambient-color ambient-intensity)
-       (send snip get-init-params))
-     (define fov-radians (degrees->radians (fl fov-degrees)))
-     (define proj (flt3compose
-                   (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
-                   (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
-     
-     ;; Lock everything up for drawing
-     (with-gl-context (get-master-gl-context)
-       ;; Draw the scene and all its little extra bits (bases, etc.)
-       (define scenes
-         (list* (send snip get-scene)
-                axes-scene
-                standard-over-light
-                standard-under-light
-                (for/list ([name-p  (in-list (send snip get-bases))])
-                  (match-define (cons name p) name-p)
-                  (force (basis-scene p)))))
-       (draw-scenes scenes width height view proj background ambient-color ambient-intensity)
-       ;; Get the resulting pixels and set them into the snip's bitmap
-       (define bs (get-the-bytes (* 4 width height)))
-       (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-       (send snip set-argb-pixels bs)
-       )
-     (printf "heap: ~aM  " (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 1)))
+    (define-values (_ cpu real gc)
+      (time-apply
+       (λ ()
+         ;; Compute a projection matrix
+         (define-values
+           (width height znear zfar fov-degrees background ambient-color ambient-intensity)
+           (send snip get-init-params))
+         (define fov-radians (degrees->radians (fl fov-degrees)))
+         (define proj
+           (flt3compose
+            (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
+            (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
+         
+         ;; Lock everything up for drawing
+         (with-gl-context (get-master-gl-context)
+           ;; Draw the scene and all its little extra bits (bases, etc.)
+           (define scenes
+             (list* (send snip get-scene)
+                    axes-scene
+                    standard-over-light
+                    standard-under-light
+                    (for/list ([name-p  (in-list (send snip get-bases))])
+                      (match-define (cons name p) name-p)
+                      (force (basis-scene p)))))
+           (draw-scenes scenes width height view proj background ambient-color ambient-intensity)
+           ;; Get the resulting pixels and set them into the snip's bitmap
+           (define bs (get-the-bytes (* 4 width height)))
+           (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
+           (send snip set-argb-pixels bs)))
+       empty))
+    
+    (log-pict3d-debug "<pict3d-snip%> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
+                      (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 2)
+                      cpu real gc)
     
     (render-thread-loop))
   

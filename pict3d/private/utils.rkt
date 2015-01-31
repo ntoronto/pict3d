@@ -4,9 +4,11 @@
          racket/list
          racket/vector
          racket/flonum
-         racket/unsafe/ops)
+         racket/unsafe/ops
+         "untyped-utils.rkt")
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (all-from-out "untyped-utils.rkt"))
 
 (require/typed
  profile

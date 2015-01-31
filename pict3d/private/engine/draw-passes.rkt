@@ -8,6 +8,7 @@
          (except-in typed/opengl/ffi cast ->)
          "../math/flt3.rkt"
          "../gl.rkt"
+         "../utils.rkt"
          "utils.rkt"
          "shader-lib.rkt"
          "draw-pass.rkt")
@@ -67,14 +68,14 @@ code
 (define fullscreen-data-length (* 4 (f32vector-length fullscreen-vertex-data)))
 
 (define-singleton/context (fullscreen-program)
-  (printf "creating fullscreen program~n")
+  (log-pict3d-info "creating fullscreen program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
                          (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
 
 (define-singleton/context (fullscreen-vao)
-  (printf "creating vao for fullscreen compositing passes~n")
+  (log-pict3d-info "creating vao for fullscreen compositing passes")
   (define vao (make-gl-vertex-array))
   (with-gl-vertex-array vao
     (define buf (make-gl-array-buffer))
@@ -120,7 +121,7 @@ code
   )
 
 (define-singleton/context (blend-program)
-  (printf "creating weighted transparency blend program~n")
+  (log-pict3d-info "creating weighted transparency blend program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -147,7 +148,7 @@ code
   ))
 
 (define-singleton/context (bloom-extract-program)
-  (printf "creating overbright extraction program~n")
+  (log-pict3d-info "creating overbright extraction program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -185,7 +186,7 @@ code
    ))
 
 (define-singleton/context (bloom-combine-program)
-  (printf "creating bloom compositing program~n")
+  (log-pict3d-info "creating bloom compositing program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -216,7 +217,7 @@ code
   )
 
 (define-singleton/context (blur-vert-program)
-  (printf "creating vertical blur program~n")
+  (log-pict3d-info "creating vertical blur program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -247,7 +248,7 @@ code
   )
 
 (define-singleton/context (blur-horz-program)
-  (printf "creating horizontal blur program~n")
+  (log-pict3d-info "creating horizontal blur program")
   (make-gl-program (make-vao-struct)
                    (list "out_color")
                    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
@@ -267,31 +268,31 @@ code
   (* (quotient (+ w 63) 64) 64))
 
 (define-singleton/context (get-depth-buffer [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a depth-buffer~n" width height)
+  (log-pict3d-info "creating ~a × ~a depth-buffer" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
 (define-singleton/context (get-tran-depth-buffer [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a tran-depth-buffer~n" width height)
+  (log-pict3d-info "creating ~a × ~a tran-depth-buffer" width height)
   (make-gl-texture-2d width height GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT GL_FLOAT
                       texture-params))
 
 (define-singleton/context (get-mat-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a mat-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a mat-fbo" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-depth-buffer width height)))))
 
 (define-singleton/context (get-tran-mat-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a tran-mat-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a tran-mat-fbo" width height)
   (define nnsa (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (make-gl-framebuffer width height
                        (list (cons GL_COLOR_ATTACHMENT0 nnsa)
                              (cons GL_DEPTH_ATTACHMENT (get-tran-depth-buffer width height)))))
 
 (define-singleton/context (get-light-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a light-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a light-fbo" width height)
   (define diff (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define spec (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define fbo
@@ -303,7 +304,7 @@ code
   fbo)
 
 (define-singleton/context (get-tran-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a tran-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a tran-fbo" width height)
   (define rgbv (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define alpha (make-gl-texture-2d width height GL_R16F GL_RED GL_FLOAT texture-params))
   (define fbo
@@ -316,7 +317,7 @@ code
   fbo)
 
 (define-singleton/context (get-draw-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a draw-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a draw-fbo" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT texture-params))
   (define fbo
     (make-gl-framebuffer width height
@@ -327,7 +328,7 @@ code
   fbo)
 
 (define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a reduce-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a reduce-fbo" width height)
   (define color (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT
                                     (list (cons GL_TEXTURE_WRAP_S GL_CLAMP_TO_EDGE)
                                           (cons GL_TEXTURE_WRAP_T GL_CLAMP_TO_EDGE)
@@ -342,12 +343,12 @@ code
         (cons GL_TEXTURE_MAG_FILTER GL_LINEAR)))
 
 (define-singleton/context (get-bloom-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a bloom-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a bloom-fbo" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 
 (define-singleton/context (get-blur-fbo [width : Natural] [height : Natural])
-  (printf "creating ~a × ~a blur-fbo~n" width height)
+  (log-pict3d-info "creating ~a × ~a blur-fbo" width height)
   (define rgba (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT blur-texture-params))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 

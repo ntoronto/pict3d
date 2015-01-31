@@ -10,6 +10,7 @@
          "../engine/scene.rkt"
          "../engine/utils.rkt"
          "../gl.rkt"
+         "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
          )
@@ -21,7 +22,7 @@
 (define get-the-bytes
   (make-cached-vector 'get-the-bytes
                       (λ (n)
-                        (printf "creating temp ARGB bytes of length ~v~n" n)
+                        (log-pict3d-debug "creating temp ARGB bytes of length ~v" n)
                         (make-bytes n))
                       bytes-length))
 

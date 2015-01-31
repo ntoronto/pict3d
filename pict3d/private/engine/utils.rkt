@@ -7,7 +7,8 @@
          math/base
          (except-in typed/opengl/ffi cast ->)
          "../gl.rkt"
-         "../math/flv3.rkt")
+         "../math/flv3.rkt"
+         "../utils.rkt")
 
 (provide (all-defined-out))
 
@@ -262,7 +263,7 @@
   (make-cached-vector
    'get-keys
    (λ ([n : Integer])
-     (printf "creating key vector of length ~v~n" n)
+     (log-pict3d-info "creating key vector of length ~v" n)
      ((inst make-vector span) n (span 0 0 0)))
    vector-length))
 

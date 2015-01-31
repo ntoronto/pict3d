@@ -2,7 +2,8 @@
 
 (require racket/class
          racket/gui
-         typed/opengl)
+         typed/opengl
+         "../utils.rkt")
 
 (provide (all-defined-out))
 
@@ -88,10 +89,10 @@
   (define dc (make-object bitmap-dc% bm))
   (define ctxt (send dc get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
-         (log-warning "get-master-gl-context: could not obtain bitmap OpenGL context")]
+         (log-pict3d-warning "get-master-gl-context: could not obtain bitmap OpenGL context")]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
-         (log-info "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
+         (log-pict3d-info "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
          (set! master-bitmap bm)
          (set! master-dc dc)
          (let ([ctxt  (managed-gl-context ctxt)])
@@ -99,7 +100,7 @@
            ctxt)]
         [else
          (define version (send ctxt call-as-current gl-version))
-         (log-warning "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
+         (log-pict3d-warning "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
          #f]))
 
 (define (get-master-gl-context/frame)
@@ -119,17 +120,17 @@
   (sleep/yield 1)
   (define ctxt (send (send canvas get-dc) get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
-         (log-warning "get-master-gl-context: could not obtain canvas OpenGL context")]
+         (log-pict3d-warning "get-master-gl-context: could not obtain canvas OpenGL context")]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
-         (log-info "get-master-gl-context: obtained OpenGL ~a canvas context" version)
+         (log-pict3d-info "get-master-gl-context: obtained OpenGL ~a canvas context" version)
          (set! master-frame frame)
          (let ([ctxt  (managed-gl-context ctxt)])
            (set! master-context ctxt)
            ctxt)]
         [else
          (define version (send ctxt call-as-current gl-version))
-         (log-warning "get-master-gl-context: obtained OpenGL ~a canvas context" version)
+         (log-pict3d-warning "get-master-gl-context: obtained OpenGL ~a canvas context" version)
          #f]))
 
 (define (get-master-gl-context)

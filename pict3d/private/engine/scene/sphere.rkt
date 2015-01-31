@@ -11,6 +11,7 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
+         "../../utils.rkt"
          "../affine.rkt"
          "../types.rkt"
          "../utils.rkt"
@@ -122,7 +123,7 @@ code
    ))
 
 (define-singleton/context (sphere-mat-program-spec)
-  (printf "creating sphere material program~n")
+  (log-pict3d-info "creating sphere material program")
   
   (define struct
     (make-vao-struct
@@ -332,7 +333,7 @@ code
         (cons "specular" 'specular)))
 
 (define-singleton/context (sphere-opaq-program-spec)
-  (printf "creating sphere opaque color pass program~n")
+  (log-pict3d-info "creating sphere opaque color pass program")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color")
@@ -341,7 +342,7 @@ code
    draw-program-uniforms))
 
 (define-singleton/context (sphere-tran-program-spec)
-  (printf "creating sphere transparent color pass program~n")
+  (log-pict3d-info "creating sphere transparent color pass program")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color" "out_weight")
