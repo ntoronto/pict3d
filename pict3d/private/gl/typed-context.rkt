@@ -9,7 +9,7 @@
  [call-with-gl-context  (All (A) (-> (-> A) gl-context A))]
  [get-current-managed-gl-context  (-> Symbol gl-context)]
  [gl-swap-buffers  (-> Void)]
- [get-master-gl-context  (-> gl-context)]
+ [get-master-gl-context  (-> Boolean gl-context)]
  )
 
 (define-type GL-Context gl-context)

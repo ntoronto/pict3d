@@ -46,6 +46,7 @@
   (Class #:implements Snip%
          (init-field [scene  Scene]
                      [bases  Bases]
+                     [legacy?  Boolean]
                      [width   Positive-Index]
                      [height  Positive-Index]
                      [z-near  Flonum]
@@ -101,10 +102,10 @@
     (define-values (_ cpu real gc)
       (time-apply
        (λ ()
-         ;; Compute a projection matrix
          (define-values
-           (width height znear zfar fov-degrees background ambient-color ambient-intensity)
+           (legacy? width height znear zfar fov-degrees background ambient-color ambient-intensity)
            (send snip get-init-params))
+         ;; Compute a projection matrix
          (define fov-radians (degrees->radians (fl fov-degrees)))
          (define proj
            (flt3compose
@@ -112,7 +113,7 @@
             (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
          
          ;; Lock everything up for drawing
-         (with-gl-context (get-master-gl-context)
+         (with-gl-context (get-master-gl-context legacy?)
            ;; Draw the scene and all its little extra bits (bases, etc.)
            (define scenes
              (list* (send snip get-scene)
@@ -129,7 +130,7 @@
            (send snip set-argb-pixels bs)))
        empty))
     
-    (log-pict3d-debug "<pict3d-snip%> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
+    (log-pict3d-debug "<snip> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
                       (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 2)
                       cpu real gc)
     
@@ -372,6 +373,7 @@
   (class image-snip%
     (init-field scene
                 bases
+                legacy?
                 width
                 height
                 z-near
@@ -391,7 +393,7 @@
     
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
-      (make-object pict3d% scene bases
+      (make-object pict3d% scene bases legacy?
         width height z-near z-far fov-degrees background ambient-color ambient-intensity))
     
     (define/override (write f)
@@ -410,7 +412,8 @@
             the-bitmap-val)))
     
     (define/public (get-init-params)
-      (values width height z-near z-far fov-degrees background ambient-color ambient-intensity))
+      (values legacy?
+              width height z-near z-far fov-degrees background ambient-color ambient-intensity))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -486,6 +489,7 @@
   (make-object pict3d%
     scene
     bases
+    (pict3d-legacy-contexts?)
     (current-pict3d-width)
     (current-pict3d-height)
     (current-pict3d-z-near)

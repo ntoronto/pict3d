@@ -6,6 +6,7 @@
          racket/async-channel
          racket/math
          math/flonum
+         typed/opengl
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../gl.rkt"
@@ -60,7 +61,7 @@
         (send canvas get-managed-gl-context)))
      empty))
   
-  (log-pict3d-debug "<pict3d-canvas%> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
+  (log-pict3d-debug "<canvas> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
                     (real->decimal-string (/ (current-memory-use) (* 1024 1024)) 2)
                     cpu real gc))
 
@@ -100,7 +101,10 @@
           [stretchable-height  #t])
     (init-field [pict  empty-pict3d])
     
+    (define legacy? (pict3d-legacy-contexts?))
+    
     (define config (new gl-config%))
+    (send config set-legacy? legacy?)
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
@@ -180,15 +184,34 @@
     ;(: get-managed-gl-context (-> GL-Context))
     (define/public (get-managed-gl-context)
       (define mctxt managed-ctxt)
-      (cond [mctxt  mctxt]
-            [else
-             (define ctxt (send (send this get-dc) get-gl-context))
-             (cond [(or (not ctxt) (not (send ctxt ok?)))
-                    (error 'pict3d-canvas% "no GL context is available")]
-                   [else
-                    (let ([mctxt  (managed-gl-context ctxt)])
-                      (set! managed-ctxt mctxt)
-                      mctxt)])]))
+      (cond
+        [mctxt  mctxt]
+        [else
+         (define ctxt (send (send this get-dc) get-gl-context))
+         (cond
+           [(or (not ctxt) (not (send ctxt ok?)))
+            (log-pict3d-warning
+             "<canvas> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
+             legacy?)
+            (error 'pict3d-canvas%
+                   "could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
+                   legacy?)]
+           [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
+            (define version (send ctxt call-as-current gl-version))
+            (log-pict3d-info
+             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+             version legacy?)
+            (let ([mctxt  (managed-gl-context ctxt)])
+              (set! managed-ctxt mctxt)
+              mctxt)]
+           [else
+            (define version (send ctxt call-as-current gl-version))
+            (log-pict3d-warning
+             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+             version legacy?)
+            (error 'pict3d-canvas%
+                   "could not obtain at least an OpenGL 30 context (pict3d-legacy-contexts? ~a)"
+                   legacy?)])]))
     
     (define/override (on-paint)
       (define-values (width height) (get-gl-window-size))

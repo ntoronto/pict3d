@@ -77,22 +77,28 @@
 
 (define master-gl-context-mutex (make-semaphore 1))
 
+(define master-legacy? #f)
 (define master-frame #f)
 (define master-bitmap #f)
 (define master-dc #f)
 (define master-context #f)
 
-(define (get-master-gl-context/bitmap)
+(define (get-master-gl-context/bitmap legacy?)
   (define config (new gl-config%))
-  (send config set-legacy? (pict3d-legacy-contexts?))
+  (send config set-legacy? legacy?)
   (define bm (make-gl-bitmap master-context-max-width master-context-max-height config))
   (define dc (make-object bitmap-dc% bm))
   (define ctxt (send dc get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
-         (log-pict3d-warning "get-master-gl-context: could not obtain bitmap OpenGL context")]
+         (log-pict3d-warning
+          "<master> could not obtain bitmap OpenGL context (pict3d-legacy-contexts? ~a)"
+          legacy?)]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
-         (log-pict3d-info "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
+         (log-pict3d-info
+          "<master> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          version legacy?)
+         (set! master-legacy? legacy?)
          (set! master-bitmap bm)
          (set! master-dc dc)
          (let ([ctxt  (managed-gl-context ctxt)])
@@ -100,12 +106,14 @@
            ctxt)]
         [else
          (define version (send ctxt call-as-current gl-version))
-         (log-pict3d-warning "get-master-gl-context: obtained OpenGL ~a bitmap context" version)
+         (log-pict3d-warning
+          "<master> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          version legacy?)
          #f]))
 
-(define (get-master-gl-context/frame)
+(define (get-master-gl-context/frame legacy?)
   (define config (new gl-config%))
-  (send config set-legacy? (pict3d-legacy-contexts?))
+  (send config set-legacy? legacy?)
   (define frame (new frame%
                      [label "Master GL context frame"]
                      [width   master-context-max-width]
@@ -120,33 +128,41 @@
   (sleep/yield 1)
   (define ctxt (send (send canvas get-dc) get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
-         (log-pict3d-warning "get-master-gl-context: could not obtain canvas OpenGL context")]
+         (log-pict3d-warning
+          "<master> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
+          legacy?)]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
-         (log-pict3d-info "get-master-gl-context: obtained OpenGL ~a canvas context" version)
+         (log-pict3d-info
+          "<master> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          version legacy?)
+         (set! master-legacy? legacy?)
          (set! master-frame frame)
          (let ([ctxt  (managed-gl-context ctxt)])
            (set! master-context ctxt)
            ctxt)]
         [else
          (define version (send ctxt call-as-current gl-version))
-         (log-pict3d-warning "get-master-gl-context: obtained OpenGL ~a canvas context" version)
+         (log-pict3d-warning
+          "<master> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          version legacy?)
          #f]))
 
-(define (get-master-gl-context)
+(define (get-master-gl-context legacy?)
   (call-with-semaphore
    master-gl-context-mutex
    (λ ()
      (define ctxt master-context)
      (cond
-       [ctxt  ctxt]
+       [(and ctxt (eq? legacy? master-legacy?))  ctxt]
        [else
-        (define ctxt (get-master-gl-context/bitmap))
+        (define ctxt (get-master-gl-context/bitmap legacy?))
         (cond
           [ctxt  ctxt]
           [else
-           (define ctxt (get-master-gl-context/frame))
+           (define ctxt (get-master-gl-context/frame legacy?))
            (cond [ctxt  ctxt]
                  [else
                   (error 'get-master-gl-context
-                         "could not get an OpenGL 30 context")])])]))))
+                         "could not obtain at least an OpenGL 30 context (pict3d-legacy-contexts? ~a)"
+                         legacy?)])])]))))
