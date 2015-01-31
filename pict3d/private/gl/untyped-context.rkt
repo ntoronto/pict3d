@@ -91,12 +91,12 @@
   (define ctxt (send dc get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
          (log-pict3d-warning
-          "<master> could not obtain bitmap OpenGL context (pict3d-legacy-contexts? ~a)"
+          "<engine> could not obtain bitmap OpenGL context (pict3d-legacy-contexts? ~a)"
           legacy?)]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
          (log-pict3d-info
-          "<master> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          "<engine> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
           version legacy?)
          (set! master-legacy? legacy?)
          (set! master-bitmap bm)
@@ -107,7 +107,7 @@
         [else
          (define version (send ctxt call-as-current gl-version))
          (log-pict3d-warning
-          "<master> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          "<engine> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
           version legacy?)
          #f]))
 
@@ -129,12 +129,12 @@
   (define ctxt (send (send canvas get-dc) get-gl-context))
   (cond [(or (not ctxt) (not (send ctxt ok?)))
          (log-pict3d-warning
-          "<master> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
+          "<engine> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
           legacy?)]
         [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
          (define version (send ctxt call-as-current gl-version))
          (log-pict3d-info
-          "<master> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          "<engine> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
           version legacy?)
          (set! master-legacy? legacy?)
          (set! master-frame frame)
@@ -144,7 +144,7 @@
         [else
          (define version (send ctxt call-as-current gl-version))
          (log-pict3d-warning
-          "<master> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+          "<engine> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
           version legacy?)
          #f]))
 

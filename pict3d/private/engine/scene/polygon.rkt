@@ -186,7 +186,7 @@ code
    ))
 
 (define-singleton/context (polygon-mat-program-spec)
-  (log-pict3d-info "creating polygon material pass program")
+  (log-pict3d-info "<engine> creating polygon material pass program")
   
   (define struct
     (make-vao-struct
@@ -303,7 +303,7 @@ code
    ))
 
 (define-singleton/context (polygon-opaq-program-spec)
-  (log-pict3d-info "creating polygon opaque color pass program")
+  (log-pict3d-info "<engine> creating polygon opaque color pass program")
   
   (define struct
     (make-vao-struct
@@ -328,7 +328,7 @@ code
   (program-spec program uniforms))
 
 (define-singleton/context (polygon-tran-program-spec)
-  (log-pict3d-info "creating polygon transparent color pass program")
+  (log-pict3d-info "<engine> creating polygon transparent color pass program")
   
   (define struct
     (make-vao-struct

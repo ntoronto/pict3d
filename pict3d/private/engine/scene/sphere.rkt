@@ -123,7 +123,7 @@ code
    ))
 
 (define-singleton/context (sphere-mat-program-spec)
-  (log-pict3d-info "creating sphere material program")
+  (log-pict3d-info "<engine> creating sphere material program")
   
   (define struct
     (make-vao-struct
@@ -333,7 +333,7 @@ code
         (cons "specular" 'specular)))
 
 (define-singleton/context (sphere-opaq-program-spec)
-  (log-pict3d-info "creating sphere opaque color pass program")
+  (log-pict3d-info "<engine> creating sphere opaque color pass program")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color")
@@ -342,7 +342,7 @@ code
    draw-program-uniforms))
 
 (define-singleton/context (sphere-tran-program-spec)
-  (log-pict3d-info "creating sphere transparent color pass program")
+  (log-pict3d-info "<engine> creating sphere transparent color pass program")
   (program-spec
    (make-gl-program draw-program-struct
                     (list "out_color" "out_weight")

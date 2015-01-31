@@ -263,7 +263,7 @@
   (make-cached-vector
    'get-keys
    (λ ([n : Integer])
-     (log-pict3d-info "creating key vector of length ~v" n)
+     (log-pict3d-info "<engine> creating key vector of length ~v" n)
      ((inst make-vector span) n (span 0 0 0)))
    vector-length))
 

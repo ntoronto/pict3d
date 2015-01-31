@@ -118,7 +118,7 @@ code
    ))
 
 (define-singleton/context (point-light-program-spec)
-  (log-pict3d-info "creating point light program")
+  (log-pict3d-info "<engine> creating point light program")
   
   (define struct
     (make-vao-struct

@@ -105,7 +105,7 @@ code
    ))
 
 (define-singleton/context (directional-light-program-spec)
-  (log-pict3d-info "creating directional light program")
+  (log-pict3d-info "<engine> creating directional light program")
   
   (define struct
     (make-vao-struct

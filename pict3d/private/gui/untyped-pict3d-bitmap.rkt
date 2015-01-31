@@ -22,7 +22,7 @@
 (define get-the-bytes
   (make-cached-vector 'get-the-bytes
                       (λ (n)
-                        (log-pict3d-debug "creating temp ARGB bytes of length ~v" n)
+                        (log-pict3d-debug "<bitmap> creating temp ARGB bytes of length ~v" n)
                         (make-bytes n))
                       bytes-length))
 

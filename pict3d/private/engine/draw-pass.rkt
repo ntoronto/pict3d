@@ -139,7 +139,7 @@
          
          (define vertex-count2 (assert (next-pow2 vertex-count) index?))
          (define index-count2 (if (= index-count 0) 0 (assert (next-pow2 index-count) index?)))
-         (log-pict3d-info "creating vao for ~v (~v) vertices, ~v (~v) indexes" 
+         (log-pict3d-info "<engine> creating vao for ~v (~v) vertices, ~v (~v) indexes" 
                            vertex-count2 vertex-count
                            index-count2 index-count)
          (define vbuffer
@@ -189,7 +189,7 @@
 (define get-tmp-transform-data
   (make-cached-vector 'get-tmp-transform-data
                       (λ ([n : Integer])
-                        (log-pict3d-info "creating temp transform data of length ~v" n)
+                        (log-pict3d-info "<engine> creating temp transform data of length ~v" n)
                         (make-bytes n))
                       bytes-length))
 
@@ -198,7 +198,7 @@
 (define get-tmp-index-data
   (make-cached-vector 'get-tmp-index-data
                       (λ ([n : Integer])
-                        (log-pict3d-info "creating temp index data of length ~v" n)
+                        (log-pict3d-info "<engine> creating temp index data of length ~v" n)
                         (make-u16vector n))
                       u16vector-length))
 
@@ -437,13 +437,13 @@
   (make-cached-vector
    'get-all-params
    (λ ([n : Integer])
-     (log-pict3d-info "creating draw-params vector of length ~v" n)
+     (log-pict3d-info "<engine> creating draw-params vector of length ~v" n)
      ((inst build-vector draw-params) n (λ (_) (empty-draw-params))))
    vector-length))
 
 (: draw-pass (-> Index (Vectorof draw-passes) Natural (HashTable Symbol Uniform) Face Void))
 (define (draw-pass pass passess num standard-uniforms face)
-  ;(log-pict3d-debug "drawing pass ~v" pass)
+  ;(log-pict3d-debug "<engine> drawing pass ~v" pass)
   (define len
     (for/fold ([len : Nonnegative-Fixnum  0]) ([j  (in-range (min num (vector-length passess)))])
       (define passes (unsafe-vector-ref passess j))
