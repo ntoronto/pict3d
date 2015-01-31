@@ -230,7 +230,7 @@
                       (current-emitted)
                       (current-material)
                       (and inside? #t))))
-  
+
 (: ellipsoid (->* [User-Vector User-Vector] [Any] Pict3D))
 (define (ellipsoid v1 v2 [inside? #f])
   (let ([v1  (->flv3 v1)]
