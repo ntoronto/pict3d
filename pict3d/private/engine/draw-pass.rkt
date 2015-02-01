@@ -193,7 +193,7 @@
                         (make-bytes n))
                       bytes-length))
 
-(define max-shape-vertex-count 65536)
+(define max-shape-vertex-count 16384)
 
 (define get-tmp-index-data
   (make-cached-vector 'get-tmp-index-data
