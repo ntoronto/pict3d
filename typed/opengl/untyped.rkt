@@ -17,29 +17,30 @@
     [(_fun* x ...)
      (if win32? (_fun #:abi 'stdcall x ...) (_fun x ...))]))
 
-(define (load-get-proc-address gl-lib names)
-  (if (null? names)
-    (λ (x) (ffi-obj-ref x gl-lib (λ () #f)))
-    (get-ffi-obj (car names) gl-lib (_fun* _string -> _pointer)
-                 (λ () (load-get-proc-address gl-lib (cdr names))))))
+(define gl-lib
+  (case stype
+    [(windows) (ffi-lib "opengl32")]
+    [(macosx)  (ffi-lib "/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL")]
+    [else      (ffi-lib "libGL" '("1" ""))]))
 
+(define system-get-proc-address-names
+  (case stype
+    [(windows)  '("wglGetProcAddress")]
+    [(macosx)   '()]
+    ;; Boldly assume everybody else uses X11
+    [else       '("glXGetProcAddressARB" "glXGetProcAddress")]))
+
+(define system-get-proc-address
+  (delay
+    (let loop ([names  system-get-proc-address-names])
+      (if (null? names)
+          (λ (x) (ffi-obj-ref x gl-lib (λ () #f)))
+          (get-ffi-obj (car names) gl-lib (_fun* _string -> _pointer)
+                       (λ () (loop (cdr names))))))))
 
 ;; The default-gl-procedure-loader procedure dynamically loads a GL procedure.
-(define default-gl-procedure-loader
-  (let ((get-proc-address 
-          (delay 
-            (case stype
-              [(windows)
-               (load-get-proc-address (ffi-lib "opengl32") 
-                                      '("wglGetProcAddress"))]
-              [(macosx)
-               (load-get-proc-address
-                (ffi-lib "/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL")
-                '())]
-              [else ;boldly assume everybody else uses X11
-                (load-get-proc-address (ffi-lib "libGL" '("1" ""))
-                                       '("glXGetProcAddressARB" "glXGetProcAddress"))]))))
-    (λ (name) ((force get-proc-address) name))))
+(define (default-gl-procedure-loader name-str)
+  ((force system-get-proc-address) name-str))
 
 (define gl-procedure-loader default-gl-procedure-loader)
 (define (set-gl-procedure-loader! new-loader) (set! gl-procedure-loader new-loader))
@@ -49,41 +50,48 @@
   (set-gl-procedure-loader! (->> (->> string? (or/c cpointer? procedure? #f)) any)))
 
 
-(define (make-undefined-procedure name)
-;  (printf "OpenGL procedure not available: ~a~%" name)
-  (lambda args
-    (error "OpenGL procedure not available:" name)))
+(define (lookup-gl-procedure name-str fun-type)
+  (define (missing)
+    (error 'lookup-gl-procedure "OpenGL function not available: ~a" name-str))
+  
+  (case stype
+    [(windows)
+     ;; Any OpenGL version <= 1.1 function MUST be loaded using GetProcAddress
+     (get-ffi-obj
+      name-str gl-lib fun-type
+      (λ ()
+        ;; If that fails, it's probably a > 1.1 function, which means two things:
+        ;;   1. We MUST load it using wglGetProcAddress
+        ;;   2. It's GL-context-specific (hence the eta expansion)
+        (λ args
+          (define proc (gl-procedure-loader name-str))
+          (cond [proc  (apply (function-ptr proc fun-type) args)]
+                [else  (missing)]))))]
+    [else
+     ;; The other OSes make this so easy...
+     (define proc (gl-procedure-loader name-str))
+     (if proc (function-ptr proc fun-type) (missing))]))
 
-
-(define (lookup-gl-procedure name type undefined)
-  (let ((ptr (gl-procedure-loader (symbol->string name))))
-    (if ptr
-      (begin
-;        (printf "Loaded: ~a~%" name)
-        (function-ptr ptr type))
-      (undefined))))
-
-; Load everything lazily.
-; This speeds things up in general and is essential on Windows
-; where GL procedures can only be looked up once a GL context is bound.
+; Load everything lazily to speed up loading this library
 (define-syntax (define-gl stx)
   (syntax-case stx ()
     [(_ name arity (type ...) contract checker)
      (with-syntax ([(arg ...)  (generate-temporaries
                                 (build-list (syntax->datum #'arity)
-                                            (λ (n) (format "arg~a" n))))])
+                                            (λ (n) (format "arg~a" n))))]
+                   [name-str  (symbol->string (syntax->datum #'name))])
        (syntax/loc stx
          (begin
            ;; Main idea: have the function look up its implementation when first used, then
            ;; mutate itself into a wrapper for the implementation that checks for errors
            
-           ;; Problem: if the exported function is mutated, the contract wrapper is very expensive,
+           ;; Problem: if the exported function is mutated, any contract wrapper is very expensive,
            ;; so make the exported function a wrapper for a private, self-mutating function
            (define (name arg ...) (self-mutating-fun arg ...))
            
            (define (self-mutating-fun arg ...)
-             (define proc (lookup-gl-procedure 'name (_fun* type ...)
-                                               (λ () (make-undefined-procedure 'name))))
+             (define proc (lookup-gl-procedure name-str (_fun* type ...)))
+             
              (define (fun arg ...)
                (begin0
                  (proc arg ...)

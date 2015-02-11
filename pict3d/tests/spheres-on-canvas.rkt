@@ -39,7 +39,7 @@
 
 (define frozen-spheres (freeze spheres))
 
-(define frame (new frame% [label "Sphere Field"] [width 80] [height 60]))
+(define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send canvas set-async-updates? #f)
 (send frame show #t)
@@ -48,7 +48,7 @@
 
 (profile
  (let loop ([i 0])
-   (when (and (< i 100) (send frame is-shown?))
+   (when (and (< i 1000) (send frame is-shown?))
      (time
       ;(define start-time (fl (current-inexact-milliseconds)))
       (define cx (cos (degrees->radians i)))
@@ -64,7 +64,7 @@
         ;(set-basis spheres 'camera camera-basis)
         
         (combine
-         (set-basis spheres 'camera camera-basis)
+         (set-basis frozen-spheres 'camera camera-basis)
          (with-color "black"
            (with-emitted '(1 1 1 4)
              (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
@@ -74,5 +74,6 @@
       ;(define end-time (fl (current-inexact-milliseconds)))
       ;(define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
       ;(sleep/yield delay)
+      (sleep/yield #i1/1000)
       )
      (loop (+ i 1)))))
