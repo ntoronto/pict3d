@@ -66,6 +66,9 @@ struct rect {
   float is_degenerate;
 };
 
+const float pos_infinity = 1.0/0.0;
+const float neg_infinity = -pos_infinity;
+
 rect impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
   vec4 vs[8];
   vs[0] = vec4(wmin, 1.0);
@@ -78,12 +81,12 @@ rect impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
   vs[7] = vec4(wmax, 1.0);
   
   // view space min and max
-  vec3 vmin = vec3(+1.0 / 0.0); // 32-bit +Inf
-  vec3 vmax = vec3(-1.0 / 0.0); // 32-bit -Inf
+  vec3 vmin = vec3(pos_infinity);
+  vec3 vmax = vec3(neg_infinity);
   
   // clip space min and max
-  vec3 cmin = vec3(+1.0 / 0.0);
-  vec3 cmax = vec3(-1.0 / 0.0);
+  vec3 cmin = vec3(pos_infinity);
+  vec3 cmax = vec3(neg_infinity);
   
   for (int i = 0; i < 8; i++) {
     vec4 vpos = view * vs[i];
