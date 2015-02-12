@@ -49,8 +49,16 @@
   (default-gl-procedure-loader (->> string? (or/c cpointer? procedure? #f))) 
   (set-gl-procedure-loader! (->> (->> string? (or/c cpointer? procedure? #f)) any)))
 
+;; A hashtable from (weak) OpenGL contexts to hashtables from function names to pointers
+;; Required to make OpenGL API calls on Windows fast - see below
+(define context-function-hash (make-weak-hasheq))
 
 (define (lookup-gl-procedure name-str fun-type)
+  ;; This is strictly only necessary on Windows, but enforcing it everywhere helps keeps client
+  ;; programs portable
+  (unless (get-current-gl-context)
+    (error 'lookup-gl-procedure "no current OpenGL context looking up ~a" name-str))
+  
   (define (missing)
     (error 'lookup-gl-procedure "OpenGL function not available: ~a" name-str))
   
@@ -61,16 +69,22 @@
       name-str gl-lib fun-type
       (λ ()
         ;; If that fails, it's probably a > 1.1 function, which means two things:
-        ;;   1. We MUST load it using wglGetProcAddress
-        ;;   2. It's GL-context-specific (hence the eta expansion)
+        ;;   1. We MUST load it using wglGetProcAddress.
+        ;;   2. The function implementation is specific to the GL context.
+        ;; Racket's `sgl/gl` looks up the function pointer every time this happens, but that's
+        ;; really slow. (I've simulated it on Linux, and found that each API lookup takes about
+        ;; 0.01ms. It may be slower on Windows.) So we keep a weak hash table of function pointers
+        ;; per context to speed up lookup.
         (λ args
-          (define proc (gl-procedure-loader name-str))
-          (cond [proc  (apply (function-ptr proc fun-type) args)]
+          (define function-hash (hash-ref! context-function-hash (get-current-gl-context) make-hash))
+          (define proc (hash-ref! function-hash name-str
+                                  (λ () (function-ptr (gl-procedure-loader name-str) fun-type))))
+          (cond [proc  (apply proc args)]
                 [else  (missing)]))))]
     [else
      ;; The other OSes make this so easy...
-     (define proc (gl-procedure-loader name-str))
-     (if proc (function-ptr proc fun-type) (missing))]))
+     (define proc (function-ptr (gl-procedure-loader name-str) fun-type))
+     (if proc proc (missing))]))
 
 ; Load everything lazily to speed up loading this library
 (define-syntax (define-gl stx)
@@ -93,6 +107,9 @@
              (define proc (lookup-gl-procedure name-str (_fun* type ...)))
              
              (define (fun arg ...)
+               ;; Why would you be calling an OpenGL function without a context? Even getting the
+               ;; version string is context-dependent
+               (unless (get-current-gl-context) (error 'name "no current OpenGL context"))
                (begin0
                  (proc arg ...)
                  (checker 'name)))
