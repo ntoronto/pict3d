@@ -19,7 +19,7 @@
 (: bloom-buffer-size (Parameterof Positive-Integer))
 (define bloom-buffer-size (make-parameter 256))
 
-(define bloom-levels '(1 2 4 8))
+(define bloom-levels 4)
 
 ;; ===================================================================================================
 
@@ -391,6 +391,9 @@ code
   (define bloom-dwidth (dimension-ceiling bloom-width))
   (define bloom-dheight (dimension-ceiling bloom-height))
   
+  (define tex-width (fl (/ width dwidth)))
+  (define tex-height (fl (/ height dheight)))
+  
   ;; Set up framebuffer objects for the different passes
   (define depth-buffer (get-depth-buffer dwidth dheight))
   (define tran-depth-buffer (get-tran-depth-buffer dwidth dheight))
@@ -402,11 +405,6 @@ code
   (define reduce-fbo (get-reduce-fbo dwidth dheight))
   (define bloom-fbo (get-bloom-fbo bloom-dwidth bloom-dheight))
   (define blur-fbo (get-blur-fbo bloom-dwidth bloom-dheight))
-  
-  (define tex-width (fl (/ width dwidth)))
-  (define tex-height (fl (/ height dheight)))
-  (define bloom-tex-width (fl (/ bloom-width bloom-dwidth)))
-  (define bloom-tex-height (fl (/ bloom-height bloom-dheight)))
   
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
@@ -578,17 +576,27 @@ code
       (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST))
     (glGenerateMipmap GL_TEXTURE_2D))
   
+  (define horz-program (blur-horz-program))
+  (define vert-program (blur-vert-program))
+  
+  (define view-widths
+    (let ([base-view-width  (quotient bloom-width (expt 2 (- bloom-levels 1)))])
+      (build-list bloom-levels (λ ([i : Index]) (* base-view-width (expt 2 i))))))
+  
+  (define view-heights
+    (let ([base-view-height  (quotient bloom-height (expt 2 (- bloom-levels 1)))])
+      (build-list bloom-levels (λ ([i : Index]) (* base-view-height (expt 2 i))))))
+  
   (with-gl-framebuffer mat-fbo
     (glViewport 0 0 width height)
     (glClearColor 0.0 0.0 0.0 0.0)
     (glClear GL_COLOR_BUFFER_BIT))
   
-  (define horz-program (blur-horz-program))
-  (define vert-program (blur-vert-program))
-  
-  (glClearColor 0.0 0.0 0.0 0.0)
-  
-  (for ([denom  (in-list bloom-levels)])
+  (for ([view-width   (in-list view-widths)]
+        [view-height  (in-list view-heights)])
+    (define view-tex-width (fl (/ view-width bloom-dwidth)))
+    (define view-tex-height (fl (/ view-height bloom-dheight)))
+    
     (glDisable GL_BLEND)
     
     (with-gl-framebuffer bloom-fbo
@@ -600,7 +608,7 @@ code
       (glClear GL_COLOR_BUFFER_BIT))
     
     (with-gl-framebuffer bloom-fbo
-      (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
+      (glViewport 0 0 view-width view-height)
       (define program (fullscreen-program))
       (with-gl-program program
         (gl-program-uniform program "rgba" (uniform-int 0))
@@ -613,22 +621,22 @@ code
       (with-gl-program horz-program
         ;; Write to blur-fbo
         (with-gl-framebuffer blur-fbo
-          (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
+          (glViewport 0 0 view-width view-height)
           (gl-program-uniform horz-program "rgba" (uniform-int 0))
           (gl-program-uniform horz-program "width" (uniform-int (gl-framebuffer-width blur-fbo)))
           ;; Read from bloom-fbo
           (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom)))))
+            (draw-fullscreen-quad view-tex-width view-tex-height))))
       
       (with-gl-program vert-program
         ;; Write to bloom-fbo
         (with-gl-framebuffer bloom-fbo
-          (glViewport 0 0 (quotient bloom-width denom) (quotient bloom-height denom))
+          (glViewport 0 0 view-width view-height)
           (gl-program-uniform vert-program "rgba" (uniform-int 0))
           (gl-program-uniform vert-program "height" (uniform-int (gl-framebuffer-height bloom-fbo)))
           ;; Read from blur-fbo
           (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom))))))
+            (draw-fullscreen-quad view-tex-width view-tex-height)))))
     
     (glEnable GL_BLEND)
     (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
@@ -638,7 +646,7 @@ code
       (with-gl-program program
         (gl-program-uniform program "rgba" (uniform-int 0))
         (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-          (draw-fullscreen-quad (/ bloom-tex-width denom) (/ bloom-tex-height denom)))))
+          (draw-fullscreen-quad view-tex-width view-tex-height))))
     )
   
   ;; ----------------------------------------------------------------------------------------------
@@ -662,12 +670,11 @@ code
       (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
         (with-gl-active-texture GL_TEXTURE1
           (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-            (define bloom-frac (/ 1.0 (fl (length bloom-levels))))
+            (define bloom-frac (/ 1.0 (fl bloom-levels)))
             (gl-program-uniform program "bloom_frac" (uniform-float bloom-frac))
             (gl-program-uniform program "color_tex" (uniform-int 0))
             (gl-program-uniform program "bloom_tex" (uniform-int 1))
             (draw-fullscreen-quad tex-width tex-height))))))
-
   #|
   (define program (fullscreen-program))
   (with-gl-program program
