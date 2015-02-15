@@ -8,7 +8,8 @@
          "../../gl.rkt"
          "../draw-pass.rkt"
          "../affine.rkt"
-         "../types.rkt")
+         "../types.rkt"
+         "tags.rkt")
 
 (provide (all-defined-out))
 
@@ -67,28 +68,38 @@
 (struct Empty-Scene scene () #:transparent)
 
 (struct nonempty-scene scene
-  ([rect : Nonempty-FlRect3]
-   [count : Positive-Fixnum])
+  ([rect : Nonempty-FlRect3])
   #:transparent)
 
-(struct scene-leaf nonempty-scene
+(struct container-scene nonempty-scene
+  ([count : Nonnegative-Fixnum]
+   [tags : Tags])
+  #:transparent)
+
+(struct leaf-scene nonempty-scene
   ([shape : Shape])
   #:transparent)
 
-(struct scene-node nonempty-scene
+(struct node-scene container-scene
   ([neg : Nonempty-Scene]
    [pos : Nonempty-Scene])
   #:transparent)
 
-(struct scene-tran nonempty-scene
-  ([transform : FlAffine3-]
+(struct trans-scene container-scene
+  ([affine : FlAffine3-]
    [scene : Nonempty-Scene])
   #:transparent)
 
+(struct group-scene container-scene
+  ([tag : Tag]
+   [scene : Scene])
+  #:transparent)
+
 (define-type Nonempty-Scene
-  (U scene-leaf
-     scene-node
-     scene-tran))
+  (U leaf-scene
+     node-scene
+     trans-scene
+     group-scene))
 
 (define-type Scene (U Empty-Scene Nonempty-Scene))
 
@@ -100,7 +111,14 @@
 (define (scene-rect s)
   (if (empty-scene? s) empty-flrect3 (nonempty-scene-rect s)))
 
-(: scene-count (case-> (-> Nonempty-Scene Positive-Fixnum)
-                       (-> Scene Nonnegative-Fixnum)))
+(: scene-count (-> Scene Nonnegative-Fixnum))
 (define (scene-count s)
-  (if (empty-scene? s) 0 (nonempty-scene-count s)))
+  (cond [(empty-scene? s)  0]
+        [(leaf-scene? s)  1]
+        [else  (container-scene-count s)]))
+
+(: scene-tags (-> Scene Tags))
+(define (scene-tags s)
+  (cond [(empty-scene? s)  empty-tags]
+        [(leaf-scene? s)  empty-tags]
+        [else  (container-scene-tags s)]))

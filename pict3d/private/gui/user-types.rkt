@@ -4,9 +4,11 @@
          typed/racket/class
          typed/racket/gui
          math/flonum
+         "../engine/scene/tags.rkt"
          "../engine/types.rkt")
 
-(provide User-Color
+(provide User-Name
+         User-Color
          User-Vector
          User-Material
          ->flv3
@@ -14,6 +16,7 @@
          ->flcolor3
          ->material)
 
+(define-type User-Name Tag)
 (define-type User-Color (U String Symbol (Sequenceof Real)))
 (define-type User-Vector (Sequenceof Real))
 (define-type User-Material (U material (List Real Real Real Real)))

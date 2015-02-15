@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/list
+         racket/set
          racket/match
          typed/racket/class
          typed/racket/gui
@@ -14,8 +15,8 @@
          "../engine/types.rkt"
          "../utils.rkt"
          "user-types.rkt"
-         "basis.rkt"
          "pict3d-struct.rkt"
+         "axes-scene.rkt"
          )
 
 (provide
@@ -26,13 +27,24 @@
  current-color
  current-emitted
  current-material
- ;; Bases
- get-basis
- set-basis
- remove-basis
- normal-basis
- columns->basis
- ;; Combinators
+ set-color
+ set-emitted
+ set-material
+ ;; Naming, mapping, finding
+ group
+ basis
+ group?
+ group-name
+ group-contents
+ replace-group
+ replace-in-group
+ ungroup
+ remove-group
+ remove-in-group
+ map-group
+ map-group/transform
+ set-origin
+ ;; Basic shapes
  triangle
  quad
  rectangle
@@ -41,37 +53,33 @@
  sunlight
  light
  freeze
+ ;; Transformations
  transform
+ point-at
+ point-to
+ columns
  scale-x
  scale-y
  scale-z
  scale
- scale-basis-x
- scale-basis-y
- scale-basis-z
- scale-basis
  rotate-x
  rotate-y
  rotate-z
  rotate
- rotate-basis-x
- rotate-basis-y
- rotate-basis-z
- rotate-basis
  move-x
  move-y
  move-z
  move
- move-basis-x
- move-basis-y
- move-basis-z
- move-basis
+ ;; Combining scenes
  combine
  combine*
  pin
+ weld
+ ;; Testing
  plane-cull
  rect-cull
  frustum-cull
+ ;; Other shapes
  arrow
  )
 
@@ -80,7 +88,7 @@
 
 (define default-color "white")
 (define default-emitted '(0 0 0 0))
-(define default-material '(0.25 0.5 0.25 0.4))
+(define default-material '(0.05 0.6 0.35 0.3))
 
 (: current-color (Parameterof User-Color FlVector))
 (define current-color
@@ -90,86 +98,124 @@
 (define current-emitted
   (make-parameter (->flcolor4 default-emitted) ->flcolor4))
 
-(: current-material (Parameterof (U material (List Real Real Real Real)) material))
+(: current-material (Parameterof User-Material material))
 (define current-material 
   (make-parameter (->material default-material) ->material))
 
-;; ===================================================================================================
-;; Affine bases
+(: set-color (-> Pict3D User-Color Pict3D))
+(define (set-color p c)
+  (let ([c  (->flcolor4 c)])
+    (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-color a c))))))
 
-(: normal-basis (->* [] [User-Vector User-Vector Real User-Vector] Basis))
-(define (normal-basis [origin (flvector 0.0 0.0 0.0)]
-                      [z-axis (flvector 0.0 0.0 1.0)]
-                      [angle 0.0]
-                      [up (flvector 0.0 0.0 1.0)])
-  (let* ([origin  (->flv3 origin)]
-         [z-axis  (flv3normalize (->flv3 z-axis))]
-         [z-axis  (if z-axis z-axis (flvector 0.0 0.0 1.0))]
-         [angle  (degrees->radians (fl angle))]
-         [up  (flv3normalize (->flv3 up))]
-         [up  (if up up (flvector 0.0 0.0 1.0))])
-    (define x-axis (flv3normalize (flv3cross z-axis up)))
-    (define t
-      (cond
-        [x-axis
-         (define y-axis (flv3cross z-axis x-axis))
-         (basis->flaffine3 x-axis y-axis z-axis origin)]
-        [(>= (flvector-ref z-axis 2) 0.0)
-         (translate-flt3 origin)]
-        [else
-         (flt3compose (translate-flt3 origin)
-                      (scale-flt3 (flvector -1.0 1.0 -1.0)))]))
-    (basis (flt3compose t (rotate-z-flt3 angle)))))
+(: set-emitted (-> Pict3D User-Color Pict3D))
+(define (set-emitted p e)
+  (let ([e  (->flcolor4 e)])
+    (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-emitted a e))))))
 
-(: columns->basis (-> User-Vector User-Vector User-Vector User-Vector Basis))
-(define (columns->basis x y z p)
-  (basis (basis->flaffine3 (->flv3 x) (->flv3 y) (->flv3 z) (->flv3 p))))
-
-(: basis-pre-transform (-> Basis FlAffine3- Basis))
-(define (basis-pre-transform p t)
-  (basis (flt3compose (basis-transform p) t)))
-
-(: basis-post-transform (-> Basis FlAffine3- Basis))
-(define (basis-post-transform p t)
-  (basis (flt3compose t (basis-transform p))))
-
-(: bases-post-transform (-> Bases FlAffine3- Bases))
-(define (bases-post-transform bases t)
-  (for/list : Bases ([kv  (in-list bases)])
-    (match-define (cons label p) kv)
-    (cons label (basis-post-transform p t))))
-
-(: get-basis (->* [Pict3D] [Symbol] Basis))
-(define (get-basis s [label 'default])
-  (define h (pict3d-bases s))
-  (if (empty? h)
-      (error 'get-basis "scene has no bases")
-      (list-hasheq-ref h label (λ () (error 'get-basis "scene has no basis labeled ~e" label)))))
-
-(: set-basis (case-> (-> Pict3D Basis Pict3D)
-                     (-> Pict3D Symbol Basis Pict3D)))
-(define set-basis
-  (case-lambda
-    [(s p)  (set-basis s 'default p)]
-    [(s label p)
-     (define h (pict3d-bases s))
-     (pict3d (pict3d-scene s) (list-hasheq-set h label p))]))
-
-(: remove-basis (->* [Pict3D] [Symbol] Pict3D))
-(define (remove-basis s [label 'default])
-  (define h (pict3d-bases s))
-  (pict3d (pict3d-scene s) (list-hasheq-remove h label)))
+(: set-material (-> Pict3D User-Material Pict3D))
+(define (set-material p m)
+  (let ([m  (->material m)])
+    (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-material a m))))))
 
 ;; ===================================================================================================
-;; Constructors
+;; Naming, mapping, finding
 
-(: scene->pict3d (-> Scene Pict3D))
-(define (scene->pict3d scene)
-  (pict3d scene empty))
+(: group (-> Pict3D User-Name Pict3D))
+(define (group p n)
+  (pict3d (make-group-scene n (pict3d-scene p))))
 
-(: shape->pict3d (-> Shape Pict3D))
-(define (shape->pict3d s)
-  (scene->pict3d (shape->scene s)))
+(: basis (-> User-Name FlAffine3- Pict3D))
+(define (basis n t)
+  (pict3d (make-trans-scene t (make-group-scene n empty-scene))))
+
+(: group? (-> Pict3D Boolean))
+(define (group? p)
+  (group-scene? (pict3d-scene p)))
+
+(: group-name (-> Pict3D User-Name))
+(define (group-name p)
+  (define s (pict3d-scene p))
+  (if (group-scene? s)
+      (group-scene-tag s)
+      (raise-argument-error 'group-name "a group" p)))
+
+(: group-contents (-> Pict3D Pict3D))
+(define (group-contents p)
+  (define s (pict3d-scene p))
+  (if (group-scene? s)
+      (pict3d (group-scene-scene s))
+      (raise-argument-error 'group-contents "a group" p)))
+
+(: make-replace (-> (-> Scene User-Name (-> Scene Scene) Scene)
+                    (-> Pict3D (U User-Name (Listof+1 User-Name)) (-> Pict3D Pict3D) Pict3D)))
+(define ((make-replace g) p n f)
+  (if (pair? n)
+      (if (empty? (cdr n))
+          ((make-replace g) p (car n) f)
+          ((make-replace g) p (car n) (λ (p) ((make-replace g) p (cdr n) f))))
+      (pict3d (g (pict3d-scene p) n (λ (s) (pict3d-scene (f (pict3d s))))))))
+
+(define replace-group (make-replace scene-replace-group))
+(define replace-in-group (make-replace scene-replace-in-group))
+
+(: ungroup (-> Pict3D (U User-Name (Listof+1 User-Name)) Pict3D))
+(define (ungroup p n)
+  (replace-group p n group-contents))
+
+(: remove-group (-> Pict3D (U User-Name (Listof+1 User-Name)) Pict3D))
+(define (remove-group p n)
+  (replace-group p n (λ (_) empty-pict3d)))
+
+(: remove-in-group (-> Pict3D (U User-Name (Listof+1 User-Name)) Pict3D))
+(define (remove-in-group p n)
+  (replace-in-group p n (λ (_) empty-pict3d)))
+
+(: map-group* (All (A) (-> Pict3D User-Name (-> Pict3D A) (Listof A))))
+(define (map-group* p n f)
+  (scene-map-group (pict3d-scene p) n (λ ([s : group-scene]) (f (pict3d s)))))
+
+(: map-group (All (A) (-> Pict3D (U User-Name (Listof+1 User-Name)) (-> Pict3D A) (Listof A))))
+(define (map-group p n f)
+  (if (pair? n)
+      (if (empty? (cdr n))
+          (map-group* p (car n) f)
+          (append* (map-group* p (car n) (λ ([p : Pict3D]) (map-group p (cdr n) f)))))
+      (map-group* p n f)))
+
+(: map-group/transform* (All (A) (-> Pict3D User-Name (-> FlAffine3- Pict3D A) (Listof A))))
+(define (map-group/transform* p n f)
+  (scene-map-group/transform (pict3d-scene p) n
+                             (λ ([t : FlAffine3-] [s : group-scene]) (f t (pict3d s)))))
+
+(: map-group/transform (All (A) (-> Pict3D
+                                    (U User-Name (Listof+1 User-Name))
+                                    (-> FlAffine3- Pict3D A)
+                                    (Listof A))))
+(define (map-group/transform p n f)
+  (if (pair? n)
+      (if (empty? (cdr n))
+          (map-group/transform* p (car n) f)
+          (append* (map-group/transform*
+                    p (car n)
+                    (λ ([t : FlAffine3-] [p : Pict3D])
+                      (map-group/transform
+                       p (cdr n)
+                       (λ ([t0 : FlAffine3-] [p : Pict3D])
+                         (f (flt3compose t t0) p)))))))
+      (map-group/transform* p n f)))
+
+(: set-origin (-> Pict3D (U User-Name (Listof+1 User-Name)) Pict3D))
+(define (set-origin p n)
+  (: fail (-> Index Nothing))
+  (define (fail m)
+    (error 'set-origin "epected one group named ~e; given a Pict3D with ~a groups named ~e" n m n))
+  (define ps (map-group/transform p n (λ ([t : FlAffine3-] _) (transform p (flt3inverse t)))))
+  (cond [(empty? ps)  (fail 0)]
+        [(empty? (rest ps))  (first ps)]
+        [else  (fail (length ps))]))
+
+;; ===================================================================================================
+;; Basic shapes
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
@@ -178,13 +224,14 @@
 (define (triangle v1 v2 v3 [back? #f])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3)))
   (define norm (flv3polygon-normal vs))
-  (shape->pict3d
-   (make-triangle-shape vs
-                        (if norm norm (flvector 0.0 0.0 0.0))
-                        (current-color)
-                        (current-emitted)
-                        (current-material)
-                        (and back? #t))))
+  (pict3d
+   (shape->scene
+    (make-triangle-shape vs
+                         (if norm norm (flvector 0.0 0.0 0.0))
+                         (current-color)
+                         (current-emitted)
+                         (current-material)
+                         (and back? #t)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
@@ -193,7 +240,7 @@
 (define (quad v1 v2 v3 v4 [back? #f])
   (define vs (vector (->flv3 v1) (->flv3 v2) (->flv3 v3) (->flv3 v4)))
   (define norm (flv3polygon-normal vs))
-  (scene->pict3d
+  (pict3d
    (scene-union*
     (map
      shape->scene
@@ -209,12 +256,13 @@
 
 (: rectangle (->* [User-Vector User-Vector] [Any] Pict3D))
 (define (rectangle v1 v2 [inside? #f])
-  (shape->pict3d
-   (make-rectangle-shape (assert (flv3rect (vector (->flv3 v1) (->flv3 v2))) nonempty-flrect3?)
-                         (current-color)
-                         (current-emitted)
-                         (current-material)
-                         (and inside? #t))))
+  (pict3d
+   (shape->scene
+    (make-rectangle-shape (assert (flv3rect (vector (->flv3 v1) (->flv3 v2))) nonempty-flrect3?)
+                          (current-color)
+                          (current-emitted)
+                          (current-material)
+                          (and inside? #t)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Ellipsoid
@@ -224,12 +272,13 @@
   (define r (fl radius))
   (define t (flt3compose (translate-flt3 (->flv3 center))
                          (scale-flt3 (flvector r r r))))
-  (shape->pict3d
-   (make-sphere-shape t
-                      (current-color)
-                      (current-emitted)
-                      (current-material)
-                      (and inside? #t))))
+  (pict3d
+   (shape->scene
+    (make-sphere-shape t
+                       (current-color)
+                       (current-emitted)
+                       (current-material)
+                       (and inside? #t)))))
 
 (: ellipsoid (->* [User-Vector User-Vector] [Any] Pict3D))
 (define (ellipsoid v1 v2 [inside? #f])
@@ -237,12 +286,13 @@
         [v2  (->flv3 v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
                            (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
-    (shape->pict3d
-     (make-sphere-shape t
-                        (current-color)
-                        (current-emitted)
-                        (current-material)
-                        (and inside? #t)))))
+    (pict3d
+     (shape->scene
+      (make-sphere-shape t
+                         (current-color)
+                         (current-emitted)
+                         (current-material)
+                         (and inside? #t))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
@@ -250,10 +300,11 @@
 (: sunlight (-> User-Vector User-Color Real Pict3D))
 (define (sunlight direction color intensity)
   (define dir (flv3normalize (->flv3 direction)))
-  (shape->pict3d
-   (make-directional-light-shape (->flcolor3 color)
-                                 (fl intensity)
-                                 (if dir dir (flvector 0.0 0.0 0.0)))))
+  (pict3d
+   (shape->scene
+    (make-directional-light-shape (->flcolor3 color)
+                                  (fl intensity)
+                                  (if dir dir (flvector 0.0 0.0 0.0))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
@@ -271,8 +322,9 @@
          [color  (->flcolor3 color)]
          [intensity  (fl intensity)]
          [radius  (if radius (fl radius) (default-light-radius intensity))])
-    (shape->pict3d
-     (make-point-light-shape color intensity position radius))))
+    (pict3d
+     (shape->scene
+      (make-point-light-shape color intensity position radius)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Efficiency
@@ -282,26 +334,22 @@
   (define scene (pict3d-scene p))
   (if (empty-scene? scene)
       p
-      (pict3d (shape->scene (make-frozen-scene-shape scene))
-              (pict3d-bases p))))
+      (pict3d (shape->scene (make-frozen-scene-shape scene)))))
 
 ;; ===================================================================================================
 ;; Transformations
 
-(: pict3d-post-transform (-> Pict3D FlAffine3- Pict3D))
-(define (pict3d-post-transform s t)
-  (define scene (pict3d-scene s))
-  (define h (pict3d-bases s))
-  (pict3d (scene-transform scene t)
-          (and h (bases-post-transform h t))))
-
 (: transform (-> Pict3D FlAffine3- Pict3D))
 (define (transform s t)
-  (pict3d-post-transform s t))
+  (pict3d (make-trans-scene t (pict3d-scene s))))
 
-(: transform-basis (-> Basis FlAffine3- Basis))
-(define (transform-basis s t)
-  (basis-pre-transform s t))
+(: make-transformer (All (A) (-> (-> A FlAffine3-)
+                                 (case-> (-> A FlAffine3-)
+                                         (-> Pict3D A Pict3D)))))
+(define (make-transformer f)
+  (case-lambda
+    [(v)  (f v)]
+    [(p v)  (transform p (f v))]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
@@ -319,48 +367,25 @@
                   (raise-argument-error name "nonzero scale" v)]
                  [else  v]))]))
 
-(: scale-x (-> Pict3D Real Pict3D))
-(: scale-y (-> Pict3D Real Pict3D))
-(: scale-z (-> Pict3D Real Pict3D))
-(: scale (-> Pict3D (U Real User-Vector) Pict3D))
+(define scale-x
+  (make-transformer (λ ([v : Real]) (scale-flt3 (check-scale 'scale-x (flvector (fl v) 1.0 1.0))))))
 
-(define (scale-x s v) (scale s (flvector (fl v) 1.0 1.0)))
-(define (scale-y s v) (scale s (flvector 1.0 (fl v) 1.0)))
-(define (scale-z s v) (scale s (flvector 1.0 1.0 (fl v))))
-(define (scale s v) (transform s (scale-flt3 (check-scale 'scale v))))
+(define scale-y
+  (make-transformer (λ ([v : Real]) (scale-flt3 (check-scale 'scale-y (flvector 1.0 (fl v) 1.0))))))
 
-(: scale-basis-x (-> Basis Real Basis))
-(: scale-basis-y (-> Basis Real Basis))
-(: scale-basis-z (-> Basis Real Basis))
-(: scale-basis (-> Basis (U Real User-Vector) Basis))
+(define scale-z
+  (make-transformer (λ ([v : Real]) (scale-flt3 (check-scale 'scale-z (flvector 1.0 1.0 (fl v)))))))
 
-(define (scale-basis-x s v) (scale-basis s (flvector (fl v) 1.0 1.0)))
-(define (scale-basis-y s v) (scale-basis s (flvector 1.0 (fl v) 1.0)))
-(define (scale-basis-z s v) (scale-basis s (flvector 1.0 1.0 (fl v))))
-(define (scale-basis s v) (transform-basis s (scale-flt3 (check-scale 'scale-basis v))))
+(define scale
+  (make-transformer (λ ([v : (U Real User-Vector)]) (scale-flt3 (check-scale 'scale v)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Translate
 
-(: move-x (-> Pict3D Real Pict3D))
-(: move-y (-> Pict3D Real Pict3D))
-(: move-z (-> Pict3D Real Pict3D))
-(: move (-> Pict3D User-Vector Pict3D))
-
-(define (move-x s v) (move s (flvector (fl v) 0.0 0.0)))
-(define (move-y s v) (move s (flvector 0.0 (fl v) 0.0)))
-(define (move-z s v) (move s (flvector 0.0 0.0 (fl v))))
-(define (move s v) (transform s (translate-flt3 (->flv3 v))))
-
-(: move-basis-x (-> Basis Real Basis))
-(: move-basis-y (-> Basis Real Basis))
-(: move-basis-z (-> Basis Real Basis))
-(: move-basis (-> Basis User-Vector Basis))
-
-(define (move-basis-x s v) (move-basis s (flvector (fl v) 0.0 0.0)))
-(define (move-basis-y s v) (move-basis s (flvector 0.0 (fl v) 0.0)))
-(define (move-basis-z s v) (move-basis s (flvector 0.0 0.0 (fl v))))
-(define (move-basis s v) (transform-basis s (translate-flt3 (->flv3 v))))
+(define move-x (make-transformer (λ ([v : Real]) (translate-flt3 (flvector (fl v) 0.0 0.0)))))
+(define move-y (make-transformer (λ ([v : Real]) (translate-flt3 (flvector 0.0 (fl v) 0.0)))))
+(define move-z (make-transformer (λ ([v : Real]) (translate-flt3 (flvector 0.0 0.0 (fl v))))))
+(define move (make-transformer (λ ([v : User-Vector]) (translate-flt3 (->flv3 v)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rotate
@@ -368,83 +393,106 @@
 (: check-axis (-> Symbol User-Vector FlVector))
 (define (check-axis name v)
   (let ([v  (flv3normalize (->flv3 v))])
-    (if v v (raise-argument-error name "nonzero direction vector" v))))
+    (if v v (raise-argument-error name "nonzero axis vector" v))))
 
-(: rotate-x (-> Pict3D Real Pict3D))
-(: rotate-y (-> Pict3D Real Pict3D))
-(: rotate-z (-> Pict3D Real Pict3D))
-(: rotate (-> Pict3D User-Vector Real Pict3D))
+(define rotate-x
+  (make-transformer (λ ([a : Real]) (rotate-flt3 (flvector 1.0 0.0 0.0) (degrees->radians (fl a))))))
 
-(define (rotate-x s a) (rotate s (flvector 1.0 0.0 0.0) a))
-(define (rotate-y s a) (rotate s (flvector 0.0 1.0 0.0) a))
-(define (rotate-z s a) (rotate s (flvector 0.0 0.0 1.0) a))
-(define (rotate s v a)
-  (transform s (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a)))))
+(define rotate-y
+  (make-transformer (λ ([a : Real]) (rotate-flt3 (flvector 0.0 1.0 0.0) (degrees->radians (fl a))))))
 
-(: rotate-basis-x (-> Basis Real Basis))
-(: rotate-basis-y (-> Basis Real Basis))
-(: rotate-basis-z (-> Basis Real Basis))
-(: rotate-basis (-> Basis User-Vector Real Basis))
+(define rotate-z
+  (make-transformer (λ ([a : Real]) (rotate-flt3 (flvector 0.0 0.0 1.0) (degrees->radians (fl a))))))
 
-(define (rotate-basis-x s a) (rotate-basis s (flvector 1.0 0.0 0.0) a))
-(define (rotate-basis-y s a) (rotate-basis s (flvector 0.0 1.0 0.0) a))
-(define (rotate-basis-z s a) (rotate-basis s (flvector 0.0 0.0 1.0) a))
-(define (rotate-basis s v a)
-  (transform-basis s (rotate-flt3 (check-axis 'rotate-basis v) (degrees->radians (fl a)))))
+(: rotate (case-> (-> User-Vector Real FlAffine3-)
+                  (-> Pict3D User-Vector Real Pict3D)))
+(define rotate
+  (case-lambda
+    [(v a)  (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a)))]
+    [(p v a)  (transform p (rotate v a))]))
+
+;; ---------------------------------------------------------------------------------------------------
+
+(: point-at (->* [] [User-Vector User-Vector Real User-Vector] FlAffine3-))
+(define (point-at [origin (flvector 0.0 0.0 0.0)]
+                  [z-axis (flvector 0.0 0.0 1.0)]
+                  [angle 0.0]
+                  [up (flvector 0.0 0.0 1.0)])
+  (let* ([origin  (->flv3 origin)]
+         [z-axis  (flv3normalize (->flv3 z-axis))]
+         [z-axis  (if z-axis z-axis (flvector 0.0 0.0 1.0))]
+         [angle  (degrees->radians (fl angle))]
+         [up  (flv3normalize (->flv3 up))]
+         [up  (if up up (flvector 0.0 0.0 1.0))])
+    (define x-axis (flv3normalize (flv3cross z-axis up)))
+    (define t
+      (cond
+        [x-axis
+         (define y-axis (flv3cross z-axis x-axis))
+         (basis->flaffine3 x-axis y-axis z-axis origin)]
+        [(>= (flvector-ref z-axis 2) 0.0)
+         (translate-flt3 origin)]
+        [else
+         (flt3compose (translate-flt3 origin)
+                      (scale-flt3 (flvector -1.0 1.0 -1.0)))]))
+    (flt3compose t (rotate-z-flt3 angle))))
+
+;; ---------------------------------------------------------------------------------------------------
+
+(: point-to (->* [] [User-Vector User-Vector Real User-Vector] FlAffine3-))
+(define (point-to [origin (flvector 0.0 0.0 0.0)]
+                  [z-axis (flvector 0.0 0.0 1.0)]
+                  [angle 0.0]
+                  [up (flvector 0.0 0.0 1.0)])
+  (let ([z-axis  (->flv3 z-axis)])
+    (define t (point-at origin z-axis angle up))
+    (flt3compose t (scale-flt3 (flvector 1.0 1.0 (flv3mag z-axis))))))
+
+;; ---------------------------------------------------------------------------------------------------
+
+(: columns (-> User-Vector User-Vector User-Vector User-Vector FlAffine3-))
+(define (columns x y z p)
+  (basis->flaffine3 (->flv3 x) (->flv3 y) (->flv3 z) (->flv3 p)))
 
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)
 
 (: combine* (-> (Listof Pict3D) Pict3D))
-(define (combine* ss)
-  (cond [(empty? ss)  empty-pict3d]
-        [else
-         (pict3d (scene-union* (map pict3d-scene ss))
-                 ((inst remove-duplicates (Pair Symbol Basis) Symbol)
-                  (append* (reverse (map pict3d-bases ss)))
-                  eq?
-                  #:key car))]))
+(define (combine* ps)
+  (cond [(empty? ps)  empty-pict3d]
+        [else  (pict3d (scene-union* (map pict3d-scene ps)))]))
 
 (: combine (-> Pict3D * Pict3D))
-(define (combine . ss)
-  (combine* ss))
+(define (combine . ps) (combine* ps))
 
-(: pin (->* [Pict3D Pict3D] [Symbol Symbol] Pict3D))
-(define (pin s1 s2 [label1 'default] [label2 'default])
-  (define p1 (get-basis s1 label1))
-  (define p2 (get-basis s2 label2))
-  (define t1 (basis-transform p1))
-  (define t2 (basis-transform p2))
-  (define t (flt3compose t1 (flt3inverse t2)))
-  (define scene1 (pict3d-scene s1))
-  (define scene2 (pict3d-scene s2))
-  (define h1 (assert (pict3d-bases s1) values))
-  (define h2 (assert (pict3d-bases s2) values))
-  (pict3d
-   (scene-union scene1 (scene-transform scene2 t))
-   (list-hasheq-merge (list-hasheq-remove h1 label1)
-                      (bases-post-transform (list-hasheq-remove h2 label2) t))))
+(: pin (->* [Pict3D (U User-Name (Listof+1 User-Name)) Pict3D] [(U User-Name (Listof+1 User-Name))]
+            Pict3D))
+(define (pin p1 n1 p2 [n2 #f])
+  (let ([p2  (if n2 (ungroup (set-origin p2 n2) n2) p2)])
+    (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))
+
+(: weld (->* [Pict3D User-Name Pict3D] [User-Name] Pict3D))
+(define (weld p1 n1 p2 [n2 #f])
+  (let ([p2  (if n2 (ungroup (set-origin p2 n2) n2) p2)])
+    (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
 
 ;; ===================================================================================================
 ;; Testing combinators
 
 (: plane-cull (-> Pict3D FlPlane3 Pict3D))
 (define (plane-cull s p)
-  (pict3d (scene-plane-cull (pict3d-scene s) p)
-          (pict3d-bases s)))
+  (pict3d (scene-plane-cull (pict3d-scene s) p)))
 
 (: rect-cull (-> Pict3D FlRect3 Pict3D))
 (define (rect-cull s b)
-  (pict3d (scene-rect-cull (pict3d-scene s) b)
-          (pict3d-bases s)))
+  (pict3d (scene-rect-cull (pict3d-scene s) b)))
 
 (: frustum-cull (-> Pict3D FlTransform3 Pict3D))
 (define (frustum-cull s t)
-  (pict3d (scene-frustum-cull (pict3d-scene s) t)
-          (pict3d-bases s)))
+  (pict3d (scene-frustum-cull (pict3d-scene s) t)))
 
 ;; ===================================================================================================
-;; Arrows
+;; Other shapes
 
 (define (make-up-arrow)
   (freeze
@@ -460,29 +508,9 @@
           '(-2/64 -2/64 56/64)
           '(-2/64 2/64 56/64)))))
 
-(: direction-basis (-> User-Vector User-Vector Basis))
-(define (direction-basis origin z-axis)
-  (let* ([origin  (->flv3 origin)]
-         [z-axis  (->flv3 z-axis)])
-    (define x-axis (flv3normalize (flv3cross z-axis (flvector 0.0 0.0 1.0))))
-    (cond
-      [x-axis
-       (define y-axis (assert (flv3normalize (flv3cross z-axis x-axis)) values))
-       (columns->basis x-axis y-axis z-axis origin)]
-      [(>= (flvector-ref z-axis 2) 0.0)
-       (columns->basis (flvector 1.0 0.0 0.0)
-                       (flvector 0.0 1.0 0.0)
-                       (flvector 0.0 0.0 1.0)
-                       origin)]
-      [else
-       (columns->basis (flvector -1.0 0.0  0.0)
-                       (flvector  0.0 1.0  0.0)
-                       (flvector  0.0 0.0 -1.0)
-                       origin)])))
-
 (: arrow (case-> (-> User-Vector Pict3D)
                  (-> User-Vector User-Vector Pict3D)))
 (define arrow
   (case-lambda
     [(end)  (arrow '(0 0 0) end)]
-    [(v0 v1)  (transform (make-up-arrow) (basis-transform (direction-basis v0 v1)))]))
+    [(v0 v1)  (transform (make-up-arrow) (point-to v0 v1))]))

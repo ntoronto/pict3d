@@ -36,6 +36,7 @@ for `Scene`.
          "../affine.rkt"
          "../types.rkt"
          "../utils.rkt"
+         "tags.rkt"
          "types.rkt"
          "shape.rkt")
 
@@ -44,44 +45,66 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Scene constructors
 
-(: shape->scene (-> Shape Nonempty-Scene))
-(define (shape->scene a)
-  (scene-leaf (shape-rect a) 1 a))
-
-(: make-nonempty-scene-node (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
-(define (make-nonempty-scene-node s1 s2)
+(: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
+(define (make-nonempty-node-scene s1 s2)
   (define b (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
-  (define c (fx+ (nonempty-scene-count s1) (nonempty-scene-count s2)))
-  (scene-node b c s1 s2))
+  (define c (fx+ (scene-count s1) (scene-count s2)))
+  (define ms (tags-union (scene-tags s1) (scene-tags s2)))
+  (node-scene b c ms s1 s2))
 
-(: make-scene-node (-> Scene Scene Scene))
-(define (make-scene-node s1 s2)
+(: make-node-scene (-> Scene Scene Scene))
+(define (make-node-scene s1 s2)
   (cond [(empty-scene? s1)  s2]
         [(empty-scene? s2)  s1]
-        [else  (make-nonempty-scene-node s1 s2)]))
+        [else  (make-nonempty-node-scene s1 s2)]))
 
-(: make-nonempty-scene-tran (-> FlAffine3- Nonempty-Scene Nonempty-Scene))
-(define (make-nonempty-scene-tran t s)
-  (if (scene-tran? s)
-      (make-nonempty-scene-tran (flt3compose t (scene-tran-transform s))
-                                (scene-tran-scene s))
-      (scene-tran (flrect3-transform (scene-rect s) t) (nonempty-scene-count s) t s)))
+(: make-nonempty-trans-scene (-> FlAffine3- Nonempty-Scene Nonempty-Scene))
+(define (make-nonempty-trans-scene t s)
+  (cond [(flidentity3? t)  s]
+        [(trans-scene? s)
+         (make-nonempty-trans-scene (flt3compose t (trans-scene-affine s))
+                                    (trans-scene-scene s))]
+        [else
+         (trans-scene (flrect3-transform (nonempty-scene-rect s) t)
+                      (scene-count s)
+                      (scene-tags s)
+                      t s)]))
 
-(: scene-transform (-> Scene FlAffine3- Scene))
-(define (scene-transform s t)
-  (if (empty-scene? s) s (make-nonempty-scene-tran t s)))
+(: make-trans-scene (-> FlAffine3- Scene Scene))
+(define (make-trans-scene t s)
+  (if (empty-scene? s) s (make-nonempty-trans-scene t s)))
+
+(define zero-rect (nonempty-flrect3 (flvector 0.0 0.0 0.0) (flvector 0.0 0.0 0.0)))
+
+(: make-group-scene (-> Tag Scene Nonempty-Scene))
+(define (make-group-scene n s)
+  (cond [(empty-scene? s)
+         (group-scene zero-rect 0 (singleton-tags n) n s)]
+        [else
+         (group-scene (nonempty-scene-rect s)
+                      (scene-count s)
+                      (tags-add (scene-tags s) n)
+                      n s)]))
 
 ;; ===================================================================================================
 ;; Scene union with rebalancing
 
-(: scene-node-insert (-> scene-node Nonempty-Scene Nonempty-Scene))
-(define (scene-node-insert s1 s2)
-  (match-define (scene-node r c1 s11 s12) s1)
+(: node-scene-insert (-> node-scene Nonempty-Scene Nonempty-Scene))
+(define (node-scene-insert s1 s2)
+  (match-define (node-scene r1 c1 ms1 s11 s12) s1)
   (define r2 (nonempty-scene-rect s2))
   (cond [(flrect3-contains-rect? (nonempty-scene-rect s11) r2)
-         (scene-node r (unsafe-fx+ c1 (nonempty-scene-count s2)) (nonempty-scene-union s11 s2) s12)]
+         (node-scene r1
+                     (unsafe-fx+ c1 (scene-count s2))
+                     (tags-union ms1 (scene-tags s2))
+                     (nonempty-scene-union s11 s2)
+                     s12)]
         [(flrect3-contains-rect? (nonempty-scene-rect s12) r2)
-         (scene-node r (unsafe-fx+ c1 (nonempty-scene-count s2)) s11 (nonempty-scene-union s12 s2))]
+         (node-scene r1
+                     (unsafe-fx+ c1 (scene-count s2))
+                     (tags-union ms1 (scene-tags s2))
+                     s11
+                     (nonempty-scene-union s12 s2))]
         [else
          (nonempty-scene-union/rebalance s1 s2)]))
 
@@ -89,10 +112,10 @@ for `Scene`.
 (define (nonempty-scene-union s1 s2)
   (define r1 (nonempty-scene-rect s1))
   (define r2 (nonempty-scene-rect s2))
-  (cond [(and (scene-node? s1) (flrect3-contains-rect? r1 r2))
-         (scene-node-insert s1 s2)]
-        [(and (scene-node? s2) (flrect3-contains-rect? r2 r1))
-         (scene-node-insert s2 s1)]
+  (cond [(and (node-scene? s1) (flrect3-contains-rect? r1 r2))
+         (node-scene-insert s1 s2)]
+        [(and (node-scene? s2) (flrect3-contains-rect? r2 r1))
+         (node-scene-insert s2 s1)]
         [else
          (nonempty-scene-union/rebalance s1 s2)]))
 
@@ -128,74 +151,228 @@ for `Scene`.
     (cond
       [(<= x xmin)  (values empty-scene s)]
       [(<= xmax x)  (values s empty-scene)]
-      [(or (scene-leaf? s) (scene-tran? s))
+      [(or (leaf-scene? s) (trans-scene? s) (group-scene? s))
        (if (< (- x xmin) (- xmax x))
            (values s empty-scene)
            (values empty-scene s))]
-      [(scene-node? s)
-       (define s1 (scene-node-neg s))
-       (define s2 (scene-node-pos s))
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
        (define-values (s11 s12) (loop s1))
        (define-values (s21 s22) (loop s2))
-       (let ([s1  (if (and (eq? s11 s1) (eq? s21 s2)) s (make-scene-node s11 s21))]
-             [s2  (if (and (eq? s12 s1) (eq? s22 s2)) s (make-scene-node s12 s22))])
+       (let ([s1  (if (and (eq? s11 s1) (eq? s21 s2)) s (make-node-scene s11 s21))]
+             [s2  (if (and (eq? s12 s1) (eq? s22 s2)) s (make-node-scene s12 s22))])
          (values s1 s2))])))
 
 (: nonempty-scene-union/rebalance (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union/rebalance s1 s2)
   (define r (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
-  (define c (unsafe-fx+ (nonempty-scene-count s1) (nonempty-scene-count s2)))
+  (define c (unsafe-fx+ (scene-count s1) (scene-count s2)))
+  (define ms (tags-union (scene-tags s1) (scene-tags s2)))
   (define-values (i x) (flrect3-longest-axis/center r))
   (define-values (s11 s12) (scene-rebalance-split s1 i x))
   (define-values (s21 s22) (scene-rebalance-split s2 i x))
   (cond [(empty-scene? s11)
          (if (or (empty-scene? s21) (empty-scene? s22))
-             (scene-node r c s1 s2)
-             (scene-node r c s21 (nonempty-scene-union/rebalance s1 s22)))]
+             (node-scene r c ms s1 s2)
+             (node-scene r c ms s21 (nonempty-scene-union/rebalance s1 s22)))]
         [(empty-scene? s12)
          (if (or (empty-scene? s21) (empty-scene? s22))
-             (scene-node r c s1 s2)
-             (scene-node r c (nonempty-scene-union/rebalance s1 s21) s22))]
+             (node-scene r c ms s1 s2)
+             (node-scene r c ms (nonempty-scene-union/rebalance s1 s21) s22))]
         [(empty-scene? s21)
-         (scene-node r c s11 (nonempty-scene-union/rebalance s12 s2))]
+         (node-scene r c ms s11 (nonempty-scene-union/rebalance s12 s2))]
         [(empty-scene? s22)
-         (scene-node r c (nonempty-scene-union/rebalance s11 s2) s12)]
+         (node-scene r c ms (nonempty-scene-union/rebalance s11 s2) s12)]
         [else
-         (scene-node r c
+         (node-scene r c ms
                      (nonempty-scene-union/rebalance s11 s21)
                      (nonempty-scene-union/rebalance s12 s22))]))
 
 ;; ===================================================================================================
-;; Filter
+;; Map and filter
 
-(: scene-filter (-> Scene (-> Shape Boolean) Scene))
-(define (scene-filter s p?)
+(: scene-filter-shapes (-> Scene (-> Shape Boolean) Scene))
+(define (scene-filter-shapes s p?)
   (let loop ([s s])
-    (match s
-      [(? empty-scene? s)  s]
-      [(scene-leaf b c a)
-       (if (p? a) s empty-scene)]
-      [(scene-node b c s1 s2)
+    (cond
+      [(empty-scene? s)  s]
+      [(leaf-scene? s)
+       (if (p? (leaf-scene-shape s)) s empty-scene)]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
        (define new-s1 (loop s1))
        (define new-s2 (loop s2))
        (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
-             [(empty-scene? new-s1)  new-s2]
-             [(empty-scene? new-s2)  new-s1]
-             [else  (make-nonempty-scene-node new-s1 new-s2)])]
-      [(scene-tran b c t0 s0)
+             [else  (make-node-scene new-s1 new-s2)])]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [(empty-scene? new-s0)  new-s0]
-             [else  (make-nonempty-scene-tran t0 new-s0)])])))
+             [else  (make-trans-scene t0 new-s0)])]
+      [(group-scene? s)
+       (define n0 (group-scene-tag s))
+       (define s0 (group-scene-scene s))
+       (define new-s0 (loop s0))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-group-scene n0 new-s0)])])))
+
+(: scene-map-shapes (-> Scene (-> Shape Shape) Scene))
+(define (scene-map-shapes s f)
+  (let loop ([s s])
+    (cond
+      [(empty-scene? s)  s]
+      [(leaf-scene? s)
+       (define a (leaf-scene-shape s))
+       (define new-a (f a))
+       (cond [(eq? new-a a)  s]
+             [else  (shape->scene new-a)])]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
+       (define new-s1 (loop s1))
+       (define new-s2 (loop s2))
+       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+             [else  (make-node-scene new-s1 new-s2)])]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
+       (define new-s0 (loop s0))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-trans-scene t0 new-s0)])]
+      [(group-scene? s)
+       (define n0 (group-scene-tag s))
+       (define s0 (group-scene-scene s))
+       (define new-s0 (loop s0))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-group-scene n0 new-s0)])])))
+
+;; ===================================================================================================
+;; Mapping over groups
+
+(: scene-map-group/transform (All (A) (-> Scene Tag (-> FlAffine3- group-scene A) (Listof A))))
+(define (scene-map-group/transform s n f)
+  (reverse
+   (let loop ([t : FlAffine3-  identity-flt3] [s s] [as : (Listof A)  empty])
+     (cond
+       [(empty-scene? s)  as]
+       [(leaf-scene? s)  as]
+       [(not (tags-contain? (container-scene-tags s) n))  as]
+       [(node-scene? s)
+        (define s1 (node-scene-neg s))
+        (define s2 (node-scene-pos s))
+        (loop t s2 (loop t s1 as))]
+       [(trans-scene? s)
+        (define t0 (trans-scene-affine s))
+        (define s0 (trans-scene-scene s))
+        (loop (flt3compose t t0) s0 as)]
+       [(group-scene? s)
+        (define n0 (group-scene-tag s))
+        (define s0 (group-scene-scene s))
+        (cond [(equal? n0 n)  (cons (f t s) as)]
+              [else  (loop t s0 as)])]))))
+
+(: scene-map-group (All (A) (-> Scene Tag (-> group-scene A) (Listof A))))
+(define (scene-map-group s n f)
+  (reverse
+   (let loop ([s s] [as : (Listof A)  empty])
+     (cond
+       [(empty-scene? s)  as]
+       [(leaf-scene? s)  as]
+       [(not (tags-contain? (container-scene-tags s) n))  as]
+       [(node-scene? s)
+        (define s1 (node-scene-neg s))
+        (define s2 (node-scene-pos s))
+        (loop s2 (loop s1 as))]
+       [(trans-scene? s)
+        (define s0 (trans-scene-scene s))
+        (loop s0 as)]
+       [(group-scene? s)
+        (define n0 (group-scene-tag s))
+        (define s0 (group-scene-scene s))
+        (cond [(equal? n0 n)  (cons (f s) as)]
+              [else  (loop s0 as)])]))))
+
+;; ===================================================================================================
+
+(: scene-all-group-transforms (-> Scene (Listof FlAffine3-)))
+(define (scene-all-group-transforms s)
+  (let loop ([t : FlAffine3-  identity-flt3] [s s])
+    (cond
+      [(empty-scene? s)  empty]
+      [(leaf-scene? s)  empty]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
+       (append (loop t s1) (loop t s2))]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
+       (loop (flt3compose t t0) s0)]
+      [(group-scene? s)
+       (define n0 (group-scene-tag s))
+       (define s0 (group-scene-scene s))
+       (cons t (loop t s0))])))
+
+;; ===================================================================================================
+;; Replace groups or within groups - like a fold for Scene, but just on groups
+
+(: scene-replace-group (-> Scene Tag (-> group-scene Scene) Scene))
+(define (scene-replace-group s n f)
+  (let loop ([s s])
+    (cond
+      [(empty-scene? s)  s]
+      [(leaf-scene? s)  s]
+      [(not (tags-contain? (container-scene-tags s) n))  s]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
+       (define new-s1 (loop s1))
+       (define new-s2 (loop s2))
+       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+             [else  (make-node-scene new-s1 new-s2)])]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
+       (define new-s0 (loop s0))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-trans-scene t0 new-s0)])]
+      [(group-scene? s)
+       (match-define (group-scene b c ms n0 s0) s)
+       (cond [(equal? n0 n)  (f s)]
+             [else
+              (define new-s0 (loop s0))
+              (cond [(eq? new-s0 s0)  s]
+                    [else  (make-group-scene n0 new-s0)])])])))
+
+(: scene-replace-in-group (-> Scene Tag (-> Scene Scene) Scene))
+(define (scene-replace-in-group s n f)
+  (scene-replace-group
+   s n (λ (s)
+         (match-define (group-scene b c ms n0 s0) s)
+         (define new-s0 (f s0))
+         (cond [(eq? new-s0 s0)  s]
+               [else  (make-group-scene n0 new-s0)]))))
 
 ;; ===================================================================================================
 ;; Tastes almost-but-not-quite-entirely-unlike map
 
-(: nonempty-scene-for-each! (All (B) (-> Nonempty-Scene
-                                         (Listof FlPlane3)
-                                         (-> Shape affine Nonnegative-Fixnum Any)
-                                         Nonnegative-Fixnum
-                                         Nonnegative-Fixnum)))
+(: transform-planes (-> FlAffine3- (Listof FlPlane3) (Listof FlPlane3)))
+(define (transform-planes t0 planes)
+  (if (flidentity3? t0)
+      planes
+      (let ([tinv0  (flt3inverse t0)])
+        (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
+          (define new-p (flt3apply/pln tinv0 p))
+          (if new-p (cons new-p planes) planes)))))
+
+(: nonempty-scene-for-each! (-> Nonempty-Scene
+                                (Listof FlPlane3)
+                                (-> Shape affine Nonnegative-Fixnum Any)
+                                Nonnegative-Fixnum
+                                Nonnegative-Fixnum))
 (define (nonempty-scene-for-each! s planes f start)
   (let loop ([s s]
              [t : affine  identity-affine]
@@ -209,28 +386,24 @@ for `Scene`.
     (define planes (if (eq? side 'inside) empty parent-planes))
     (cond
       [(eq? side 'outside)   i]
-      [(scene-leaf? s)
-       (f (scene-leaf-shape s) t i)
+      [(leaf-scene? s)
+       (f (leaf-scene-shape s) t i)
        (unsafe-fx+ i 1)]
-      [(scene-node? s)
-       (let* ([i  (loop (scene-node-neg s) t planes i)]
-              [i  (loop (scene-node-pos s) t planes i)])
+      [(node-scene? s)
+       (let* ([i  (loop (node-scene-neg s) t planes i)]
+              [i  (loop (node-scene-pos s) t planes i)])
          i)]
-      [(scene-tran? s)
-       (define t0 (scene-tran-transform s))
-       (loop (scene-tran-scene s)
+      [(trans-scene? s)
+       (define s0 (trans-scene-scene s))
+       (define t0 (trans-scene-affine s))
+       (loop s0
              (affine-compose t t0)
-             (let ([tinv0  (flt3inverse t0)])
-               (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
-                 (define new-p (flt3apply/pln tinv0 p))
-                 (if new-p (cons new-p planes) planes)))
-             i)])))
-
-(: scene-first-shape (-> Nonempty-Scene Shape))
-(define (scene-first-shape s)
-  (cond [(scene-leaf? s)  (scene-leaf-shape s)]
-        [(scene-node? s)  (scene-first-shape (scene-node-neg s))]
-        [(scene-tran? s)  (scene-first-shape (scene-tran-scene s))]))
+             (transform-planes t0 planes)
+             i)]
+      [(group-scene? s)
+       (define s0 (group-scene-scene s))
+       (cond [(empty-scene? s0)  i]
+             [else  (loop s0 t planes i)])])))
 
 (: scene-for-each! (-> Scene
                        (Listof FlPlane3)
@@ -254,94 +427,82 @@ for `Scene`.
   bs)
 
 ;; ===================================================================================================
-;; Shape bounding box
-
-(: shape-rect (-> Shape Nonempty-FlRect3))
-(define (shape-rect a)
-  (cond
-    [(solid-shape? a)
-     (cond
-       [(triangle-shape? a)   (triangle-shape-rect a)]
-       [(rectangle-shape? a)  (rectangle-shape-rect a)]
-       [(sphere-shape? a)     (sphere-shape-rect a)])]
-    [(light-shape? a)
-     (cond
-       [(directional-light-shape? a)  directional-light-shape-rect]
-       [(point-light-shape? a)        (point-light-shape-rect a)])]
-    [(frozen-scene-shape? a)
-     (frozen-scene-shape-rect a)]))
-
-;; ===================================================================================================
 ;; Scene plane culling
-
-(: nonempty-scene-plane-cull (-> Nonempty-Scene FlPlane3 Scene))
-(define (nonempty-scene-plane-cull s p)
-  (let loop ([s s] [p p])
-    (define side (flrect3-plane-side (scene-rect s) p))
-    (cond
-      [(or (eq? side 'pos) (eq? side 'poszero) (eq? side 'zero))  s]
-      [(eq? side 'neg)  empty-scene]
-      ;; side is either 'negzero or 'both
-      [(scene-leaf? s)  s]
-      [(scene-node? s)
-       (match-define (scene-node b c s1 s2) s)
-       (define new-s1 (loop s1 p))
-       (define new-s2 (loop s2 p))
-       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
-             [(empty-scene? new-s1)  new-s2]
-             [(empty-scene? new-s2)  new-s1]
-             [else  (make-nonempty-scene-node new-s1 new-s2)])]
-      [(scene-tran? s)
-       (match-define (scene-tran b c t s0) s)
-       (define new-p (flt3apply/pln (flt3inverse t) p))
-       (cond [new-p
-              (define new-s0 (loop s0 new-p))
-              (cond [(eq? new-s0 s0)  s]
-                    [(empty-scene? new-s0)  new-s0]
-                    [else  (make-nonempty-scene-tran t new-s0)])]
-             [else
-              empty-scene])])))
 
 (: scene-plane-cull (-> Scene FlPlane3 Scene))
 (define (scene-plane-cull s p)
-  (if (empty-scene? s)
-      s
-      (nonempty-scene-plane-cull s p)))
+  (let loop ([s s] [p p])
+    (cond
+      [(empty-scene? s)  s]
+      [else
+       (define side (flrect3-plane-side (scene-rect s) p))
+       (cond
+         [(or (eq? side 'pos) (eq? side 'poszero) (eq? side 'zero))  s]
+         [(eq? side 'neg)  empty-scene]
+         ;; side is either 'negzero or 'both
+         [(leaf-scene? s)  s]
+         [(node-scene? s)
+          (define s1 (node-scene-neg s))
+          (define s2 (node-scene-pos s))
+          (define new-s1 (loop s1 p))
+          (define new-s2 (loop s2 p))
+          (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+                [else  (make-node-scene new-s1 new-s2)])]
+         [(trans-scene? s)
+          (define t0 (trans-scene-affine s))
+          (define s0 (trans-scene-scene s))
+          (define new-p (flt3apply/pln (flt3inverse t0) p))
+          (cond [new-p  (define new-s0 (loop s0 new-p))
+                        (cond [(eq? new-s0 s0)  s]
+                              [else  (make-trans-scene t0 new-s0)])]
+                [else  empty-scene])]
+         [(group-scene? s)
+          (define n0 (group-scene-tag s))
+          (define s0 (group-scene-scene s))
+          (define new-s0 (loop s0 p))
+          (cond [(eq? new-s0 s0)  s]
+                [else  (make-group-scene n0 new-s0)])])])))
 
 ;; ===================================================================================================
 ;; Scene rect culling
 
-(: nonempty-scene-rect-cull (-> Nonempty-Scene FlRect3 Scene))
-(define (nonempty-scene-rect-cull s orig-b)
+(: scene-rect-cull* (-> Scene FlRect3 Scene))
+(define (scene-rect-cull* s orig-b)
   (let loop ([s s] [t : FlAffine3-  identity-flt3] [b orig-b])
     (cond
+      [(empty-scene? s)  s]
       [(flrect3-contains-rect? b (scene-rect s))  s]
       [(flrect3-disjoint? b (scene-rect s))  empty-scene]
       ;; The shape's bounding box is partly inside and partly outside
-      [(scene-leaf? s)  s]
-      [(scene-node? s)
-       (match-define (scene-node b0 c0 s1 s2) s)
+      [(leaf-scene? s)  s]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
        (define new-s1 (loop s1 t b))
        (define new-s2 (loop s2 t b))
        (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
-             [(empty-scene? new-s1)  new-s2]
-             [(empty-scene? new-s2)  new-s1]
-             [else  (make-nonempty-scene-node new-s1 new-s2)])]
-      [(scene-tran? s)
-       (match-define (scene-tran b0 c0 t0 s0) s)
+             [else  (make-node-scene new-s1 new-s2)])]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
        (define new-t (flt3compose (flt3inverse t0) t))
        (define new-b (flrect3-transform orig-b new-t))
        (define new-s0 (loop s0 new-t new-b))
        (cond [(eq? new-s0 s0)  s]
-             [(empty-scene? new-s0)  new-s0]
-             [else  (make-nonempty-scene-tran t0 new-s0)])])))
+             [else  (make-trans-scene t0 new-s0)])]
+      [(group-scene? s)
+       (define n0 (group-scene-tag s))
+       (define s0 (group-scene-scene s))
+       (define new-s0 (loop s0 t b))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-group-scene n0 new-s0)])])))
 
 (: scene-rect-cull (-> Scene FlRect3 Scene))
 (define (scene-rect-cull s b)
   (if (empty-scene? s)
       empty-scene
-      (for/fold ([s : Scene  (nonempty-scene-rect-cull s b)]
-                 ) ([p  (in-list (flrect3-inside-planes b))])
+      (for/fold ([s : Scene  (scene-rect-cull* s b)])
+                ([p  (in-list (flrect3-inside-planes b))])
         (scene-plane-cull s p))))
 
 ;; ===================================================================================================
@@ -373,20 +534,25 @@ for `Scene`.
     [(frozen-scene-shape? a)
      (frozen-scene-shape-transform a t)]))
 
-(: nonempty-transform-shapes (-> Nonempty-Scene FlAffine3- Scene))
-(define (nonempty-transform-shapes s t)
-  (match s
-    [(scene-leaf b c a)
-     (scene-union* (map shape->scene (shape-transform a t)))]
-    [(scene-node b c s1 s2)
-     (make-scene-node (nonempty-transform-shapes s1 t)
-                      (nonempty-transform-shapes s2 t))]
-    [(scene-tran b c t0 s0)
-     (nonempty-transform-shapes s0 (flt3compose t t0))]))
-
 (: scene-transform-shapes (-> Scene FlAffine3- Scene))
 (define (scene-transform-shapes s t)
-  (if (empty-scene? s) s (nonempty-transform-shapes s t)))
+  (cond
+    [(empty-scene? s)  s]
+    [(leaf-scene? s)
+     (match-define (leaf-scene b a) s)
+     (scene-union* (map shape->scene (shape-transform a t)))]
+    [(node-scene? s)
+     (define s1 (node-scene-neg s))
+     (define s2 (node-scene-pos s))
+     (make-node-scene (scene-transform-shapes s1 t)
+                      (scene-transform-shapes s2 t))]
+    [(trans-scene? s)
+     (define t0 (trans-scene-affine s))
+     (define s0 (trans-scene-scene s))
+     (scene-transform-shapes s0 (flt3compose t t0))]
+    [(group-scene? s)
+     (define s0 (group-scene-scene s))
+     (scene-transform-shapes s0 t)]))
 
 ;; ===================================================================================================
 ;; Scene drawing
@@ -454,6 +620,61 @@ for `Scene`.
   (draw-draw-passes bs end width height
                     view proj
                     background ambient-color ambient-intensity))
+
+;; ===================================================================================================
+;; Shape bounding box
+
+(: shape->scene (-> Shape Nonempty-Scene))
+(define (shape->scene a)
+  (leaf-scene (shape-rect a) a))
+
+(: shape-rect (-> Shape Nonempty-FlRect3))
+(define (shape-rect a)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (triangle-shape-rect a)]
+       [(rectangle-shape? a)  (rectangle-shape-rect a)]
+       [(sphere-shape? a)     (sphere-shape-rect a)])]
+    [(light-shape? a)
+     (cond
+       [(directional-light-shape? a)  directional-light-shape-rect]
+       [(point-light-shape? a)        (point-light-shape-rect a)])]
+    [(frozen-scene-shape? a)
+     (frozen-scene-shape-rect a)]))
+
+;; ===================================================================================================
+;; Shape color
+
+(: shape-set-color (-> Shape FlVector Shape))
+(define (shape-set-color a c)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (set-triangle-shape-color a c)]
+       [(rectangle-shape? a)  (set-rectangle-shape-color a c)]
+       [(sphere-shape? a)     (set-sphere-shape-color a c)])]
+    [else  a]))
+
+(: shape-set-emitted (-> Shape FlVector Shape))
+(define (shape-set-emitted a e)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (set-triangle-shape-emitted a e)]
+       [(rectangle-shape? a)  (set-rectangle-shape-emitted a e)]
+       [(sphere-shape? a)     (set-sphere-shape-emitted a e)])]
+    [else  a]))
+
+(: shape-set-material (-> Shape material Shape))
+(define (shape-set-material a m)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (set-triangle-shape-material a m)]
+       [(rectangle-shape? a)  (set-rectangle-shape-material a m)]
+       [(sphere-shape? a)     (set-sphere-shape-material a m)])]
+    [else  a]))
 
 ;; ===================================================================================================
 ;; ===================================================================================================

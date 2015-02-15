@@ -5,16 +5,13 @@
          mzlib/pconvert-prop
          "../math/flt3.rkt"
          "../engine/scene.rkt"
-         "../utils.rkt"
-         "basis.rkt")
+         "../utils.rkt")
 
 (provide current-pict3d-custom-write
          current-pict3d-print-converter
-         Bases
          (rename-out [-Pict3D Pict3D]
                      [Pict3D? pict3d?]
-                     [Pict3D-scene  pict3d-scene]
-                     [Pict3D-bases  pict3d-bases])
+                     [Pict3D-scene  pict3d-scene])
          pict3d
          empty-pict3d
          pict3d-view-transform)
@@ -42,9 +39,7 @@
 ;; ===================================================================================================
 ;; Pict3D type
 
-(define-type Bases (List-Hash Symbol Basis))
-
-(struct Pict3D ([scene : Scene] [bases : Bases])
+(struct Pict3D ([scene : Scene])
   #:property prop:custom-print-quotable 'never
   #:property prop:custom-write (λ (p port mode) ((current-pict3d-custom-write) p port mode))
   #:property prop:print-converter (λ (p recur) ((current-pict3d-print-converter) p recur))
@@ -53,13 +48,13 @@
 (define-type -Pict3D Pict3D)
 (define pict3d Pict3D)
 
-(define empty-pict3d (Pict3D empty-scene empty))
+(define empty-pict3d (Pict3D empty-scene))
 
-(: pict3d-view-transform (->* [Pict3D] [FlAffine3-] FlAffine3-))
-(define (pict3d-view-transform s [default (scale-flt3 (flvector 1.0 -1.0 -1.0))])
-  (define bases (Pict3D-bases s))
-  (define camera-basis (list-hasheq-ref bases 'camera (λ () #f)))
-  (if camera-basis
-      (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                   (flt3inverse (basis-transform camera-basis)))
-      default))
+(: pict3d-view-transform (All (F) (case-> (-> Pict3D FlAffine3-)
+                                          (-> Pict3D (-> F) (U FlAffine3- F)))))
+(define (pict3d-view-transform p [default (λ () (scale-flt3 (flvector 1.0 -1.0 -1.0)))])
+  (define ts (scene-map-group/transform (Pict3D-scene p) 'camera (λ ([t : FlAffine3-] _) t)))
+  (cond [(empty? ts)  (default)]
+        [else  (define t (first ts))
+               (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
+                            (flt3inverse t))]))

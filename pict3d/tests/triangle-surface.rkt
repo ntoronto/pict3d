@@ -88,11 +88,8 @@
             (combine* rects))))
 
 (define pict
-  (set-basis
-   surface
-   'camera
-   (normal-basis '(20 20 20) '(-1 -1 -1))))
+  (combine surface (basis 'camera (point-at '(20 20 20) '(-1 -1 -1)))))
 
 (profile
- (for ([_  (in-range 500)])
+ (for ([_  (in-range 100)])
    (pict3d->bitmap pict 32 32)))

@@ -8,8 +8,7 @@
          pict3d/private/math/flt3
          pict3d/private/math/flrect3
          pict3d/private/engine/draw-passes
-         pict3d/private/engine/scene
-         pict3d/private/gui/basis)
+         pict3d/private/engine/scene)
 
 (define sphere-vs 
   (for/list ([_  (in-range 5000)])
@@ -56,10 +55,10 @@
 (define znear 0.25)
 (define zfar 4.0)
 (define fov-radians (degrees->radians (fl 30.0)))
-(define camera-basis (normal-basis '(1.25 1.25 1.25) '(-1 -1 -1)))
+(define camera (point-at '(1.25 1.25 1.25) '(-1 -1 -1)))
 (define proj (perspective-flt3/viewport (fl 800) (fl 600) fov-radians znear zfar))
 (define view (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                          (flt3inverse (basis-transform camera-basis))))
+                          (flt3inverse camera)))
 (define t (flt3compose proj view))
 
 (define t-frustum
@@ -68,12 +67,14 @@
       (frustum t))))
 
 (combine
- (set-basis t-frustum camera-basis)
+ (basis 'camera camera)
+ t-frustum
  (frustum-cull spheres t)
  blue-spheres)
 
 (combine
- (set-basis t-frustum camera-basis)
+ (basis 'camera camera)
+ t-frustum
  (frustum-cull wacky-spheres t)
  wacky-blue-spheres)
 

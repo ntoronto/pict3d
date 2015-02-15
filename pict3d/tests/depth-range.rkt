@@ -21,15 +21,10 @@
 
 (define pict
   (combine
-   (scale
-    (set-basis
-     shapes
-     'camera
-     (normal-basis '(1/2 1 2) '(-1/2 -1 -1.25)))
-    (make-list 3 (flexpt 2.0 -10.0)))
-   (scale
-    (move shapes '(-1.25 -1.25 -1.25))
-    (make-list 3 (flexpt 2.0 21.0)))))
+   (scale (combine shapes (basis 'camera (point-at '(1/2 1 2) '(-1/2 -1 -1.25))))
+          (make-list 3 (flexpt 2.0 -10.0)))
+   (scale (move shapes '(-1.25 -1.25 -1.25))
+          (make-list 3 (flexpt 2.0 21.0)))))
 
 (pict3d->bitmap
  (combine pict

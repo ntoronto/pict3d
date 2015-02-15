@@ -22,6 +22,9 @@
          "shader-lib.rkt")
 
 (provide make-triangle-shape
+         set-triangle-shape-color
+         set-triangle-shape-emitted
+         set-triangle-shape-material
          make-triangle-shape-passes
          triangle-shape-rect
          triangle-shape-transform
@@ -29,6 +32,9 @@
          make-quad-shapes
          
          make-rectangle-shape
+         set-rectangle-shape-color
+         set-rectangle-shape-emitted
+         set-rectangle-shape-material
          make-rectangle-shape-passes
          ;rectangle-shape-rect  ; already an accessor
          rectangle-shape-transform
@@ -136,6 +142,66 @@
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
         [else
          (rectangle-shape (box 'lazy) b c e m back?)]))
+
+;; ===================================================================================================
+;; Set attributes
+
+(: set-triangle-shape-color (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
+(define (set-triangle-shape-color a cs)
+  (cond [(not (well-formed-flvectors? cs 3 4))
+         (raise-argument-error 'set-triangle-shape-color
+                               "length-4 flvector, or length-3 vector of length-4 flvectors"
+                               1 a cs)]
+        [else
+         (match-define (triangle-shape _ vs ns old-cs es ms back?) a)
+         (cond [(equal? old-cs cs)  a]
+               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+
+(: set-triangle-shape-emitted (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
+(define (set-triangle-shape-emitted a es)
+  (cond [(not (well-formed-flvectors? es 3 4))
+         (raise-argument-error 'set-triangle-shape-emitted
+                               "length-4 flvector, or length-3 vector of length-4 flvectors"
+                               1 a es)]
+        [else
+         (match-define (triangle-shape _ vs ns cs old-es ms back?) a)
+         (cond [(equal? old-es es)  a]
+               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+
+(: set-triangle-shape-material (-> triangle-shape (U material (Vectorof material)) triangle-shape))
+(define (set-triangle-shape-material a ms)
+  (cond [(not (or (material? ms) (= 3 (vector-length ms))))
+         (raise-argument-error 'set-triangle-shape-material
+                               "material, or length-3 vector of materials"
+                               1 a ms)]
+        [else
+         (match-define (triangle-shape _ vs ns cs es old-ms back?) a)
+         (cond [(equal? old-ms ms)  a]
+               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+
+(: set-rectangle-shape-color (-> rectangle-shape FlVector rectangle-shape))
+(define (set-rectangle-shape-color a c)
+  (cond [(not (= (flvector-length c) 4))
+         (raise-argument-error 'set-rectangle-shape-color "length-4 flvector" 1 a c)]
+        [else
+         (match-define (rectangle-shape _ b old-c e m inside?) a)
+         (cond [(equal? old-c c)  a]
+               [else  (rectangle-shape (box 'lazy) b c e m inside?)])]))
+
+(: set-rectangle-shape-emitted (-> rectangle-shape FlVector rectangle-shape))
+(define (set-rectangle-shape-emitted a e)
+  (cond [(not (= (flvector-length e) 4))
+         (raise-argument-error 'set-rectangle-shape-emitted "length-4 flvector" 1 a e)]
+        [else
+         (match-define (rectangle-shape _ b c old-e m inside?) a)
+         (cond [(equal? old-e e)  a]
+               [else  (rectangle-shape (box 'lazy) b c e m inside?)])]))
+
+(: set-rectangle-shape-material (-> rectangle-shape material rectangle-shape))
+(define (set-rectangle-shape-material a m)
+  (match-define (rectangle-shape _ b c e old-m inside?) a)
+  (cond [(equal? old-m m)  a]
+        [else  (rectangle-shape (box 'lazy) b c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material

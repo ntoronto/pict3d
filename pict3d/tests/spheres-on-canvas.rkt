@@ -56,15 +56,16 @@
       (define cx2 (cos (* 2 (degrees->radians i))))
       (define sx2 (sin (* 2 (degrees->radians i))))
       
-      (define camera-basis
-        (normal-basis (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                      (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+      (define camera
+        (point-at (list (* -6 cx) (* -6 sx) (* 0.5 sx))
+                  (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
       
       (define pict
         ;(set-basis spheres 'camera camera-basis)
         
         (combine
-         (set-basis frozen-spheres 'camera camera-basis)
+         (basis 'camera camera)
+         frozen-spheres
          (with-color "black"
            (with-emitted '(1 1 1 4)
              (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))

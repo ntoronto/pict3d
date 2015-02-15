@@ -23,7 +23,6 @@
          "../utils.rkt"
          "pict3d-struct.rkt"
          "parameters.rkt"
-         "basis.rkt"
          "utils.rkt"
          "axes-scene.rkt"
          )
@@ -45,7 +44,6 @@
 (define-type Pict3D%
   (Class #:implements Snip%
          (init-field [scene  Scene]
-                     [bases  Bases]
                      [legacy?  Boolean]
                      [width   Positive-Index]
                      [height  Positive-Index]
@@ -58,7 +56,6 @@
          [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum
                                        FlVector FlVector Flonum))]
          [get-scene  (-> Scene)]
-         [get-bases  (-> Bases)]
          [set-argb-pixels  (-> Bytes Void)]
          ))
 #;
@@ -114,15 +111,15 @@
          
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy?)
-           ;; Draw the scene and all its little extra bits (bases, etc.)
+           ;; Draw the scene, an origin, and a couple of lights
+           (define s (send snip get-scene))
            (define scenes
-             (list* (send snip get-scene)
+             (list* s
                     axes-scene
                     standard-over-light
                     standard-under-light
-                    (for/list ([name-p  (in-list (send snip get-bases))])
-                      (match-define (cons name p) name-p)
-                      (force (basis-scene p)))))
+                    (map (λ (t) (make-trans-scene t basis-scene))
+                         (scene-all-group-transforms s))))
            (draw-scenes scenes width height view proj background ambient-color ambient-intensity)
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
@@ -156,22 +153,11 @@
     
     ;(: camera (Instance Camera%))
     (define camera
-      (let ([camera  (list-hasheq-ref (send pict get-bases) 'camera (λ () #f))])
+      (let ([t  (pict3d-view-transform (pict3d (send pict get-scene)) (λ () #f))])
         (cond
-          [camera
-           (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-             (flvector->list (fltransform3-forward (->flaffine3 (basis-transform camera)))))
-           (define position (flvector m03 m13 m23))
-           (define yaw (- (atan m12 m02) (/ pi 2.0)))
-           (define pitch (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))
-           (new camera%
-                [position  position]
-                [velocity  (flvector 0.0 0.0 0.0)]
-                [yaw  yaw]
-                [pitch  pitch])]
-          [else
+          [(not t)
            (let* ([s  (send pict get-scene)]
-                  [s  (scene-filter s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
+                  [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
                   [b  (and (not (empty-scene? s)) (scene-rect s))]
                   [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
                   [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
@@ -179,7 +165,18 @@
                   [position  (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0))))]
                   [velocity  (flvector 0.0 0.0 0.0)]
                   [yaw  (degrees->radians 135.0)]
-                  [pitch  (degrees->radians -35.264389682754654)]))])))
+                  [pitch  (degrees->radians -35.264389682754654)]))]
+          [else
+           (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+             (flvector->list (fltransform3-inverse t)))
+           (define position (flvector m03 m13 m23))
+           (define yaw (+ (atan m12 m02) (/ pi 2)))
+           (define pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22)))))))
+           (new camera%
+                [position  position]
+                [velocity  (flvector 0.0 0.0 0.0)]
+                [yaw  yaw]
+                [pitch  pitch])])))
     
     ;(: last-view-matrix (U #f FlAffine3-))
     (define last-view-matrix #f)
@@ -372,7 +369,6 @@
 (define pict3d%
   (class image-snip%
     (init-field scene
-                bases
                 legacy?
                 width
                 height
@@ -389,11 +385,10 @@
     ;(send (get-the-snip-class-list) add snip-class)
     
     (define/public (get-scene) scene)
-    (define/public (get-bases) bases)
     
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
-      (make-object pict3d% scene bases legacy?
+      (make-object pict3d% scene legacy?
         width height z-near z-far fov-degrees background ambient-color ambient-intensity))
     
     (define/override (write f)
@@ -485,10 +480,8 @@
 
 (define (pict3d->pict3d% p)
   (define scene (pict3d-scene p))
-  (define bases (pict3d-bases p))
   (make-object pict3d%
     scene
-    bases
     (pict3d-legacy-contexts?)
     (current-pict3d-width)
     (current-pict3d-height)

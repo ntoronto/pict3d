@@ -147,15 +147,13 @@
    (light '(0 0 0) '(2.0 1.6 1.2) 50)))
 
 (define pict
-  (set-basis
-   (combine
-    (combine*
-     (for/list ([p  (in-list planetoids)])
-       (match-define (planetoid pict pos axis speed) p)
-       (move (rotate pict axis (* speed (* 2 pi (random)))) pos)))
-    sun)
-   'camera
-   (normal-basis '(0 -40 0) '(0 1 0))))
+  (combine
+   sun
+   (basis 'camera (point-at '(0 -40 0) '(0 1 0)))
+   (combine*
+    (for/list ([p  (in-list planetoids)])
+      (match-define (planetoid pict pos axis speed) p)
+      (move (rotate pict axis (* speed (* 2 pi (random)))) pos)))))
 
 (define spheres
   (for/list : (Listof Pict3D) ([_  (in-range 1000)])
@@ -174,18 +172,17 @@
      (for ([angle  (in-range 0 (* 5 360) 5)])
        (time
         (define pict
-          (set-basis
-           (combine
-            (combine*
-             (for/list ([p  (in-list planetoids)])
-               (match-define (planetoid pict pos axis speed) p)
-               (rotate (move (rotate pict axis (* speed angle)) pos)
-                       '(0 0 1)
-                       (* angle 0.1))))
-            sun)
-           'camera
-           (normal-basis '(0 -40 0) '(0 1 0))))
-        (send canvas set-pict3d pict))
+          (combine
+           sun
+           (basis 'camera (point-at '(0 -40 0) '(0 1 0)))
+           (combine*
+            (for/list ([p  (in-list planetoids)])
+              (match-define (planetoid pict pos axis speed) p)
+              (rotate (move (rotate pict axis (* speed angle)) pos)
+                      '(0 0 1)
+                      (* angle 0.1))))))
+        (send canvas set-pict3d pict)
+        (sleep/yield #i1/1000))
        (yield)))))
 
 (current-material '(0.05 0.75 0.25 0.1))
@@ -201,9 +198,8 @@
                     (with-emitted '(1/4 1/2 1 8)
                       (sphere '(0 0 0) 1/4)))
                   '(1 1 2)))]
-         [body  (set-basis body 'right-wing (normal-basis '(3/16 0 0) '(1 1/3 0)))]
-         [body  (set-basis body 'left-wing (scale-basis (normal-basis '(-3/16 0 0) '(-1 1/3 0))
-                                                        '(-1 1 1)))])
+         [body  (combine body (basis 'right-wing (point-at '(3/16 0 0) '(1 1/3 0))))]
+         [body  (combine body (basis 'left-wing (point-at '(-3/16 0 0) '(-1 1/3 0))))])
     body))
 
 (: make-wing (-> Symbol Pict3D))
@@ -245,14 +241,16 @@
                        30)
                       '(1 1 2))
                -30)))
-  (let* ([wing  (set-basis wing 'wing-attach (normal-basis '(-2 0 0) '(1 0 0)))]
-         [wing  (set-basis wing gun-name (normal-basis '(0 0 2) '(0 0 1)))])
+  (let* ([wing  (combine wing (basis 'wing-attach (point-at '(-2 0 0) '(1 0 0))))]
+         [wing  (combine wing (basis gun-name (point-at '(0 0 2) '(0 0 1))))])
     wing))
 
 (define ship
   (rotate-x
-   (pin (pin body (make-wing 'right-gun) 'right-wing 'wing-attach)
-        (make-wing 'left-gun) 'left-wing 'wing-attach)
+   (weld (weld body 'right-wing (make-wing 'right-gun) 'wing-attach)
+        'left-wing
+        (make-wing 'left-gun)
+        'wing-attach)
    -90))
 
 ship

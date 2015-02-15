@@ -8,7 +8,8 @@
          "../engine/types.rkt"
          "../engine/scene.rkt")
 
-(provide axes-scene)
+(provide axes-scene
+         basis-scene)
 
 (: make-unit-pyramid-scene (-> FlVector FlVector material Scene))
 (define (make-unit-pyramid-scene c e m)
@@ -89,6 +90,21 @@
           z-axis-scene))
    nonempty-scene?))
 
-(define axes-scene
+(define axes-shape (make-frozen-scene-shape unfrozen-axes-scene))
+(define axes-scene (shape->scene axes-shape))
+
+(define basis-shape (make-frozen-scene-shape
+                     (assert (scene-transform-shapes unfrozen-axes-scene
+                                                     (scale-flt3 (flvector 0.25 0.25 0.25)))
+                             nonempty-scene?)))
+(define basis-scene
+  #;; For testing simple shapes in the REPL
   (shape->scene
-   (make-frozen-scene-shape unfrozen-axes-scene)))
+   (make-sphere-shape
+    (scale-flt3 (flvector 0.03 0.03 0.03))
+    (flvector 0.0 0.0 0.0 1.0)
+    (flvector 1.0 1.0 1.0 2.0)
+    axis-material
+    #f))
+  ;; The real deal
+  (shape->scene basis-shape))
