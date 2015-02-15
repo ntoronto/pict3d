@@ -10,6 +10,7 @@
  [get-current-managed-gl-context  (-> Symbol gl-context)]
  [gl-swap-buffers  (-> Void)]
  [get-master-gl-context  (-> Boolean gl-context)]
+ [master-gl-context-is-legacy?  (-> Boolean)]
  )
 
 (define-type GL-Context gl-context)
@@ -22,4 +23,5 @@
          call-with-gl-context
          get-current-managed-gl-context
          gl-swap-buffers
-         get-master-gl-context)
+         get-master-gl-context
+         master-gl-context-is-legacy?)
