@@ -35,7 +35,7 @@
          (raise-argument-error 'make-directional-light-shape "length-3 flvector"
                                2 color intensity direction)]
         [else
-         (directional-light-shape (box 'lazy) color intensity direction)]))
+         (directional-light-shape (lazy-passes) color intensity direction)]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light

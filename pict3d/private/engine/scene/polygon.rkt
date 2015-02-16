@@ -82,7 +82,7 @@
                                "material, or length-3 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
-         (triangle-shape (box 'lazy) vs ns cs es ms back?)]))
+         (triangle-shape (lazy-passes) vs ns cs es ms back?)]))
 
 (: take-triangle (All (A) (-> (Vectorof A) Index Index Index (Vectorof A))))
 (define (take-triangle vs i1 i2 i3)
@@ -119,14 +119,14 @@
                                "material, or length-4 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
-         (list (triangle-shape (box 'lazy)
+         (list (triangle-shape (lazy-passes)
                                (take-triangle vs 0 1 2)
                                (if (vector? ns) (take-triangle ns 0 1 2) ns)
                                (if (vector? cs) (take-triangle cs 0 1 2) cs)
                                (if (vector? es) (take-triangle es 0 1 2) es)
                                (if (vector? ms) (take-triangle ms 0 1 2) ms)
                                back?)
-               (triangle-shape (box 'lazy)
+               (triangle-shape (lazy-passes)
                                (take-triangle vs 2 3 0)
                                (if (vector? ns) (take-triangle ns 2 3 0) ns)
                                (if (vector? cs) (take-triangle cs 2 3 0) cs)
@@ -141,7 +141,7 @@
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
         [else
-         (rectangle-shape (box 'lazy) b c e m back?)]))
+         (rectangle-shape (lazy-passes) b c e m back?)]))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -155,7 +155,7 @@
         [else
          (match-define (triangle-shape _ vs ns old-cs es ms back?) a)
          (cond [(equal? old-cs cs)  a]
-               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
 
 (: set-triangle-shape-emitted (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
 (define (set-triangle-shape-emitted a es)
@@ -166,7 +166,7 @@
         [else
          (match-define (triangle-shape _ vs ns cs old-es ms back?) a)
          (cond [(equal? old-es es)  a]
-               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
 
 (: set-triangle-shape-material (-> triangle-shape (U material (Vectorof material)) triangle-shape))
 (define (set-triangle-shape-material a ms)
@@ -177,7 +177,7 @@
         [else
          (match-define (triangle-shape _ vs ns cs es old-ms back?) a)
          (cond [(equal? old-ms ms)  a]
-               [else  (triangle-shape (box 'lazy) vs ns cs es ms back?)])]))
+               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
 
 (: set-rectangle-shape-color (-> rectangle-shape FlVector rectangle-shape))
 (define (set-rectangle-shape-color a c)
@@ -186,7 +186,7 @@
         [else
          (match-define (rectangle-shape _ b old-c e m inside?) a)
          (cond [(equal? old-c c)  a]
-               [else  (rectangle-shape (box 'lazy) b c e m inside?)])]))
+               [else  (rectangle-shape (lazy-passes) b c e m inside?)])]))
 
 (: set-rectangle-shape-emitted (-> rectangle-shape FlVector rectangle-shape))
 (define (set-rectangle-shape-emitted a e)
@@ -195,13 +195,13 @@
         [else
          (match-define (rectangle-shape _ b c old-e m inside?) a)
          (cond [(equal? old-e e)  a]
-               [else  (rectangle-shape (box 'lazy) b c e m inside?)])]))
+               [else  (rectangle-shape (lazy-passes) b c e m inside?)])]))
 
 (: set-rectangle-shape-material (-> rectangle-shape material rectangle-shape))
 (define (set-rectangle-shape-material a m)
   (match-define (rectangle-shape _ b c e old-m inside?) a)
   (cond [(equal? old-m m)  a]
-        [else  (rectangle-shape (box 'lazy) b c e m inside?)]))
+        [else  (rectangle-shape (lazy-passes) b c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -536,7 +536,7 @@ code
                            (if consistent?
                                (flt3apply/nrm t n)
                                (flv3neg (flt3apply/nrm t n)))))
-  (list (triangle-shape (box 'lazy)
+  (list (triangle-shape (lazy-passes)
                         (vector-map transform-pos vs)
                         (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
                         cs es ms

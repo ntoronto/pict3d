@@ -114,13 +114,10 @@ rect impostor_bounds(mat4 view, mat4 proj, vec3 wmin, vec3 wmax) {
 code
    "\n\n"))
 
-(define output-impostor-strip-vertex-code
+(define output-impostor-strip-geometry-code
   (string-append
-   impostor-bounds-code
    #<<code
-float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax, int vertex_id) {
-  rect bbx = impostor_bounds(view, proj, wmin, wmax);
-
+void output_impostor_strip_vertex(rect bbx, int vertex_id) {
   // output the correct vertices for a triangle strip
   switch (vertex_id) {
   case 0:
@@ -136,7 +133,18 @@ float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax, int vert
     gl_Position = vec4(bbx.maxs.xy, 0.0, 1.0);
     break;
   }
+}
+code
+   "\n\n"))
 
+(define output-impostor-strip-vertex-code
+  (string-append
+   impostor-bounds-code
+   output-impostor-strip-geometry-code
+   #<<code
+float output_impostor_strip(mat4 view, mat4 proj, vec3 wmin, vec3 wmax, int vertex_id) {
+  rect bbx = impostor_bounds(view, proj, wmin, wmax);
+  output_impostor_strip_vertex(bbx, vertex_id);
   return bbx.is_degenerate;
 }
 code

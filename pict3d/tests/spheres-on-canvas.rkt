@@ -50,7 +50,7 @@
  (let loop ([i 0])
    (when (and (< i 1000) (send frame is-shown?))
      (time
-      ;(define start-time (fl (current-inexact-milliseconds)))
+      (define start-time (fl (current-inexact-milliseconds)))
       (define cx (cos (degrees->radians i)))
       (define sx (sin (degrees->radians i)))
       (define cx2 (cos (* 2 (degrees->radians i))))
@@ -72,9 +72,9 @@
          (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
       
       (send canvas set-pict3d pict)
-      ;(define end-time (fl (current-inexact-milliseconds)))
-      ;(define delay (* #i1/1000 (max 0.0 (- #i1000/60 (- end-time start-time)))))
-      ;(sleep/yield delay)
-      (sleep/yield #i1/1000)
+      ;; Rate-limit to 60 FPS
+      (define end-time (fl (current-inexact-milliseconds)))
+      (define delay (* #i1/1000 (max 1.0 (- #i1000/60 (- end-time start-time)))))
+      (sleep/yield delay)
       )
      (loop (+ i 1)))))

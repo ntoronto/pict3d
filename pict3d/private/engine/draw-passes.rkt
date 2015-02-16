@@ -651,7 +651,7 @@ code
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Compositing: Draw image and bloom onto system-provided framebuffer
-  
+
   (glViewport 0 0 width height)
   (define alpha (flvector-ref background 3))
   (glClearColor (* (flvector-ref background 0) alpha)
@@ -684,7 +684,7 @@ code
     (glDisable GL_BLEND)
     (glDisable GL_DEPTH_TEST)
     (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+      (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
         (gl-program-uniform program "rgba" (uniform-int 0))
         (draw-fullscreen-quad tex-width tex-height))))
   |#

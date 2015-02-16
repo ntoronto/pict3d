@@ -559,8 +559,9 @@ for `Scene`.
 
 (: shape-passes (-> Shape Passes))
 (define (shape-passes a)
-  (lazy-box-ref!
+  (hash-ref!
    (shape-lazy-passes a)
+   (get-current-managed-gl-context 'shape-passes)
    (λ ()
      (cond
        [(solid-shape? a)
@@ -686,7 +687,7 @@ for `Scene`.
 
 (: make-frozen-scene-shape (-> Nonempty-Scene Shape))
 (define (make-frozen-scene-shape s)
-  (frozen-scene-shape (box 'lazy) s))
+  (frozen-scene-shape (lazy-passes) s))
 
 ;; ===================================================================================================
 ;; Passes

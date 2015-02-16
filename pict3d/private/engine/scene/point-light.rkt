@@ -37,7 +37,7 @@
          (raise-argument-error 'make-point-light-shape "length-3 flvector"
                                2 color intensity position radius)]
         [else
-         (point-light-shape (box 'lazy) color intensity position radius)]))
+         (point-light-shape (lazy-passes) color intensity position radius)]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -186,4 +186,4 @@ code
 (: point-light-shape-transform (-> point-light-shape FlAffine3- (List point-light-shape)))
 (define (point-light-shape-transform a t)
   (match-define (point-light-shape passes color intensity position radius) a)
-  (list (point-light-shape (box 'lazy) color intensity (flt3apply/pos t position) radius)))
+  (list (point-light-shape (lazy-passes) color intensity (flt3apply/pos t position) radius)))
