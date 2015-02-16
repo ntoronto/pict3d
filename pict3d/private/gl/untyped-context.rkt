@@ -3,8 +3,7 @@
 (require racket/class
          racket/gui
          typed/opengl
-         "../utils.rkt"
-         "version-test.rkt")
+         "../utils.rkt")
 
 (provide (all-defined-out))
 
@@ -80,22 +79,12 @@
 
 (define master-gl-context-mutex (make-semaphore 1))
 
-(define master-requested-legacy? #f)
 (define master-legacy? #f)
 (define master-frame #f)
-(define master-context #f)
-
-(define (master-gl-context-is-legacy?)
-  master-legacy?)
-
-#|
-;; Bitmap contexts are pretty fragile right now, so we'll not use them yet
-
 (define master-bitmap #f)
 (define master-dc #f)
+(define master-context #f)
 
-;; This commented-out function is out of sync with the frame version of it, but is still
-;; useful for reference, so I'm keeping it around
 (define (get-master-gl-context/bitmap legacy?)
   (define config (new gl-config%))
   (send config set-legacy? legacy?)
@@ -105,21 +94,23 @@
   (cond
     [(or (not ctxt) (not (send ctxt ok?)))
      (log-pict3d-warning
-      "<engine> could not obtain bitmap OpenGL context (legacy? = ~a)"
+      "<engine> could not obtain bitmap OpenGL context (pict3d-legacy-contexts? ~a)"
       legacy?)]
     [else
-     (define version-info (test-opengl-version ctxt 30))
+     (define version-ok
+       (send ctxt call-as-current (λ () (with-handlers ([exn?  (λ (e) e)])
+                                          (gl-version-at-least? 30)))))
      (cond
-       [(exn? version-info)
+       [(exn? version-ok)
         (log-pict3d-error
-         "<engine> exception querying bitmap OpenGL context version (legacy? = ~a): ~e"
-         legacy? (exn-message version-info))
+         "<engine> exception querying bitmap OpenGL context version (pict3d-legacy-contexts? ~a): ~e"
+         legacy? version-ok)
         #f]
-       [version-info
+       [version-ok
         (define version (send ctxt call-as-current gl-version))
         (log-pict3d-info
-         "<engine> obtained bitmap OpenGL ~a ~a context (legacy? = ~a)"
-         version (if (gl-core-profile?) "core" "compatibility") legacy?)
+         "<engine> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+         version legacy?)
         (set! master-legacy? legacy?)
         (set! master-bitmap bm)
         (set! master-dc dc)
@@ -129,10 +120,9 @@
        [else
         (define version (send ctxt call-as-current gl-version))
         (log-pict3d-warning
-         "<engine> obtained bitmap OpenGL ~a ~a context (legacy? = ~a)"
-         version (if (gl-core-profile?) "core" "compatibility") legacy?)
+         "<engine> obtained bitmap OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+         version legacy?)
         #f])]))
-|#
 
 (define (get-master-gl-context/frame legacy?)
   (define config (new gl-config%))
@@ -153,45 +143,34 @@
   (cond
     [(or (not ctxt) (not (send ctxt ok?)))
      (log-pict3d-warning
-      "<engine> could not obtain canvas OpenGL context (legacy? = ~a)"
+      "<engine> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
       legacy?)]
     [else
-     (define version-info (test-opengl-version ctxt 30))
+     (define version-ok
+       (send ctxt call-as-current (λ () (with-handlers ([exn?  (λ (e) e)])
+                                          (gl-version-at-least? 30)))))
      (cond
-       [(exn? version-info)
+       [(exn? version-ok)
         (log-pict3d-error
-         "<engine> exception querying canvas OpenGL context version (legacy? = ~a): ~e"
-         legacy? (exn-message version-info))
+         "<engine> exception querying canvas OpenGL context version (pict3d-legacy-contexts? ~a): ~e"
+         legacy? version-ok)
         #f]
+       [version-ok
+        (define version (send ctxt call-as-current gl-version))
+        (log-pict3d-info
+         "<engine> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+         version legacy?)
+        (set! master-legacy? legacy?)
+        (set! master-frame frame)
+        (let ([ctxt  (managed-gl-context ctxt)])
+          (set! master-context ctxt)
+          ctxt)]
        [else
-        (match-define (list high-enough? version core?) version-info)
-        (cond
-          [high-enough?
-           (log-pict3d-info
-            "<engine> obtained canvas OpenGL ~a ~a context (legacy? = ~a)"
-            version (if core? "core" "compatibility") legacy?)
-           (set! master-legacy? legacy?)
-           (set! master-frame frame)
-           (let ([ctxt  (managed-gl-context ctxt)])
-             (set! master-context ctxt)
-             ctxt)]
-          [else
-           (log-pict3d-warning
-            "<engine> obtained canvas OpenGL ~a ~a context (legacy? = ~a)"
-            version (if core? "core" "compatibility") legacy?)
-           #f])])]))
-
-(define legacy-thunks
-  (list
-   ;(λ () (get-master-gl-context/bitmap #t))
-   (λ () (get-master-gl-context/frame #t))))
-
-(define core-thunks
-  (list
-   ;(λ () (get-master-gl-context/bitmap #f))
-   (λ () (get-master-gl-context/frame #f))
-   ;(λ () (get-master-gl-context/bitmap #t))
-   (λ () (get-master-gl-context/frame #t))))
+        (define version (send ctxt call-as-current gl-version))
+        (log-pict3d-warning
+         "<engine> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+         version legacy?)
+        #f])]))
 
 (define (get-master-gl-context legacy?)
   (call-with-semaphore
@@ -199,15 +178,16 @@
    (λ ()
      (define ctxt master-context)
      (cond
-       [(and ctxt (eq? legacy? master-requested-legacy?))  ctxt]
+       [(and ctxt (eq? legacy? master-legacy?))  ctxt]
        [else
-        (let loop ([thunks  (if legacy? legacy-thunks core-thunks)])
-          (cond [(empty? thunks)
-                 (error 'get-master-gl-context
-                        "could not obtain at least an OpenGL 30 context (legacy? = ~a)"
-                        legacy?)]
-                [else
-                 (define ctxt ((first thunks)))
-                 (cond [ctxt  (set! master-requested-legacy? legacy?)
-                              ctxt]
-                       [else  (loop (rest thunks))])]))]))))
+        ;; Don't try for bitmap contexts for now - they're too broken on Windows and possibly Mac
+        (define ctxt #f #;(get-master-gl-context/bitmap legacy?))
+        (cond
+          [ctxt  ctxt]
+          [else
+           (define ctxt (get-master-gl-context/frame legacy?))
+           (cond [ctxt  ctxt]
+                 [else
+                  (error 'get-master-gl-context
+                         "could not obtain at least an OpenGL 30 context (pict3d-legacy-contexts? ~a)"
+                         legacy?)])])]))))

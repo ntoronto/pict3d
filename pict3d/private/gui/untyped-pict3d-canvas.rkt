@@ -116,11 +116,7 @@
           [stretchable-height  #t])
     (init-field [pict  empty-pict3d])
     
-    (define legacy?
-      (let ([legacy?  (pict3d-legacy-contexts?)])
-        (cond [legacy?  legacy?]
-              [else  (get-master-gl-context #f)
-                     (master-gl-context-is-legacy?)])))
+    (define legacy? (pict3d-legacy-contexts?))
     
     (define config (new gl-config%))
     (send config set-legacy? legacy?)
@@ -211,28 +207,26 @@
          (cond
            [(or (not ctxt) (not (send ctxt ok?)))
             (log-pict3d-warning
-             "<canvas> could not obtain canvas OpenGL context (legacy? = ~a)"
+             "<canvas> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
              legacy?)
             (error 'pict3d-canvas%
-                   "could not obtain canvas OpenGL context (legacy? = ~a)"
+                   "could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
                    legacy?)]
            [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
             (define version (send ctxt call-as-current gl-version))
-            (define core? (send ctxt call-as-current gl-core-profile?))
             (log-pict3d-info
-             "<canvas> obtained canvas OpenGL ~a ~a context (legacy? = ~a)"
-             version (if core? "core" "compatibility") legacy?)
+             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+             version legacy?)
             (let ([mctxt  (managed-gl-context ctxt)])
               (set! managed-ctxt mctxt)
               mctxt)]
            [else
             (define version (send ctxt call-as-current gl-version))
-            (define core? (send ctxt call-as-current gl-core-profile?))
             (log-pict3d-warning
-             "<canvas> obtained canvas OpenGL ~a ~a context (legacy? = ~a)"
-             version (if core? "core" "compatibility") legacy?)
+             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
+             version legacy?)
             (error 'pict3d-canvas%
-                   "could not obtain at least an OpenGL 30 context (legacy? = ~a)"
+                   "could not obtain at least an OpenGL 30 context (pict3d-legacy-contexts? ~a)"
                    legacy?)])]))
     
     (define/override (on-paint)
