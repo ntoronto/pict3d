@@ -806,27 +806,26 @@ for `Scene`.
     [else
      empty]))
 
-(: merge-shape-params (-> (Listof (Vectorof shape-params)) (Vectorof shape-params)))
+(: merge-shape-params (-> (Vectorof shape-params) (Vectorof shape-params)))
 (define (merge-shape-params ps)
-  (let ([ps  (apply vector-append ps)])
-    (list->vector
-     (append*
-      (for*/list : (Listof (Listof shape-params))
-        ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
-         [program  (in-value ((car ks)))]
-         [s   (in-value (cdr ks))]
-         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
-         [uniforms  (in-value (car ks))]
-         [s  (in-value (cdr ks))]
-         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-two-sided?))]
-         [face  (in-value (car ks))]
-         [s  (in-value (cdr ks))]
-         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-mode))]
-         [mode  (in-value (car ks))]
-         [s  (in-value (cdr ks))])
-        (append
-         (merge-vertices program #f uniforms face mode ps (span-start s) (span-end s))
-         (merge-vertices program #t uniforms face mode ps (span-start s) (span-end s))))))))
+  (list->vector
+   (append*
+    (for*/list : (Listof (Listof shape-params))
+      ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
+       [program  (in-value ((car ks)))]
+       [s   (in-value (cdr ks))]
+       [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
+       [uniforms  (in-value (car ks))]
+       [s  (in-value (cdr ks))]
+       [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-two-sided?))]
+       [face  (in-value (car ks))]
+       [s  (in-value (cdr ks))]
+       [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-mode))]
+       [mode  (in-value (car ks))]
+       [s  (in-value (cdr ks))])
+      (append
+       (merge-vertices program #f uniforms face mode ps (span-start s) (span-end s))
+       (merge-vertices program #t uniforms face mode ps (span-start s) (span-end s)))))))
 
 (: make-frozen-scene-shape-passes (-> frozen-scene-shape passes))
 (define (make-frozen-scene-shape-passes a)
@@ -840,11 +839,11 @@ for `Scene`.
                                      empty
                                      transformed-passes)))
   (passes
-   (merge-shape-params (map passes-light ps))
-   (merge-shape-params (map passes-opaque-material ps))
-   (merge-shape-params (map passes-opaque-color ps))
-   (merge-shape-params (map passes-transparent-material ps))
-   (merge-shape-params (map passes-transparent-color ps))))
+   (merge-shape-params (apply vector-append (map passes-light ps)))
+   (merge-shape-params (apply vector-append (map passes-opaque-material ps)))
+   (merge-shape-params (apply vector-append (map passes-opaque-color ps)))
+   (merge-shape-params (apply vector-append (map passes-transparent-material ps)))
+   (merge-shape-params (apply vector-append (map passes-transparent-color ps)))))
 
 ;; ===================================================================================================
 ;; Bounding box
