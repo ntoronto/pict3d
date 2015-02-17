@@ -114,8 +114,6 @@ code
    ray-trace-fragment-code
    #<<code
 uniform mat4 proj;
-uniform int width;
-uniform int height;
 
 flat in vec4 frag_trans_z;
 flat in mat3 frag_untrans;
@@ -147,9 +145,7 @@ code
    (list (cons "view" 'view)
          (cons "unview" 'unview)
          (cons "proj" 'proj)
-         (cons "unproj" 'unproj)
-         (cons "width" 'width)
-         (cons "height" 'height))
+         (cons "unproj" 'unproj))
    (make-vao-struct
     (make-vao-field "sphere0" 4 GL_FLOAT)
     (make-vao-field "sphere1" 4 GL_FLOAT)
@@ -286,8 +282,6 @@ code
    #<<code
 uniform mat4 proj;
 uniform mat4 unproj;
-uniform int width;
-uniform int height;
 
 uniform vec3 ambient;
 uniform sampler2D diffuse;
@@ -332,8 +326,6 @@ code
    #<<code
 uniform mat4 proj;
 uniform mat4 unproj;
-uniform int width;
-uniform int height;
 
 uniform vec3 ambient;
 uniform sampler2D diffuse;
@@ -387,8 +379,6 @@ code
         (cons "proj" 'proj)
         (cons "unview" 'unview)
         (cons "unproj" 'unproj)
-        (cons "width" 'width)
-        (cons "height" 'height)
         (cons "ambient" 'ambient)
         (cons "diffuse" 'diffuse)
         (cons "specular" 'specular)))

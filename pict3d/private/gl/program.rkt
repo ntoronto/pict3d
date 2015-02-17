@@ -319,8 +319,20 @@
                                  (gl-program-name prog) name loc)
                loc)))
 
-(: gl-program-uniform (-> gl-program String Uniform Void))
-(define (gl-program-uniform prog name u)
+(: gl-program-send-uniform (-> gl-program String Uniform Void))
+(define (gl-program-send-uniform prog name u)
   (define loc (gl-program-uniform-loc prog name))
   (unless (negative? loc)
     (gl-uniform loc u)))
+
+(: gl-program-send-uniforms (-> gl-program
+                           (Listof (Pair String (U Symbol Uniform)))
+                           (HashTable Symbol Uniform)
+                           Void))
+(define (gl-program-send-uniforms program uniforms standard-uniforms)
+  (for ([nu  (in-list uniforms)])
+    (define name (car nu))
+    (define uniform (cdr nu))
+    (let ([uniform  (if (symbol? uniform) (hash-ref standard-uniforms uniform #f) uniform)])
+      (when uniform
+        (gl-program-send-uniform program name uniform)))))

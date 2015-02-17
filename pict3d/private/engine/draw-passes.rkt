@@ -573,8 +573,8 @@ code
         (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0)
           (with-gl-active-texture GL_TEXTURE1
             (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1)
-              (gl-program-uniform program "rgba" (uniform-int 0))
-              (gl-program-uniform program "weight" (uniform-int 1))
+              (gl-program-send-uniform program "rgba" (uniform-int 0))
+              (gl-program-send-uniform program "weight" (uniform-int 1))
               (draw-fullscreen-quad tex-width tex-height)))))))
   
   ;; ----------------------------------------------------------------------------------------------
@@ -586,7 +586,7 @@ code
     (glDisable GL_DEPTH_TEST)
     (define program (bloom-extract-program))
     (with-gl-program program
-      (gl-program-uniform program "rgba" (uniform-int 0))
+      (gl-program-send-uniform program "rgba" (uniform-int 0))
       (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
         (draw-fullscreen-quad tex-width tex-height))))
   
@@ -630,7 +630,7 @@ code
       (glViewport 0 0 view-width view-height)
       (define program (fullscreen-program))
       (with-gl-program program
-        (gl-program-uniform program "rgba" (uniform-int 0))
+        (gl-program-send-uniform program "rgba" (uniform-int 0))
         (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
           (draw-fullscreen-quad tex-width tex-height))))
     
@@ -641,8 +641,9 @@ code
         ;; Write to blur-fbo
         (with-gl-framebuffer blur-fbo
           (glViewport 0 0 view-width view-height)
-          (gl-program-uniform horz-program "rgba" (uniform-int 0))
-          (gl-program-uniform horz-program "width" (uniform-int (gl-framebuffer-width blur-fbo)))
+          (gl-program-send-uniform horz-program "rgba" (uniform-int 0))
+          (gl-program-send-uniform horz-program "width"
+                                   (uniform-int (gl-framebuffer-width blur-fbo)))
           ;; Read from bloom-fbo
           (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
             (draw-fullscreen-quad view-tex-width view-tex-height))))
@@ -651,8 +652,9 @@ code
         ;; Write to bloom-fbo
         (with-gl-framebuffer bloom-fbo
           (glViewport 0 0 view-width view-height)
-          (gl-program-uniform vert-program "rgba" (uniform-int 0))
-          (gl-program-uniform vert-program "height" (uniform-int (gl-framebuffer-height bloom-fbo)))
+          (gl-program-send-uniform vert-program "rgba" (uniform-int 0))
+          (gl-program-send-uniform vert-program "height"
+                                   (uniform-int (gl-framebuffer-height bloom-fbo)))
           ;; Read from blur-fbo
           (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
             (draw-fullscreen-quad view-tex-width view-tex-height)))))
@@ -663,7 +665,7 @@ code
       (glViewport 0 0 width height)
       (define program (fullscreen-program))
       (with-gl-program program
-        (gl-program-uniform program "rgba" (uniform-int 0))
+        (gl-program-send-uniform program "rgba" (uniform-int 0))
         (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
           (draw-fullscreen-quad view-tex-width view-tex-height))))
     )
@@ -690,9 +692,9 @@ code
         (with-gl-active-texture GL_TEXTURE1
           (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
             (define bloom-frac (/ 1.0 (fl bloom-levels)))
-            (gl-program-uniform program "bloom_frac" (uniform-float bloom-frac))
-            (gl-program-uniform program "color_tex" (uniform-int 0))
-            (gl-program-uniform program "bloom_tex" (uniform-int 1))
+            (gl-program-send-uniform program "bloom_frac" (uniform-float bloom-frac))
+            (gl-program-send-uniform program "color_tex" (uniform-int 0))
+            (gl-program-send-uniform program "bloom_tex" (uniform-int 1))
             (draw-fullscreen-quad tex-width tex-height))))))
   #|
   (define program (fullscreen-program))
@@ -704,7 +706,7 @@ code
     (glDisable GL_DEPTH_TEST)
     (with-gl-active-texture GL_TEXTURE0
       (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-        (gl-program-uniform program "rgba" (uniform-int 0))
+        (gl-program-send-uniform program "rgba" (uniform-int 0))
         (draw-fullscreen-quad tex-width tex-height))))
   |#
   )

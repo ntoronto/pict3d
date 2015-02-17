@@ -379,19 +379,6 @@
            [else      (glDrawArrays mode 0 vertex-count)])]))
 
 ;; ===================================================================================================
-;; Sending uniforms
-
-(: send-uniforms (-> gl-program (List-Hash String (U Symbol Uniform)) (HashTable Symbol Uniform)
-                     Void))
-(define (send-uniforms program uniforms standard-uniforms)
-  (for ([nu  (in-list uniforms)])
-    (define name (car nu))
-    (define uniform (cdr nu))
-    (let ([uniform  (if (symbol? uniform) (hash-ref standard-uniforms uniform #f) uniform)])
-      (when uniform
-        (gl-program-uniform program name uniform)))))
-
-;; ===================================================================================================
 ;; Drawing pass loop
 
 (: send-draw-params (-> (Vectorof draw-params)
@@ -408,11 +395,13 @@
                                         (draw-params-shape-params ts)))))])
     (match-define (cons k s) ks)
     (define program (k))
-    (define uniforms (gl-program-standard-uniforms program))
+    (define program-uniforms (gl-program-standard-uniforms program))
     (with-gl-program program
-      (send-uniforms program uniforms standard-uniforms)
-      (gl-program-uniform program "zfar" (hash-ref standard-uniforms 'zfar))
-      (gl-program-uniform program "log2_znear_zfar" (hash-ref standard-uniforms 'log2_znear_zfar))
+      (gl-program-send-uniforms program
+                                (list* (cons "zfar" 'zfar)
+                                       (cons "log2_znear_zfar" 'log2_znear_zfar)
+                                       program-uniforms)
+                                standard-uniforms)
       ;; For each set of shape uniforms...
       (for ([ks  (in-list (group-by-key! ps (span-start s) (span-end s)
                                          (λ ([ts : draw-params])
@@ -423,8 +412,8 @@
                                             (uniform-affine (draw-params-transform ts)))
                                            
                                            (shape-params-uniforms (draw-params-shape-params ts)))))])
-        (match-define (cons uniforms s) ks)
-        (send-uniforms program uniforms standard-uniforms)
+        (match-define (cons shape-uniforms s) ks)
+        (gl-program-send-uniforms program shape-uniforms standard-uniforms)
         ;; For each kind of face...
         (for ([ks  (in-list ((inst group-by-key! draw-params Face)
                              ps (span-start s) (span-end s)
