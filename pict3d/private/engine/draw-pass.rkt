@@ -14,11 +14,16 @@
          "utils.rkt")
 
 (provide  (struct-out vertices)
+          (struct-out passes)
           (struct-out shape-params)
           (struct-out draw-passes)
+          empty-passes
           empty-shape-params
-          Passes
-          draw-pass
+          draw-light-pass
+          draw-opaque-material-pass
+          draw-opaque-color-pass
+          draw-transparent-material-pass
+          draw-transparent-color-pass
           max-shape-vertex-count)
 
 ;; ===================================================================================================
@@ -38,14 +43,12 @@
 ;; 1. Shapes construct Passes, which contain all the data necessaary to draw them on each drawing pass
 ;; (e.g. material pass, light pass, color pass); each pass is numbered and corresponds with an index
 ;; in the outermost vector
-#;
 (struct passes ([light : (Vectorof shape-params)]
                 [opaque-material : (Vectorof shape-params)]
-                [opaque-draw : (Vectorof shape-params)]
+                [opaque-color : (Vectorof shape-params)]
                 [transparent-material : (Vectorof shape-params)]
-                [transparent-draw : (Vectorof shape-params)])
-  #:tranparent)
-(define-type Passes (Vectorof (Vectorof shape-params)))
+                [transparent-color : (Vectorof shape-params)])
+  #:transparent)
 
 ;; (`program` is lazy because programs can't be constructed until a GL context is active)
 (struct shape-params ([program : (-> gl-program)]
@@ -57,7 +60,7 @@
 
 ;; 2. Shapes' Passes are extracted from a scene, along with the transform that should be applied by
 ;; the vertex shader that draws them (computed by composing the transforms in the scene tree)
-(struct draw-passes ([passes : Passes]
+(struct draw-passes ([passes : passes]
                      [transform : affine])
   #:transparent
   #:mutable)
@@ -68,6 +71,9 @@
                      [transform : affine])
   #:transparent
   #:mutable)
+
+(define empty-passes
+  (passes #() #() #() #() #()))
 
 (define empty-shape-params
   (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (vertices 0 #"" #f)))
@@ -454,42 +460,44 @@
      ((inst build-vector draw-params) n (λ (_) (empty-draw-params))))
    vector-length))
 
-(: draw-pass (-> Index (Vectorof draw-passes) Natural (HashTable Symbol Uniform) Face Void))
-(define (draw-pass pass passess num standard-uniforms face)
-  ;(log-pict3d-debug "<engine> drawing pass ~v" pass)
-  (define len
-    (for/fold ([len : Nonnegative-Fixnum  0]) ([j  (in-range (min num (vector-length passess)))])
-      (define passes (unsafe-vector-ref passess j))
-      (let ([passes  (draw-passes-passes passes)])
-        (cond
-          [(< pass (vector-length passes))
-           (unsafe-fx+ len (vector-length (unsafe-vector-ref passes pass)))]
-          [else  len]))))
-  
-  (define params (get-all-params len))
-  
-  (define n
-    (for/fold ([n : Nonnegative-Fixnum  0]) ([j  (in-range (min num (vector-length passess)))])
-      (define passes (unsafe-vector-ref passess j))
-      (let ([t  (draw-passes-transform passes)]
-            [passes  (draw-passes-passes passes)])
-        (cond
-          [(< pass (vector-length passes))
-           (define ps (unsafe-vector-ref passes pass))
-           (for ([i  (in-range (vector-length ps))])
-             (define pi (unsafe-vector-ref params (+ n i)))
-             (set-draw-params-shape-params! pi (unsafe-vector-ref ps i))
-             (set-draw-params-transform! pi t))
-           (unsafe-fx+ n (vector-length ps))]
-          [else  n]))))
-  
-  (unless (= n len)
-    (error 'draw-pass "copy error: wrote ~a but len = ~a" n len))
-  
-  (send-draw-params params 0 len standard-uniforms face)
-  
-  (for ([i  (in-range n)])
-    (define pi (unsafe-vector-ref params i))
-    (set-draw-params-shape-params! pi empty-shape-params)
-    (set-draw-params-transform! pi identity-affine))
-  )
+(define-syntax-rule (make-draw-pass get-params-stx)
+  (let ([get-params : (-> passes (Vectorof shape-params))  get-params-stx])
+    (λ ([passess : (Vectorof draw-passes)]
+        [num : Natural]
+        [standard-uniforms : (HashTable Symbol Uniform)]
+        [face : Face])
+      ;(log-pict3d-debug "<engine> drawing pass ~v" pass)
+      (define len
+        (for/fold ([len : Nonnegative-Fixnum  0]) ([j  (in-range (min num (vector-length passess)))])
+          (define passes (unsafe-vector-ref passess j))
+          (unsafe-fx+ len (vector-length (get-params (draw-passes-passes passes))))))
+      
+      (define params (get-all-params len))
+      
+      (define n
+        (for/fold ([n : Nonnegative-Fixnum  0]) ([j  (in-range (min num (vector-length passess)))])
+          (define passes (unsafe-vector-ref passess j))
+          (let ([t  (draw-passes-transform passes)]
+                [passes  (draw-passes-passes passes)])
+            (define ps (get-params passes))
+            (for ([i  (in-range (vector-length ps))])
+              (define pi (unsafe-vector-ref params (+ n i)))
+              (set-draw-params-shape-params! pi (unsafe-vector-ref ps i))
+              (set-draw-params-transform! pi t))
+            (unsafe-fx+ n (vector-length ps)))))
+      
+      (unless (= n len)
+        (error 'draw-pass "copy error: wrote ~a but len = ~a" n len))
+      
+      (send-draw-params params 0 len standard-uniforms face)
+      
+      (for ([i  (in-range n)])
+        (define pi (unsafe-vector-ref params i))
+        (set-draw-params-shape-params! pi empty-shape-params)
+        (set-draw-params-transform! pi identity-affine)))))
+
+(define draw-light-pass (make-draw-pass passes-light))
+(define draw-opaque-material-pass (make-draw-pass passes-opaque-material))
+(define draw-opaque-color-pass (make-draw-pass passes-opaque-color))
+(define draw-transparent-material-pass (make-draw-pass passes-opaque-material))
+(define draw-transparent-color-pass (make-draw-pass passes-opaque-color))

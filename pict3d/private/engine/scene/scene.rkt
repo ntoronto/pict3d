@@ -556,7 +556,7 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Scene drawing
 
-(: shape-passes (-> Shape Passes))
+(: shape-passes (-> Shape passes))
 (define (shape-passes a)
   (hash-ref!
    (shape-lazy-passes a)
@@ -579,7 +579,7 @@ for `Scene`.
   (make-cached-vector 'get-scene-draw-passes
                       (λ ([n : Integer])
                         (log-pict3d-info "<engine> creating draw-passes vector for ~v shapes" n)
-                        (build-vector n (λ (_) (draw-passes #() identity-affine))))
+                        (build-vector n (λ (_) (draw-passes empty-passes identity-affine))))
                       vector-length))
 
 (: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
@@ -806,47 +806,45 @@ for `Scene`.
     [else
      empty]))
 
-(: make-frozen-scene-shape-passes (-> frozen-scene-shape Passes))
+(: merge-shape-params (-> (Listof (Vectorof shape-params)) (Vectorof shape-params)))
+(define (merge-shape-params ps)
+  (let ([ps  (apply vector-append ps)])
+    (list->vector
+     (append*
+      (for*/list : (Listof (Listof shape-params))
+        ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
+         [program  (in-value ((car ks)))]
+         [s   (in-value (cdr ks))]
+         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
+         [uniforms  (in-value (car ks))]
+         [s  (in-value (cdr ks))]
+         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-two-sided?))]
+         [face  (in-value (car ks))]
+         [s  (in-value (cdr ks))]
+         [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-mode))]
+         [mode  (in-value (car ks))]
+         [s  (in-value (cdr ks))])
+        (append
+         (merge-vertices program #f uniforms face mode ps (span-start s) (span-end s))
+         (merge-vertices program #t uniforms face mode ps (span-start s) (span-end s))))))))
+
+(: make-frozen-scene-shape-passes (-> frozen-scene-shape passes))
 (define (make-frozen-scene-shape-passes a)
   (define s (frozen-scene-shape-scene a))
   
-  (: transformed-passes (-> Shape affine (Listof Passes)))
+  (: transformed-passes (-> Shape affine (Listof passes)))
   (define (transformed-passes s t)
     (map shape-passes (shape-transform s (affine-transform t))))
   
   (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3)
                                      empty
                                      transformed-passes)))
-  (define num-passes (apply max (map vector-length ps)))
-  
-  (: get-swap-params (-> Integer (Vectorof shape-params)))
-  (define (get-swap-params n)
-    (make-vector n empty-shape-params))
-  
-  (list->vector
-   (for/list : (Listof (Vectorof shape-params)) ([pass  (in-range num-passes)])
-     (let* ([ps  (map (λ ([p : Passes])
-                        (if (< pass (vector-length p)) (vector-ref p pass) #()))
-                      ps)]
-            [ps  (apply vector-append ps)])
-       (list->vector
-        (append*
-         (for*/list : (Listof (Listof shape-params))
-           ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
-            [program  (in-value ((car ks)))]
-            [s   (in-value (cdr ks))]
-            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
-            [uniforms  (in-value (car ks))]
-            [s  (in-value (cdr ks))]
-            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-two-sided?))]
-            [face  (in-value (car ks))]
-            [s  (in-value (cdr ks))]
-            [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-mode))]
-            [mode  (in-value (car ks))]
-            [s  (in-value (cdr ks))])
-           (append
-            (merge-vertices program #f uniforms face mode ps (span-start s) (span-end s))
-            (merge-vertices program #t uniforms face mode ps (span-start s) (span-end s))))))))))
+  (passes
+   (merge-shape-params (map passes-light ps))
+   (merge-shape-params (map passes-opaque-material ps))
+   (merge-shape-params (map passes-opaque-color ps))
+   (merge-shape-params (map passes-transparent-material ps))
+   (merge-shape-params (map passes-transparent-color ps))))
 
 ;; ===================================================================================================
 ;; Bounding box

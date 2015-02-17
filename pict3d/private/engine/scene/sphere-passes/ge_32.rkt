@@ -418,7 +418,7 @@ code
 ;; ===================================================================================================
 ;; Sphere shape passes
 
-(: make-sphere-shape-passes (-> sphere-shape Passes))
+(: make-sphere-shape-passes (-> sphere-shape passes))
 (define (make-sphere-shape-passes a)
   (match-define (sphere-shape _ t c e m inside?) a)
   
@@ -456,19 +456,16 @@ code
   
   (define transparent? (< (flvector-ref c 3) 1.0))
   
-  (: passes Passes)
-  (define passes
-    (if transparent?
-        (vector
-         #()
-         #()
-         #()
-         (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
-         (vector (shape-params sphere-tran-program empty #t GL_POINTS (vertices 1 draw-data #f))))
-        (vector
-         #()
-         (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
-         (vector (shape-params sphere-opaq-program empty #t GL_POINTS (vertices 1 draw-data #f)))
-         #()
-         #())))
-  passes)
+  (if transparent?
+      (passes
+       #()
+       #()
+       #()
+       (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
+       (vector (shape-params sphere-tran-program empty #t GL_POINTS (vertices 1 draw-data #f))))
+      (passes
+       #()
+       (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
+       (vector (shape-params sphere-opaq-program empty #t GL_POINTS (vertices 1 draw-data #f)))
+       #()
+       #())))

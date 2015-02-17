@@ -123,7 +123,7 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-directional-light-shape-passes (-> directional-light-shape Passes))
+(: make-directional-light-shape-passes (-> directional-light-shape passes))
 (define (make-directional-light-shape-passes a)
   (match-define (directional-light-shape _ color intensity direction) a)
   
@@ -132,16 +132,13 @@ code
           (cons "light_color" (uniform-float color 3))
           (cons "light_intensity" (uniform-float intensity 1))))
   
-  (: passes Passes)
-  (define passes
-    (vector
-     (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
-                           (vertices 4 data vertex-ids)))
-     #()
-     #()
-     #()
-     #()))
-  passes)
+  (passes
+   (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
+                         (vertices 4 data vertex-ids)))
+   #()
+   #()
+   #()
+   #()))
 
 ;; ===================================================================================================
 ;; Bounding box

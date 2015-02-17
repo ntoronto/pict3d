@@ -139,7 +139,7 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-point-light-shape-passes (-> point-light-shape Passes))
+(: make-point-light-shape-passes (-> point-light-shape passes))
 (define (make-point-light-shape-passes a)
   (match-define (point-light-shape _ color intensity position radius) a)
   
@@ -152,15 +152,12 @@ code
               (pack-color color)
               (bytes id))))))
   
-  (: passes Passes)
-  (define passes
-    (vector
-     (vector (shape-params point-light-program empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
-     #()
-     #()
-     #()
-     #()))
-  passes)
+  (passes
+   (vector (shape-params point-light-program empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
+   #()
+   #()
+   #()
+   #()))
 
 ;; ===================================================================================================
 ;; Bounding box

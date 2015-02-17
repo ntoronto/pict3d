@@ -327,7 +327,7 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-sphere-shape-passes (-> sphere-shape Passes))
+(: make-sphere-shape-passes (-> sphere-shape passes))
 (define (make-sphere-shape-passes a)
   (match-define (sphere-shape _ t c e m inside?) a)
   
@@ -376,23 +376,20 @@ code
   
   (define transparent? (< (flvector-ref c 3) 1.0))
   
-  (: passes Passes)
-  (define passes
-    (if transparent?
-        (vector
-         #()
-         #()
-         #()
-         (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
-                               (vertices 4 mat-data vertex-ids)))
-         (vector (shape-params sphere-tran-program empty #t GL_TRIANGLES
-                               (vertices 4 draw-data vertex-ids))))
-        (vector
-         #()
-         (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
-                               (vertices 4 mat-data vertex-ids)))
-         (vector (shape-params sphere-opaq-program empty #t GL_TRIANGLES
-                               (vertices 4 draw-data vertex-ids)))
-         #()
-         #())))
-  passes)
+  (if transparent?
+      (passes
+       #()
+       #()
+       #()
+       (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
+                             (vertices 4 mat-data vertex-ids)))
+       (vector (shape-params sphere-tran-program empty #t GL_TRIANGLES
+                             (vertices 4 draw-data vertex-ids))))
+      (passes
+       #()
+       (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
+                             (vertices 4 mat-data vertex-ids)))
+       (vector (shape-params sphere-opaq-program empty #t GL_TRIANGLES
+                             (vertices 4 draw-data vertex-ids)))
+       #()
+       #())))

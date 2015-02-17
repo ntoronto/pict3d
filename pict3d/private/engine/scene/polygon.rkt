@@ -394,7 +394,7 @@ code
 ;; ===================================================================================================
 ;; Triangle shape passes
 
-(: make-triangle-shape-passes (-> triangle-shape Passes))
+(: make-triangle-shape-passes (-> triangle-shape passes))
 (define (make-triangle-shape-passes a)
   (match-define (triangle-shape _ vs ns orig-cs orig-es ms back?) a)
   (define-values (start stop step)
@@ -456,42 +456,33 @@ code
           (< (flvector-ref c 3) 1.0))
         (< (flvector-ref cs 3) 1.0)))
   
-  (: passes Passes)
-  (define passes
-    (if transparent?
-        (vector
-         #()
-         #()
-         #()
-         (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES
-                               (vertices 3 mat-data #f)))
-         (vector (shape-params polygon-tran-program empty #f GL_TRIANGLES
-                               (vertices 3 draw-data #f))))
-        (vector
-         #()
-         (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES
-                               (vertices 3 mat-data #f)))
-         (vector (shape-params polygon-opaq-program empty #f GL_TRIANGLES
-                               (vertices 3 draw-data #f)))
-         #()
-         #())))
-  passes)
+  (if transparent?
+      (passes
+       #()
+       #()
+       #()
+       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices 3 mat-data #f)))
+       (vector (shape-params polygon-tran-program empty #f GL_TRIANGLES (vertices 3 draw-data #f))))
+      (passes
+       #()
+       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices 3 mat-data #f)))
+       (vector (shape-params polygon-opaq-program empty #f GL_TRIANGLES (vertices 3 draw-data #f)))
+       #()
+       #())))
 
 ;; ===================================================================================================
 ;; Rectangle shape passes
 
-(: make-rectangle-shape-passes (-> rectangle-shape Passes))
+(: make-rectangle-shape-passes (-> rectangle-shape passes))
 (define (make-rectangle-shape-passes a)
   (define as (rectangle-shape->triangle-shapes a))
   (define ps (map make-triangle-shape-passes as))
-  (: new-ps Passes)
-  (define new-ps (make-vector 5 #()))
-  (for ([pass  (in-range 5)])
-    (vector-set! new-ps pass
-                 (apply vector-append (map (λ ([p : (Vectorof (Vectorof shape-params))])
-                                             (vector-ref p pass))
-                                           ps))))
-  new-ps)
+  (passes
+   #()
+   (apply vector-append (map passes-opaque-material ps))
+   (apply vector-append (map passes-opaque-color ps))
+   (apply vector-append (map passes-transparent-material ps))
+   (apply vector-append (map passes-transparent-color ps))))
 
 ;; ===================================================================================================
 ;; Bounding box

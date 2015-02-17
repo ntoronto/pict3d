@@ -64,7 +64,7 @@
 (require (prefix-in 30: "sphere-passes/ge_30.rkt")
          (prefix-in 32: "sphere-passes/ge_32.rkt"))
 
-(: make-sphere-shape-passes (-> sphere-shape Passes))
+(: make-sphere-shape-passes (-> sphere-shape passes))
 (define (make-sphere-shape-passes a)
   (if (gl-version-at-least? 32)
       (32:make-sphere-shape-passes a)

@@ -15,9 +15,9 @@
 ;; ===================================================================================================
 ;; Shape types
 
-(struct shape ([lazy-passes : (HashTable GL-Context Passes)]))
+(struct shape ([lazy-passes : (HashTable GL-Context passes)]))
 
-(: lazy-passes (-> (HashTable GL-Context Passes)))
+(: lazy-passes (-> (HashTable GL-Context passes)))
 (define lazy-passes make-weak-hasheq)
 
 (struct solid-shape shape () #:transparent)
