@@ -249,27 +249,19 @@ void main() {
 code
    ))
 
-(define-singleton/context (polygon-mat-program-spec)
+(define-singleton/context (polygon-mat-program)
   (log-pict3d-info "<engine> creating polygon material pass program")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_position" 3 GL_FLOAT)))
-  
-  (define program
-    (make-gl-program
-     struct
-     (list "out_mat")
-     (list (make-gl-shader GL_VERTEX_SHADER polygon-mat-vertex-code)
-           (make-gl-shader GL_FRAGMENT_SHADER polygon-mat-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "unview" 'unview)
-          (cons "proj" 'proj)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "polygon-mat-program"
+   (list (cons "view" 'view)
+         (cons "unview" 'unview)
+         (cons "proj" 'proj))
+   (make-vao-struct
+    (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_position" 3 GL_FLOAT))
+   (list "out_mat")
+   (list (make-gl-shader GL_VERTEX_SHADER polygon-mat-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER polygon-mat-fragment-code))))
 
 ;; ===================================================================================================
 ;; Program for pass 2: color
@@ -363,55 +355,41 @@ void main() {
 code
    ))
 
-(define-singleton/context (polygon-opaq-program-spec)
+(define-singleton/context (polygon-opaq-program)
   (log-pict3d-info "<engine> creating polygon opaque color pass program")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_position" 3 GL_FLOAT)))
-  
-  (define program
-    (make-gl-program struct
-                     (list "out_color")
-                     (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER polygon-opaq-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "ambient" 'ambient)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "polygon-opaq-program"
+   (list (cons "view" 'view)
+         (cons "proj" 'proj)
+         (cons "ambient" 'ambient)
+         (cons "diffuse" 'diffuse)
+         (cons "specular" 'specular))
+   (make-vao-struct
+    (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_position" 3 GL_FLOAT))
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER polygon-opaq-fragment-code))))
 
-(define-singleton/context (polygon-tran-program-spec)
+(define-singleton/context (polygon-tran-program)
   (log-pict3d-info "<engine> creating polygon transparent color pass program")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_position" 3 GL_FLOAT)))
-  
-  (define program
-    (make-gl-program struct
-                     (list "out_color" "out_weight")
-                     (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER polygon-tran-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "ambient" 'ambient)
-          (cons "diffuse" 'diffuse)
-          (cons "specular" 'specular)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "polygon-tran-program"
+   (list (cons "view" 'view)
+         (cons "proj" 'proj)
+         (cons "ambient" 'ambient)
+         (cons "diffuse" 'diffuse)
+         (cons "specular" 'specular))
+   (make-vao-struct
+    (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_position" 3 GL_FLOAT))
+   (list "out_color" "out_weight")
+   (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER polygon-tran-fragment-code))))
 
 ;; ===================================================================================================
 ;; Triangle shape passes
@@ -428,7 +406,7 @@ code
   (define es (if (vector? orig-es) orig-es (make-vector 3 orig-es)))
   
   (define mat-struct-size
-    (vao-struct-size (gl-program-struct (program-spec-program (polygon-mat-program-spec)))))
+    (vao-struct-size (gl-program-struct (polygon-mat-program))))
   (define mat-data-size (* 3 mat-struct-size))
   (define mat-data (make-bytes mat-data-size))
   (define mat-ptr (u8vector->cpointer mat-data))
@@ -445,7 +423,7 @@ code
       i))
   
   (define opaq-struct-size
-    (vao-struct-size (gl-program-struct (program-spec-program (polygon-opaq-program-spec)))))
+    (vao-struct-size (gl-program-struct (polygon-opaq-program))))
   (define draw-data-size (* 3 opaq-struct-size))
   (define draw-data (make-bytes draw-data-size))
   (define draw-ptr (u8vector->cpointer draw-data))
@@ -485,15 +463,15 @@ code
          #()
          #()
          #()
-         (vector (shape-params polygon-mat-program-spec empty #f GL_TRIANGLES
+         (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES
                                (vertices 3 mat-data #f)))
-         (vector (shape-params polygon-tran-program-spec empty #f GL_TRIANGLES
+         (vector (shape-params polygon-tran-program empty #f GL_TRIANGLES
                                (vertices 3 draw-data #f))))
         (vector
          #()
-         (vector (shape-params polygon-mat-program-spec empty #f GL_TRIANGLES
+         (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES
                                (vertices 3 mat-data #f)))
-         (vector (shape-params polygon-opaq-program-spec empty #f GL_TRIANGLES
+         (vector (shape-params polygon-opaq-program empty #f GL_TRIANGLES
                                (vertices 3 draw-data #f)))
          #()
          #())))

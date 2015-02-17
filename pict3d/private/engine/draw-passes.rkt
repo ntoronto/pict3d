@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/match
+         racket/list
          racket/bool
          math/flonum
          math/base
@@ -66,10 +67,13 @@ code
 
 (define-singleton/context (fullscreen-program)
   (log-pict3d-info "<engine> creating fullscreen program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
+  (make-gl-program
+   "fullscreen-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
 
 (define-singleton/context (fullscreen-vao)
   (log-pict3d-info "<engine> creating vao for fullscreen compositing passes")
@@ -117,10 +121,13 @@ code
 
 (define-singleton/context (blend-program)
   (log-pict3d-info "<engine> creating weighted transparency blend program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
+  (make-gl-program
+   "blend-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
 
 (define bloom-extract-fragment-code
   (string-append
@@ -143,10 +150,13 @@ code
 
 (define-singleton/context (bloom-extract-program)
   (log-pict3d-info "<engine> creating overbright extraction program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
+  (make-gl-program
+   "bloom-extract-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
 
 (define bloom-combine-fragment-code
   (string-append
@@ -180,10 +190,13 @@ code
 
 (define-singleton/context (bloom-combine-program)
   (log-pict3d-info "<engine> creating bloom compositing program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
+  (make-gl-program
+   "bloom-combine-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
 
 (define blur-vert-fragment-code
   #<<code
@@ -209,10 +222,13 @@ code
 
 (define-singleton/context (blur-vert-program)
   (log-pict3d-info "<engine> creating vertical blur program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
+  (make-gl-program
+   "blur-vert-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
 
 (define blur-horz-fragment-code
   #<<code
@@ -238,10 +254,13 @@ code
 
 (define-singleton/context (blur-horz-program)
   (log-pict3d-info "<engine> creating horizontal blur program")
-  (make-gl-program (make-vao-struct)
-                   (list "out_color")
-                   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-                         (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
+  (make-gl-program
+   "blur-horz-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
 
 ;; ===================================================================================================
 ;; Framebuffers

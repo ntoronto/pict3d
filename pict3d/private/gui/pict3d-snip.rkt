@@ -18,7 +18,6 @@
          "../engine/utils.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
-         "../engine/affine.rkt"
          "../gl.rkt"
          "../utils.rkt"
          "pict3d-struct.rkt"

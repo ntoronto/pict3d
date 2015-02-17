@@ -7,8 +7,10 @@
          math/flonum
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
+         "../untyped-utils.rkt"
          "context.rkt"
-         "object.rkt")
+         "object.rkt"
+         "affine.rkt")
 
 (provide (all-defined-out))
 
@@ -66,9 +68,12 @@
 ;; Managed shaders and programs
 
 (struct gl-shader gl-object ([type : Integer] [code : String]) #:transparent)
-(struct gl-program gl-object ([struct : vao-struct]
+(struct gl-program gl-object ([name : String]
+                              [standard-uniforms : (Listof (Pair String Symbol))]
+                              [struct : vao-struct]
                               [output-names : (Listof String)]
-                              [shaders : (Listof gl-shader)])
+                              [shaders : (Listof gl-shader)]
+                              [uniform-locs : (HashTable String Integer)])
   #:transparent)
 
 (: make-gl-shader (-> Integer String gl-shader))
@@ -92,12 +97,14 @@
   
   shader)
 
-(: make-gl-program (-> vao-struct (Listof String) (Listof gl-shader) gl-program))
-(define (make-gl-program struct output-names shaders)
+(: make-gl-program (-> String
+                       (Listof (Pair String Symbol)) vao-struct (Listof String) (Listof gl-shader)
+                       gl-program))
+(define (make-gl-program name standard-uniforms struct output-names shaders)
   (get-current-managed-gl-context 'make-gl-program)
   
   (define handle (glCreateProgram))
-  (define program (gl-program handle struct output-names shaders))
+  (define program (gl-program handle name standard-uniforms struct output-names shaders (make-hash)))
   (manage-gl-object program (λ ([handle : Natural]) (glDeleteProgram handle)))
   
   (for ([shader  (in-list shaders)])
@@ -123,7 +130,7 @@
   
   program)
 
-(define null-gl-program (gl-program 0 (make-vao-struct) empty empty))
+(define null-gl-program (gl-program 0 "null" empty (make-vao-struct) empty empty (make-hash)))
 
 (: current-gl-program (Parameterof gl-program))
 (define current-gl-program (make-parameter null-gl-program))
@@ -195,6 +202,10 @@
          (uniform-mats (take-mat m n) s)]
         [else
          (error 'uniform-mat "expected (U Index (Pair Index Index)); given ~e" s)]))
+
+(: uniform-affine (-> affine uniform-mats))
+(define (uniform-affine m)
+  (uniform-mats (affine-data m) '(3 . 4)))
 
 (: take-floats (-> (U Flonum FlVector) Index (Listof Flonum)))
 (define (take-floats v n)
@@ -299,6 +310,17 @@
         [(uniform-mats? u)    (gl-uniform-mats loc u)]
         [else  (raise-argument-error 'gl-uniform "known uniform" 1 loc u)]))
 
-(: gl-program-uniform (-> gl-object String Uniform Void))
+(: gl-program-uniform-loc (-> gl-program String Integer))
+(define (gl-program-uniform-loc prog name)
+  (hash-ref! (gl-program-uniform-locs prog) name
+             (λ ()
+               (define loc (glGetUniformLocation (gl-object-handle prog) name))
+               (log-pict3d-debug "<gl> ~a binds uniform ~v at location ~v"
+                                 (gl-program-name prog) name loc)
+               loc)))
+
+(: gl-program-uniform (-> gl-program String Uniform Void))
 (define (gl-program-uniform prog name u)
-  (gl-uniform (glGetUniformLocation (gl-object-handle prog) name) u))
+  (define loc (gl-program-uniform-loc prog name))
+  (unless (negative? loc)
+    (gl-uniform loc u)))

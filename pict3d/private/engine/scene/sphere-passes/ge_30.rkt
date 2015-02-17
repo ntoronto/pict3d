@@ -10,7 +10,6 @@
          math/flonum
          "../../../gl.rkt"
          "../../../utils.rkt"
-         "../../affine.rkt"
          "../../types.rkt"
          "../../utils.rkt"
          "../../shader-lib.rkt"
@@ -102,31 +101,24 @@ void main() {
 code
    ))
 
-(define-singleton/context (sphere-mat-program-spec)
+(define-singleton/context (sphere-mat-program)
   (log-pict3d-info "<engine> creating sphere material program for OpenGL >= 30")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "sphere0" 4 GL_FLOAT)
-     (make-vao-field "sphere1" 4 GL_FLOAT)
-     (make-vao-field "sphere2" 4 GL_FLOAT)
-     (make-vao-field "vert_roughness_inside_id" 4 GL_UNSIGNED_BYTE)))
-  
-  (define program
-    (make-gl-program struct
-                     (list "out_mat")
-                     (list (make-gl-shader GL_VERTEX_SHADER (sphere-mat-vertex-code))
-                           (make-gl-shader GL_FRAGMENT_SHADER (sphere-mat-fragment-code)))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "unview" 'unview)
-          (cons "proj" 'proj)
-          (cons "unproj" 'unproj)
-          (cons "width" 'width)
-          (cons "height" 'height)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "sphere-mat-program-30"
+   (list (cons "view" 'view)
+         (cons "unview" 'unview)
+         (cons "proj" 'proj)
+         (cons "unproj" 'unproj)
+         (cons "width" 'width)
+         (cons "height" 'height))
+   (make-vao-struct
+    (make-vao-field "sphere0" 4 GL_FLOAT)
+    (make-vao-field "sphere1" 4 GL_FLOAT)
+    (make-vao-field "sphere2" 4 GL_FLOAT)
+    (make-vao-field "vert_roughness_inside_id" 4 GL_UNSIGNED_BYTE))
+   (list "out_mat")
+   (list (make-gl-shader GL_VERTEX_SHADER (sphere-mat-vertex-code))
+         (make-gl-shader GL_FRAGMENT_SHADER (sphere-mat-fragment-code)))))
 
 ;; ===================================================================================================
 ;; Program for pass 2: color
@@ -309,23 +301,25 @@ code
         (cons "diffuse" 'diffuse)
         (cons "specular" 'specular)))
 
-(define-singleton/context (sphere-opaq-program-spec)
+(define-singleton/context (sphere-opaq-program)
   (log-pict3d-info "<engine> creating sphere opaque color pass program for OpenGL >= 30")
-  (program-spec
-   (make-gl-program (draw-program-struct)
-                    (list "out_color")
-                    (list (make-gl-shader GL_VERTEX_SHADER (sphere-draw-vertex-code))
-                          (make-gl-shader GL_FRAGMENT_SHADER (sphere-opaq-fragment-code))))
-   (draw-program-uniforms)))
+  (make-gl-program
+   "sphere-opaq-program-30"
+   (draw-program-uniforms)
+   (draw-program-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER (sphere-draw-vertex-code))
+         (make-gl-shader GL_FRAGMENT_SHADER (sphere-opaq-fragment-code)))))
 
-(define-singleton/context (sphere-tran-program-spec)
+(define-singleton/context (sphere-tran-program)
   (log-pict3d-info "<engine> creating sphere transparent color pass program for OpenGL >= 30")
-  (program-spec
-   (make-gl-program (draw-program-struct)
-                    (list "out_color" "out_weight")
-                    (list (make-gl-shader GL_VERTEX_SHADER (sphere-draw-vertex-code))
-                          (make-gl-shader GL_FRAGMENT_SHADER (sphere-tran-fragment-code))))
-   (draw-program-uniforms)))
+  (make-gl-program
+   "sphere-tran-program-30"
+   (draw-program-uniforms)
+   (draw-program-struct)
+   (list "out_color" "out_weight")
+   (list (make-gl-shader GL_VERTEX_SHADER (sphere-draw-vertex-code))
+         (make-gl-shader GL_FRAGMENT_SHADER (sphere-tran-fragment-code)))))
 
 ;; ===================================================================================================
 ;; Sphere shape passes
@@ -355,8 +349,7 @@ code
                             (unsafe-fx+ 2 affine-size))
                 j))
   
-  (define draw-datum-size
-    (vao-struct-size (gl-program-struct (program-spec-program (sphere-opaq-program-spec)))))
+  (define draw-datum-size (vao-struct-size (gl-program-struct (sphere-opaq-program))))
   (define draw-data-size (* 4 draw-datum-size))
   (define draw-data (make-bytes draw-data-size))
   (define-values (ecolor i.lo) (pack-emitted e))
@@ -390,15 +383,15 @@ code
          #()
          #()
          #()
-         (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
+         (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
                                (vertices 4 mat-data vertex-ids)))
-         (vector (shape-params sphere-tran-program-spec empty #t GL_TRIANGLES
+         (vector (shape-params sphere-tran-program empty #t GL_TRIANGLES
                                (vertices 4 draw-data vertex-ids))))
         (vector
          #()
-         (vector (shape-params sphere-mat-program-spec empty #t GL_TRIANGLES
+         (vector (shape-params sphere-mat-program empty #t GL_TRIANGLES
                                (vertices 4 mat-data vertex-ids)))
-         (vector (shape-params sphere-opaq-program-spec empty #t GL_TRIANGLES
+         (vector (shape-params sphere-opaq-program empty #t GL_TRIANGLES
                                (vertices 4 draw-data vertex-ids)))
          #()
          #())))

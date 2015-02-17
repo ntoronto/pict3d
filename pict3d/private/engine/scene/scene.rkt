@@ -33,7 +33,6 @@ for `Scene`.
          "../../utils.rkt"
          "../draw-pass.rkt"
          "../draw-passes.rkt"
-         "../affine.rkt"
          "../types.rkt"
          "../utils.rkt"
          "tags.rkt"
@@ -716,15 +715,15 @@ for `Scene`.
         (unsafe-fx+ index-count (vector-length indexes))
         index-count)))
 
-(: merge-vertex-data (-> program-spec
+(: merge-vertex-data (-> gl-program
                          Boolean
                          (Vectorof shape-params)
                          Nonnegative-Fixnum
                          Nonnegative-Fixnum
                          Nonnegative-Fixnum
                          Bytes))
-(define (merge-vertex-data pd indexed? ps start end vertex-count)
-  (define struct-size (vao-struct-size (gl-program-struct (program-spec-program pd))))
+(define (merge-vertex-data program indexed? ps start end vertex-count)
+  (define struct-size (vao-struct-size (gl-program-struct program)))
   (define buffer-size (unsafe-fx* vertex-count struct-size))
   (define all-vertex-data (make-bytes buffer-size))
   (define all-vertex-data-ptr (u8vector->cpointer all-vertex-data))
@@ -775,7 +774,7 @@ for `Scene`.
                index-num)]))
   all-indexes)
 
-(: merge-vertices (-> program-spec
+(: merge-vertices (-> gl-program
                       Boolean
                       (List-Hash String (U Symbol Uniform))
                       Boolean
@@ -784,7 +783,7 @@ for `Scene`.
                       Nonnegative-Fixnum
                       Nonnegative-Fixnum
                       (Listof shape-params)))
-(define (merge-vertices pd indexed? uniforms two-sided? mode ps start end)
+(define (merge-vertices program indexed? uniforms two-sided? mode ps start end)
   (define vertex-count (get-vertex-count indexed? ps start end))
   (cond
     [(> vertex-count max-shape-vertex-count)
@@ -795,15 +794,15 @@ for `Scene`.
               max-shape-vertex-count
               vertex-count))
      (append
-      (merge-vertices pd indexed? uniforms two-sided? mode ps start mid)
-      (merge-vertices pd indexed? uniforms two-sided? mode ps mid end))]
+      (merge-vertices program indexed? uniforms two-sided? mode ps start mid)
+      (merge-vertices program indexed? uniforms two-sided? mode ps mid end))]
     [(> vertex-count 0)
      ;; Allocate enough space for all the vertex data
-     (define all-vertex-data (merge-vertex-data pd indexed? ps start end vertex-count))
+     (define all-vertex-data (merge-vertex-data program indexed? ps start end vertex-count))
      (define all-indexes (if indexed? (merge-indexes ps start end) #f))
      
      (define verts (vertices (assert vertex-count index?) all-vertex-data all-indexes))
-     (list (shape-params (λ () pd) uniforms two-sided? mode verts))]
+     (list (shape-params (λ () program) uniforms two-sided? mode verts))]
     [else
      empty]))
 
@@ -833,8 +832,8 @@ for `Scene`.
        (list->vector
         (append*
          (for*/list : (Listof (Listof shape-params))
-           ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program-spec))]
-            [pd  (in-value ((car ks)))]
+           ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
+            [program  (in-value ((car ks)))]
             [s   (in-value (cdr ks))]
             [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
             [uniforms  (in-value (car ks))]
@@ -846,8 +845,8 @@ for `Scene`.
             [mode  (in-value (car ks))]
             [s  (in-value (cdr ks))])
            (append
-            (merge-vertices pd #f uniforms face mode ps (span-start s) (span-end s))
-            (merge-vertices pd #t uniforms face mode ps (span-start s) (span-end s))))))))))
+            (merge-vertices program #f uniforms face mode ps (span-start s) (span-end s))
+            (merge-vertices program #t uniforms face mode ps (span-start s) (span-end s))))))))))
 
 ;; ===================================================================================================
 ;; Bounding box

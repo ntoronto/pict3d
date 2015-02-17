@@ -5,11 +5,11 @@
          racket/unsafe/ops
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
+         "../math/flt3.rkt"
          "../utils.rkt"
          "../gl.rkt"
          "../ffi.rkt"
          "../utils.rkt"
-         "affine.rkt"
          "types.rkt"
          "utils.rkt")
 
@@ -36,12 +36,19 @@
 ;; Drawing pass data
 
 ;; 1. Shapes construct Passes, which contain all the data necessaary to draw them on each drawing pass
-;; (i.e. material pass, light pass, color pass); each pass is numbered and corresponds with an index
+;; (e.g. material pass, light pass, color pass); each pass is numbered and corresponds with an index
 ;; in the outermost vector
+#;
+(struct passes ([light : (Vectorof shape-params)]
+                [opaque-material : (Vectorof shape-params)]
+                [opaque-draw : (Vectorof shape-params)]
+                [transparent-material : (Vectorof shape-params)]
+                [transparent-draw : (Vectorof shape-params)])
+  #:tranparent)
 (define-type Passes (Vectorof (Vectorof shape-params)))
 
-;; (`program-spec` is lazy because programs can't be constructed until a GL context is active)
-(struct shape-params ([program-spec : (-> program-spec)]
+;; (`program` is lazy because programs can't be constructed until a GL context is active)
+(struct shape-params ([program : (-> gl-program)]
                       [uniforms : (List-Hash String (U Symbol Uniform))]
                       [two-sided? : Boolean]
                       [mode : Integer]
@@ -368,7 +375,8 @@
 ;; ===================================================================================================
 ;; Sending uniforms
 
-(: send-uniforms (-> gl-object (List-Hash String (U Symbol Uniform)) (HashTable Symbol Uniform) Void))
+(: send-uniforms (-> gl-program (List-Hash String (U Symbol Uniform)) (HashTable Symbol Uniform)
+                     Void))
 (define (send-uniforms program uniforms standard-uniforms)
   (for ([nu  (in-list uniforms)])
     (define name (car nu))
@@ -390,12 +398,11 @@
   ;; For each program...
   (for ([ks  (in-list (group-by-key! ps start end
                                      (λ ([ts : draw-params])
-                                       (shape-params-program-spec
+                                       (shape-params-program
                                         (draw-params-shape-params ts)))))])
     (match-define (cons k s) ks)
-    (define pd (k))
-    (define program (program-spec-program pd))
-    (define uniforms (program-spec-uniforms pd))
+    (define program (k))
+    (define uniforms (gl-program-standard-uniforms program))
     (with-gl-program program
       (send-uniforms program uniforms standard-uniforms)
       (gl-program-uniform program "zfar" (hash-ref standard-uniforms 'zfar))
@@ -403,6 +410,12 @@
       ;; For each set of shape uniforms...
       (for ([ks  (in-list (group-by-key! ps (span-start s) (span-end s)
                                          (λ ([ts : draw-params])
+                                           #;
+                                           (list-hasheq-set
+                                            (shape-params-uniforms (draw-params-shape-params ts))
+                                            "_model"
+                                            (uniform-affine (draw-params-transform ts)))
+                                           
                                            (shape-params-uniforms (draw-params-shape-params ts)))))])
         (match-define (cons uniforms s) ks)
         (send-uniforms program uniforms standard-uniforms)

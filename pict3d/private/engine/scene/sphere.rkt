@@ -5,7 +5,7 @@
          math/flonum
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
-         "../affine.rkt"
+         "../../gl.rkt"
          "../types.rkt"
          "../draw-pass.rkt"
          "types.rkt")

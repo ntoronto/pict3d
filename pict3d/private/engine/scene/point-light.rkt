@@ -115,30 +115,23 @@ void main() {
 code
    ))
 
-(define-singleton/context (point-light-program-spec)
+(define-singleton/context (point-light-program)
   (log-pict3d-info "<engine> creating point light program")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_position" 3 GL_FLOAT)
-     (make-vao-field "vert_intensity_radius" 2 GL_FLOAT)
-     (make-vao-field "vert_color" 3 GL_UNSIGNED_BYTE)
-     (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE)))
-  
-  (define program
-    (make-gl-program struct
-                     (list "out_diffuse" "out_specular")
-                     (list (make-gl-shader GL_VERTEX_SHADER point-light-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER point-light-fragment-code))))
-  
-  (define uniforms
-    (list (cons "view" 'view)
-          (cons "proj" 'proj)
-          (cons "unproj" 'unproj)
-          (cons "depth" 'depth)
-          (cons "material" 'material)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "point-light-program"
+   (list (cons "view" 'view)
+         (cons "proj" 'proj)
+         (cons "unproj" 'unproj)
+         (cons "depth" 'depth)
+         (cons "material" 'material))
+   (make-vao-struct
+    (make-vao-field "vert_position" 3 GL_FLOAT)
+    (make-vao-field "vert_intensity_radius" 2 GL_FLOAT)
+    (make-vao-field "vert_color" 3 GL_UNSIGNED_BYTE)
+    (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE))
+   (list "out_diffuse" "out_specular")
+   (list (make-gl-shader GL_VERTEX_SHADER point-light-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER point-light-fragment-code))))
 
 ;; ===================================================================================================
 ;; Point light shape passes
@@ -162,8 +155,7 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params point-light-program-spec empty #t GL_TRIANGLES
-                           (vertices 4 data vertex-ids)))
+     (vector (shape-params point-light-program empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
      #()
      #()
      #()

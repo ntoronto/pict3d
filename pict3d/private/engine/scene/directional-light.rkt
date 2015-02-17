@@ -101,26 +101,19 @@ void main() {
 code
    ))
 
-(define-singleton/context (directional-light-program-spec)
+(define-singleton/context (directional-light-program)
   (log-pict3d-info "<engine> creating directional light program")
-  
-  (define struct
-    (make-vao-struct
-     (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE)))
-  
-  (define program
-    (make-gl-program struct
-                     (list "out_diffuse" "out_specular")
-                     (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
-                           (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
-  
-  (define uniforms
-    (list (cons "unview" 'unview)
-          (cons "unproj" 'unproj)
-          (cons "depth" 'depth)
-          (cons "material" 'material)))
-  
-  (program-spec program uniforms))
+  (make-gl-program
+   "directional-light-program"
+   (list (cons "unview" 'unview)
+         (cons "unproj" 'unproj)
+         (cons "depth" 'depth)
+         (cons "material" 'material))
+   (make-vao-struct
+    (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE))
+   (list "out_diffuse" "out_specular")
+   (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
 
 ;; ===================================================================================================
 ;; Directional light shape passes
@@ -142,7 +135,7 @@ code
   (: passes Passes)
   (define passes
     (vector
-     (vector (shape-params directional-light-program-spec uniforms #t GL_TRIANGLES
+     (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
                            (vertices 4 data vertex-ids)))
      #()
      #()

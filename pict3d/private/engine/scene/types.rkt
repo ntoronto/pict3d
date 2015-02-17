@@ -7,7 +7,6 @@
          "../../utils.rkt"
          "../../gl.rkt"
          "../draw-pass.rkt"
-         "../affine.rkt"
          "../types.rkt"
          "tags.rkt")
 
