@@ -277,32 +277,14 @@
 
 ;; ===================================================================================================
 
-(: make-cached-vector (All (A) (-> Symbol (-> Integer A) (-> A Index) (-> Integer A))))
-(define (make-cached-vector name make-vec vec-length)
-  (: the-vec (Thread-Cellof (U #f A)))
-  (define the-vec (make-thread-cell #f #f))  ; do not want preservation!
-  
-  (: get-vec (-> Integer A))
-  (define (get-vec size)
-    (cond [(index? size)
-           (define vec (thread-cell-ref the-vec))
-           (cond [(and vec (<= size (vec-length vec)))  vec]
-                 [else
-                  (define vec (make-vec (next-pow2 size)))
-                  (thread-cell-set! the-vec vec)
-                  vec])]
-          [else
-           (raise-argument-error name "Index" size)]))
-  
-  get-vec)
-
-(: make-unsafe-cached-vector (All (A) (-> Symbol (-> Integer A) (-> A Index) (-> Integer A))))
-(define (make-unsafe-cached-vector name make-vec vec-length)
+(: make-gl-cached-vector (All (A) (-> Symbol (-> Integer A) (-> A Index) (-> Integer A))))
+(define (make-gl-cached-vector name make-vec vec-length)
   (: the-vec (U #f A))
   (define the-vec #f)
   
   (: get-vec (-> Integer A))
   (define (get-vec size)
+    (get-current-managed-gl-context name)
     (cond [(index? size)
            (define vec the-vec)
            (cond [(and vec (<= size (vec-length vec)))  vec]
@@ -325,10 +307,10 @@
   #:mutable)
 
 (define get-span-vector
-  (make-cached-vector
-   'get-keys
+  (make-gl-cached-vector
+   'get-span-vector
    (λ ([n : Integer])
-     (log-pict3d-info "<engine> creating key vector of length ~v" n)
+     (log-pict3d-info "<engine> creating span vector of length ~v" n)
      ((inst make-vector span) n (span 0 0 0)))
    vector-length))
 

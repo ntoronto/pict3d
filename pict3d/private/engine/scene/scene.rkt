@@ -576,11 +576,12 @@ for `Scene`.
         (make-frozen-scene-shape-passes a)]))))
 
 (define get-scene-draw-passes
-  (make-cached-vector 'get-scene-draw-passes
-                      (λ ([n : Integer])
-                        (log-pict3d-info "<engine> creating draw-passes vector for ~v shapes" n)
-                        (build-vector n (λ (_) (draw-passes empty-passes identity-affine))))
-                      vector-length))
+  (make-gl-cached-vector
+   'get-scene-draw-passes
+   (λ ([n : Integer])
+     (log-pict3d-info "<engine> creating draw-passes vector for ~v shapes" n)
+     (build-vector n (λ (_) (draw-passes empty-passes identity-affine))))
+   vector-length))
 
 (: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
 (define (draw-scene s width height view proj background ambient-color ambient-intensity)

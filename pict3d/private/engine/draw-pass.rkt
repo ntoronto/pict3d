@@ -200,20 +200,22 @@
 ;; Vertex drawing of fixed-length primitives (e.g. points, lines, triangles, quads)
 
 (define get-tmp-transform-data
-  (make-cached-vector 'get-tmp-transform-data
-                      (λ ([n : Integer])
-                        (log-pict3d-info "<engine> creating temp transform data of length ~v" n)
-                        (make-bytes n))
-                      bytes-length))
+  (make-gl-cached-vector
+   'get-tmp-transform-data
+   (λ ([n : Integer])
+     (log-pict3d-info "<engine> creating temp transform data of length ~v" n)
+     (make-bytes n))
+   bytes-length))
 
 (define max-shape-vertex-count 16384)
 
 (define get-tmp-index-data
-  (make-cached-vector 'get-tmp-index-data
-                      (λ ([n : Integer])
-                        (log-pict3d-info "<engine> creating temp index data of length ~v" n)
-                        (make-u16vector n))
-                      u16vector-length))
+  (make-gl-cached-vector
+   'get-tmp-index-data
+   (λ ([n : Integer])
+     (log-pict3d-info "<engine> creating temp index data of length ~v" n)
+     (make-u16vector n))
+   u16vector-length))
 
 (: get-vertex-count (-> Boolean
                         (Vectorof draw-params)
@@ -442,7 +444,7 @@
 ;; Pass extraction
 
 (define get-all-params
-  (make-cached-vector
+  (make-gl-cached-vector
    'get-all-params
    (λ ([n : Integer])
      (log-pict3d-info "<engine> creating draw-params vector of length ~v" n)
