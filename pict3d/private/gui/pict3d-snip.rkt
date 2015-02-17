@@ -69,11 +69,13 @@
 ;; Rendering threads
 
 (define get-the-bytes
-  (make-cached-vector 'get-the-bytes
-                      (λ (n)
-                        (log-pict3d-info "<snip> creating temp ARGB bytes of length ~v" n)
-                        (make-bytes n))
-                      bytes-length))
+  ;; Only one thread at a time can have an active OpenGL context, so this should be safe
+  (make-unsafe-cached-vector
+   'get-the-bytes
+   (λ (n)
+     (log-pict3d-info "<snip> creating temp ARGB bytes of length ~v" n)
+     (make-bytes n))
+   bytes-length))
 
 (define-values (standard-over-light standard-under-light)
   (let ([direction  (flvector -0.25 -0.5 -1.0)]

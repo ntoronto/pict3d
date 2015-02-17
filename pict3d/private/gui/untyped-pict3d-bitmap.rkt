@@ -20,11 +20,13 @@
                                (is-a?/c bitmap%))]))
 
 (define get-the-bytes
-  (make-cached-vector 'get-the-bytes
-                      (λ (n)
-                        (log-pict3d-debug "<bitmap> creating temp ARGB bytes of length ~v" n)
-                        (make-bytes n))
-                      bytes-length))
+  ;; Only one thread at a time can have an active OpenGL context, so this should be safe
+  (make-unsafe-cached-vector
+   'get-the-bytes
+   (λ (n)
+     (log-pict3d-debug "<bitmap> creating temp ARGB bytes of length ~v" n)
+     (make-bytes n))
+   bytes-length))
 
 ;(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 (define (pict3d->bitmap pict width height)
