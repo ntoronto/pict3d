@@ -22,7 +22,7 @@
   (time
    (combine
     (combine*
-     (for/list ([_  (in-range 280000)])
+     (for/list ([_  (in-range 70000)])
        (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
          (sphere (random-position)
                  (* 0.25 (+ (random) 0.1))))))

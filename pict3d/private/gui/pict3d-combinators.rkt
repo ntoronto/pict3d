@@ -55,7 +55,6 @@
  freeze
  ;; Transformations
  transform
- point-at
  scale-x
  scale-y
  scale-z
@@ -403,45 +402,6 @@
   (case-lambda
     [(v a)  (affine (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a))))]
     [(p v a)  (transform p (rotate v a))]))
-
-;; ---------------------------------------------------------------------------------------------------
-
-(: point-at
-   (->* [] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f) #:angle Real #:up Vec #:normalize? Any]
-        Affine))
-(define (point-at #:from [origin origin]
-                  #:to [dest #f]
-                  #:dir [z-axis #f]
-                  #:angle [angle 0.0]
-                  #:up [up z+]
-                  #:normalize? [normalize? #t])
-  (cond
-    [(and dest z-axis)
-     (error 'point-at "expected exactly one of #:to or #:dir; got #:to ~e and #:dir ~e" dest z-axis)]
-    [(not (or dest z-axis))
-     (error 'point-at "expected exactly one of #:to or #:dir; got neither")]
-    [else
-     (let* ([origin  (->flv3 'point-at origin)]
-            [dest  (if dest (->flv3 'point-at dest) #f)]
-            [z-axis  (cond [dest  (flv3- dest origin)]
-                           [else  (->flv3 'point-at (assert z-axis values))])]
-            [z-axis  (if normalize? (flv3normalize z-axis) z-axis)]
-            [z-axis  (if z-axis z-axis z+)]
-            [angle  (degrees->radians (fl angle))]
-            [up  (flv3normalize (->flv3 'point-at up))]
-            [up  (if up up z+)])
-       (define x-axis (flv3normalize (flv3cross z-axis up)))
-       (define t
-         (cond
-           [x-axis
-            (define y-axis (assert (flv3normalize (flv3cross z-axis x-axis)) values))
-            (cols->flaffine3 x-axis y-axis z-axis origin)]
-           [(>= (flvector-ref z-axis 2) 0.0)
-            (translate-flt3 origin)]
-           [else
-            (flt3compose (translate-flt3 origin)
-                         (scale-flt3 (flvector -1.0 1.0 -1.0)))]))
-       (affine (flt3compose t (rotate-z-flt3 angle))))]))
 
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)

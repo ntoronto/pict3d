@@ -1,11 +1,16 @@
 #lang typed/racket/base
 
 (require racket/list
+         typed/racket/class
          math/flonum
+         math/base
          mzlib/pconvert-prop
+         "user-types.rkt"
          "../math/flt3.rkt"
+         "../math/flv3.rkt"
+         "../math/flrect3.rkt"
          "../engine/scene.rkt"
-         "../engine/types.rkt"
+         (only-in "../engine/types.rkt" affine-transform)
          "../utils.rkt")
 
 (provide current-pict3d-custom-write
@@ -51,11 +56,24 @@
 
 (define empty-pict3d (Pict3D empty-scene))
 
-(: pict3d-view-transform (All (F) (case-> (-> Pict3D FlAffine3-)
-                                          (-> Pict3D (-> F) (U FlAffine3- F)))))
-(define (pict3d-view-transform p [default (λ () (scale-flt3 (flvector 1.0 -1.0 -1.0)))])
+(: pict3d-camera (-> Pict3D (U #f FlAffine3-)))
+(define (pict3d-camera p)
   (define ts (scene-map-group/transform (Pict3D-scene p) 'camera (λ ([t : Affine] _) t)))
-  (cond [(empty? ts)  (default)]
-        [else  (define t (affine-transform (first ts)))
-               (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
-                            (flt3inverse t))]))
+  (if (pair? ts) (affine-transform (first ts)) #f))
+
+(: pict3d-auto-camera (-> Pict3D FlAffine3-))
+(define (pict3d-auto-camera p)
+  (let* ([s  (Pict3D-scene p)]
+         [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
+         [b  (and (not (empty-scene? s)) (scene-rect s))]
+         [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
+         [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
+    (affine-transform
+     (point-at #:from (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0)))) #:to c))))
+
+(: pict3d-view-transform (-> Pict3D FlAffine3-))
+(define (pict3d-view-transform p)
+  (let* ([t  (pict3d-camera p)]
+         [t  (if t t (pict3d-auto-camera p))])
+    (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
+                 (flt3inverse t))))

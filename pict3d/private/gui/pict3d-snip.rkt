@@ -153,30 +153,17 @@
     
     ;(: camera (Instance Camera%))
     (define camera
-      (let ([t  (pict3d-view-transform (pict3d (send pict get-scene)) (λ () #f))])
-        (cond
-          [(not t)
-           (let* ([s  (send pict get-scene)]
-                  [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-                  [b  (and (not (empty-scene? s)) (scene-rect s))]
-                  [c  (if b (flrect3-center b) (flvector 0.0 0.0 0.0))]
-                  [d  (if b (flv3mag (flv3- (flrect3-max b) c)) 0.0)])
-             (new camera%
-                  [position  (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0))))]
-                  [velocity  (flvector 0.0 0.0 0.0)]
-                  [yaw  (degrees->radians 135.0)]
-                  [pitch  (degrees->radians -35.264389682754654)]))]
-          [else
-           (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-             (flvector->list (fltransform3-inverse t)))
-           (define position (flvector m03 m13 m23))
-           (define yaw (+ (atan m12 m02) (/ pi 2)))
-           (define pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22)))))))
-           (new camera%
-                [position  position]
-                [velocity  (flvector 0.0 0.0 0.0)]
-                [yaw  yaw]
-                [pitch  pitch])])))
+      (let ([t  (pict3d-view-transform (pict3d (send pict get-scene)))])
+        (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+          (flvector->list (fltransform3-inverse t)))
+        (define position (flvector m03 m13 m23))
+        (define yaw (+ (atan m12 m02) (/ pi 2)))
+        (define pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22)))))))
+        (new camera%
+             [position  position]
+             [velocity  (flvector 0.0 0.0 0.0)]
+             [yaw  yaw]
+             [pitch  pitch])))
     
     ;(: last-view-matrix (U #f FlAffine3-))
     (define last-view-matrix #f)
