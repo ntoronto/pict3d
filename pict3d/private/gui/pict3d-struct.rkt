@@ -5,6 +5,7 @@
          mzlib/pconvert-prop
          "../math/flt3.rkt"
          "../engine/scene.rkt"
+         "../engine/types.rkt"
          "../utils.rkt")
 
 (provide current-pict3d-custom-write
@@ -53,8 +54,8 @@
 (: pict3d-view-transform (All (F) (case-> (-> Pict3D FlAffine3-)
                                           (-> Pict3D (-> F) (U FlAffine3- F)))))
 (define (pict3d-view-transform p [default (λ () (scale-flt3 (flvector 1.0 -1.0 -1.0)))])
-  (define ts (scene-map-group/transform (Pict3D-scene p) 'camera (λ ([t : FlAffine3-] _) t)))
+  (define ts (scene-map-group/transform (Pict3D-scene p) 'camera (λ ([t : Affine] _) t)))
   (cond [(empty? ts)  (default)]
-        [else  (define t (first ts))
+        [else  (define t (affine-transform (first ts)))
                (flt3compose (scale-flt3 (flvector 1.0 -1.0 -1.0))
                             (flt3inverse t))]))

@@ -9,8 +9,7 @@
          (except-in typed/opengl/ffi cast ->)
          "../untyped-utils.rkt"
          "context.rkt"
-         "object.rkt"
-         "affine.rkt")
+         "object.rkt")
 
 (provide (all-defined-out))
 
@@ -203,9 +202,12 @@
         [else
          (error 'uniform-mat "expected (U Index (Pair Index Index)); given ~e" s)]))
 
-(: uniform-affine (-> affine uniform-mats))
+(: uniform-affine (-> F32Vector uniform-mats))
 (define (uniform-affine m)
-  (uniform-mats (affine-data m) '(3 . 4)))
+  (cond [(= 12 (f32vector-length m))
+         (uniform-mats m '(3 . 4))]
+        [else
+         (raise-argument-error 'uniform-affine "length-12 f32vector" m)]))
 
 (: take-floats (-> (U Flonum FlVector) Index (Listof Flonum)))
 (define (take-floats v n)

@@ -22,14 +22,14 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-sphere-shape (-> (U FlAffine3- affine) FlVector FlVector material Boolean sphere-shape))
+(: make-sphere-shape (-> Affine FlVector FlVector material Boolean sphere-shape))
 (define (make-sphere-shape t c e m inside?)
   (cond [(not (= 4 (flvector-length c)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 t c e m inside?)]
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 t c e m inside?)]
         [else
-         (sphere-shape (lazy-passes) (->affine t) c e m inside?)]))
+         (sphere-shape (lazy-passes) t c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -84,7 +84,7 @@
 ;; ===================================================================================================
 ;; Transform
 
-(: sphere-shape-transform (-> sphere-shape FlAffine3- (List sphere-shape)))
+(: sphere-shape-transform (-> sphere-shape Affine (List sphere-shape)))
 (define (sphere-shape-transform a t)
   (match-define (sphere-shape passes t0 c e m inside?) a)
   (list (sphere-shape (lazy-passes) (affine-compose t t0) c e m inside?)))

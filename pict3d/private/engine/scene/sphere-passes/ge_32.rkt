@@ -416,13 +416,13 @@ code
   (define roughness (flonum->byte (material-roughness m)))
   (define inside (if inside? 1 0))
   
-  (define mat-datum-size (+ affine-size 4))  ; last byte is unused
+  (define mat-datum-size (+ affine-data-size 4))  ; last byte is unused
   (define mat-data-size mat-datum-size)
   (define mat-data (make-bytes mat-data-size))
-  (memcpy (u8vector->cpointer mat-data) affine-ptr affine-size)
-  (bytes-set! mat-data affine-size roughness)
-  (bytes-set! mat-data (unsafe-fx+ 1 affine-size) inside)
-  (bytes-set! mat-data (unsafe-fx+ 2 affine-size) 0)
+  (memcpy (u8vector->cpointer mat-data) affine-ptr affine-data-size)
+  (bytes-set! mat-data affine-data-size roughness)
+  (bytes-set! mat-data (unsafe-fx+ 1 affine-data-size) inside)
+  (bytes-set! mat-data (unsafe-fx+ 2 affine-data-size) 0)
   
   (define draw-datum-size (vao-struct-size (gl-program-struct (sphere-opaq-program))))
   (define draw-data-size draw-datum-size)
@@ -430,8 +430,8 @@ code
   (define-values (ecolor i.lo) (pack-emitted e))
   (define i
     (let* ([i  0]
-           [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-size)
-                      (unsafe-fx+ i affine-size))]
+           [i  (begin (memcpy (u8vector->cpointer draw-data) i affine-ptr affine-data-size)
+                      (unsafe-fx+ i affine-data-size))]
            [i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
                       (unsafe-fx+ i 4))]
            [i  (begin (bytes-copy! draw-data i ecolor 0 4)

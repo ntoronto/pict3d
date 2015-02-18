@@ -40,7 +40,7 @@
   #:transparent)
 
 (struct sphere-shape solid-shape
-  ([affine : affine]
+  ([affine : Affine]
    [color : FlVector]
    [emitted-color : FlVector]
    [material : material]
@@ -88,7 +88,7 @@
   #:transparent)
 
 (struct trans-scene container-scene
-  ([affine : FlAffine3-]
+  ([affine : Affine]
    [scene : Nonempty-Scene])
   #:transparent)
 

@@ -496,9 +496,10 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-transform (-> triangle-shape FlAffine3- (List triangle-shape)))
-(define (triangle-shape-transform a t)
+(: triangle-shape-transform (-> triangle-shape Affine (List triangle-shape)))
+(define (triangle-shape-transform a affine-t)
   (match-define (triangle-shape passes vs ns cs es ms back?) a)
+  (define t (affine-transform affine-t))
   (define consistent? (flt3consistent? t))
   (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
   (define transform-norm (λ ([n : FlVector])
@@ -511,7 +512,7 @@ code
                         cs es ms
                         (if consistent? back? (not back?)))))
 
-(: rectangle-shape-transform (-> rectangle-shape FlAffine3- (Listof triangle-shape)))
+(: rectangle-shape-transform (-> rectangle-shape Affine (Listof triangle-shape)))
 (define (rectangle-shape-transform a t)
   (append* (map (λ ([a : triangle-shape])
                   (triangle-shape-transform a t))

@@ -108,18 +108,18 @@
                        (- 1.0 (* (random) 0.20)))
        (freeze
         (combine
-         (with-material '(0.01 0.29 0.70 0.1)
+         (with-material (make-material 0.01 0.29 0.70 0.1)
            (make-planetoid-pict))
-         (with-material '(0.01 0.19 0.80 0.3)
+         (with-material (make-material 0.01 0.19 0.80 0.3)
            (with-color '(1 0.25 0.5)
              (sphere '(0 0 0) 1.125)))
-         (with-material '(0.1 0.8 0.1 0.5)
+         (with-material (make-material 0.1 0.8 0.1 0.5)
            (with-color '(1/4 1/2 1 0.075)
              (sphere '(0 0 0) 1.35)))))))))
 
 (struct planetoid ([pict : Pict3D]
-                   [position : User-Vector]
-                   [axis : User-Vector]
+                   [position : Vec]
+                   [axis : Vec]
                    [speed : Real])
   #:transparent)
 
@@ -149,7 +149,7 @@
 (define pict
   (combine
    sun
-   (basis 'camera (point-at '(0 -40 0) '(0 1 0)))
+   (basis 'camera (point-at #:from '(0 -40 0) #:dir '(0 1 0)))
    (combine*
     (for/list ([p  (in-list planetoids)])
       (match-define (planetoid pict pos axis speed) p)
@@ -174,7 +174,7 @@
         (define pict
           (combine
            sun
-           (basis 'camera (point-at '(0 -40 0) '(0 1 0)))
+           (basis 'camera (point-at #:from '(0 -40 0) #:dir '(0 1 0)))
            (combine*
             (for/list ([p  (in-list planetoids)])
               (match-define (planetoid pict pos axis speed) p)
@@ -185,7 +185,7 @@
         (sleep/yield #i1/1000))
        (yield)))))
 
-(current-material '(0.05 0.75 0.25 0.1))
+(current-material (make-material 0.05 0.75 0.25 0.1))
 
 (define body
   (let* ([body  (combine
@@ -198,8 +198,8 @@
                     (with-emitted '(1/4 1/2 1 8)
                       (sphere '(0 0 0) 1/4)))
                   '(1 1 2)))]
-         [body  (combine body (basis 'right-wing (point-at '(3/16 0 0) '(1 1/3 0))))]
-         [body  (combine body (basis 'left-wing (point-at '(-3/16 0 0) '(-1 1/3 0))))])
+         [body  (combine body (basis 'right-wing (point-at #:from '(3/16 0 0) #:dir '(1 1/3 0))))]
+         [body  (combine body (basis 'left-wing (point-at #:from '(-3/16 0 0) #:dir '(-1 1/3 0))))])
     body))
 
 (: make-wing (-> Symbol Pict3D))
@@ -241,8 +241,8 @@
                        30)
                       '(1 1 2))
                -30)))
-  (let* ([wing  (combine wing (basis 'wing-attach (point-at '(-2 0 0) '(1 0 0))))]
-         [wing  (combine wing (basis gun-name (point-at '(0 0 2) '(0 0 1))))])
+  (let* ([wing  (combine wing (basis 'wing-attach (point-at #:from '(-2 0 0) #:dir '(1 0 0))))]
+         [wing  (combine wing (basis gun-name (point-at #:from '(0 0 2) #:dir '(0 0 1))))])
     wing))
 
 (define ship

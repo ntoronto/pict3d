@@ -36,8 +36,12 @@ Higher precision (try to guarantee 2.5 ulps?)
  ->fllinear3
  ->flaffine3
  ->flprojective3
- basis->fllinear3
- basis->flaffine3
+ flvector->fllinear3
+ cols->fllinear3
+ rows->fllinear3
+ flvector->flaffine3
+ cols->flaffine3
+ rows->flaffine3
  ;; Transformation constructors
  identity-flt3
  rotate-x-flt3
@@ -153,24 +157,44 @@ Higher precision (try to guarantee 2.5 ulps?)
                         (fltransform3-1/determinant m))]
         [else  m]))
 
-(: basis->fllinear3 (-> FlVector FlVector FlVector FlLinear3))
-(define (basis->fllinear3 x y z)
-  (define-values (x0 x1 x2) (flv3-values x))
-  (define-values (y0 y1 y2) (flv3-values y))
-  (define-values (z0 z1 z2) (flv3-values z))
-  (define m (flvector x0 y0 z0 x1 y1 z1 x2 y2 z2))
+(: flvector->fllinear3 (-> FlVector FlLinear3))
+(define (flvector->fllinear3 m)
   (define det (flv-linear3-determinant m))
   (fllinear3 m (flv-linear3-inverse m) det (/ det)))
 
-(: basis->flaffine3 (-> FlVector FlVector FlVector FlVector FlAffine3))
-(define (basis->flaffine3 x y z p)
+(: cols->fllinear3 (-> FlVector FlVector FlVector FlLinear3))
+(define (cols->fllinear3 x y z)
+  (define-values (x0 x1 x2) (flv3-values x))
+  (define-values (y0 y1 y2) (flv3-values y))
+  (define-values (z0 z1 z2) (flv3-values z))
+  (flvector->fllinear3 (flvector x0 y0 z0 x1 y1 z1 x2 y2 z2)))
+
+(: rows->fllinear3 (-> FlVector FlVector FlVector FlLinear3))
+(define (rows->fllinear3 r0 r1 r2)
+  (define-values (x0 y0 z0) (flv3-values r0))
+  (define-values (x1 y1 z1) (flv3-values r1))
+  (define-values (x2 y2 z2) (flv3-values r2))
+  (flvector->fllinear3 (flvector x0 y0 z0 x1 y1 z1 x2 y2 z2)))
+
+(: flvector->flaffine3 (-> FlVector FlAffine3))
+(define (flvector->flaffine3 m)
+  (define det (flv-affine3-determinant m))
+  (flaffine3 m (flv-affine3-inverse m) det (/ det)))
+
+(: cols->flaffine3 (-> FlVector FlVector FlVector FlVector FlAffine3))
+(define (cols->flaffine3 x y z p)
   (define-values (x0 x1 x2) (flv3-values x))
   (define-values (y0 y1 y2) (flv3-values y))
   (define-values (z0 z1 z2) (flv3-values z))
   (define-values (p0 p1 p2) (flv3-values p))
-  (define m (flvector x0 y0 z0 p0 x1 y1 z1 p1 x2 y2 z2 p2))
-  (define det (flv-affine3-determinant m))
-  (flaffine3 m (flv-affine3-inverse m) det (/ det)))
+  (flvector->flaffine3 (flvector x0 y0 z0 p0 x1 y1 z1 p1 x2 y2 z2 p2)))
+
+(: rows->flaffine3 (-> FlVector FlVector FlVector FlAffine3))
+(define (rows->flaffine3 r0 r1 r2)
+  (define-values (x0 y0 z0 p0) (flv4-values r0))
+  (define-values (x1 y1 z1 p1) (flv4-values r1))
+  (define-values (x2 y2 z2 p2) (flv4-values r2))
+  (flvector->flaffine3 (flvector x0 y0 z0 p0 x1 y1 z1 p1 x2 y2 z2 p2)))
 
 ;; ===================================================================================================
 ;; Transformation constructors

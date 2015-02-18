@@ -10,9 +10,9 @@
 (define default-pict3d-z-near (assert (flexpt 2.0 -20.0) positive?))
 (define default-pict3d-z-far  (assert (flexpt 2.0 +32.0) positive?))
 (define default-pict3d-fov-degrees 90.0)
-(define default-pict3d-background "black")
-(define default-pict3d-ambient-color "white")
-(define default-pict3d-ambient-intensity 1)
+(define default-pict3d-background (flvector 0.0 0.0 0.0 1.0))
+(define default-pict3d-ambient-color (flvector 1.0 1.0 1.0))
+(define default-pict3d-ambient-intensity 1.0)
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width
@@ -42,14 +42,16 @@
                   (λ ([z : Positive-Real])
                     (max 1.0 (min 179.0 (fl z))))))
 
-(: current-pict3d-background (Parameterof User-Color FlVector))
+(: current-pict3d-background (Parameterof Pict3D-Color FlVector))
 (define current-pict3d-background
-  (make-parameter (->flcolor4 default-pict3d-background) ->flcolor4))
+  (make-parameter default-pict3d-background
+                  (λ ([col : Pict3D-Color]) (->flcolor4 'current-pict3d-background col))))
 
-(: current-pict3d-ambient-color (Parameterof User-Color FlVector))
+(: current-pict3d-ambient-color (Parameterof Pict3D-Color FlVector))
 (define current-pict3d-ambient-color
-  (make-parameter (->flcolor3 default-pict3d-ambient-color) ->flcolor3))
+  (make-parameter default-pict3d-ambient-color
+                  (λ ([col : Pict3D-Color]) (->flcolor3 'current-pict3d-ambient-color col))))
 
 (: current-pict3d-ambient-intensity (Parameterof Nonnegative-Real Nonnegative-Flonum))
 (define current-pict3d-ambient-intensity
-  (make-parameter (fl default-pict3d-ambient-intensity) fl))
+  (make-parameter default-pict3d-ambient-intensity fl))

@@ -57,19 +57,20 @@ for `Scene`.
         [(empty-scene? s2)  s1]
         [else  (make-nonempty-node-scene s1 s2)]))
 
-(: make-nonempty-trans-scene (-> FlAffine3- Nonempty-Scene Nonempty-Scene))
+(: make-nonempty-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-trans-scene t s)
-  (cond [(flidentity3? t)  s]
+  (cond [(eq? t identity-affine)  s]
         [(trans-scene? s)
-         (make-nonempty-trans-scene (flt3compose t (trans-scene-affine s))
+         (make-nonempty-trans-scene (affine-compose t (trans-scene-affine s))
                                     (trans-scene-scene s))]
         [else
-         (trans-scene (flrect3-transform (nonempty-scene-rect s) t)
+         (trans-scene (flrect3-transform (nonempty-scene-rect s)
+                                         (affine-transform t))
                       (scene-count s)
                       (scene-tags s)
                       t s)]))
 
-(: make-trans-scene (-> FlAffine3- Scene Scene))
+(: make-trans-scene (-> Affine Scene Scene))
 (define (make-trans-scene t s)
   (if (empty-scene? s) s (make-nonempty-trans-scene t s)))
 
@@ -251,10 +252,10 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Mapping over groups
 
-(: scene-map-group/transform (All (A) (-> Scene Tag (-> FlAffine3- group-scene A) (Listof A))))
+(: scene-map-group/transform (All (A) (-> Scene Tag (-> Affine group-scene A) (Listof A))))
 (define (scene-map-group/transform s n f)
   (reverse
-   (let loop ([t : FlAffine3-  identity-flt3] [s s] [as : (Listof A)  empty])
+   (let loop ([t : Affine  identity-affine] [s s] [as : (Listof A)  empty])
      (cond
        [(empty-scene? s)  as]
        [(leaf-scene? s)  as]
@@ -266,7 +267,7 @@ for `Scene`.
        [(trans-scene? s)
         (define t0 (trans-scene-affine s))
         (define s0 (trans-scene-scene s))
-        (loop (flt3compose t t0) s0 as)]
+        (loop (affine-compose t t0) s0 as)]
        [(group-scene? s)
         (define n0 (group-scene-tag s))
         (define s0 (group-scene-scene s))
@@ -296,9 +297,9 @@ for `Scene`.
 
 ;; ===================================================================================================
 
-(: scene-all-group-transforms (-> Scene (Listof FlAffine3-)))
+(: scene-all-group-transforms (-> Scene (Listof Affine)))
 (define (scene-all-group-transforms s)
-  (let loop ([t : FlAffine3-  identity-flt3] [s s])
+  (let loop ([t : Affine  identity-affine] [s s])
     (cond
       [(empty-scene? s)  empty]
       [(leaf-scene? s)  empty]
@@ -309,7 +310,7 @@ for `Scene`.
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (loop (flt3compose t t0) s0)]
+       (loop (affine-compose t t0) s0)]
       [(group-scene? s)
        (define n0 (group-scene-tag s))
        (define s0 (group-scene-scene s))
@@ -358,23 +359,23 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Tastes almost-but-not-quite-entirely-unlike map
 
-(: transform-planes (-> FlAffine3- (Listof FlPlane3) (Listof FlPlane3)))
+(: transform-planes (-> Affine (Listof FlPlane3) (Listof FlPlane3)))
 (define (transform-planes t0 planes)
   (if (flidentity3? t0)
       planes
-      (let ([tinv0  (flt3inverse t0)])
+      (let ([tinv0  (flt3inverse (affine-transform t0))])
         (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
           (define new-p (flt3apply/pln tinv0 p))
           (if new-p (cons new-p planes) planes)))))
 
 (: nonempty-scene-for-each! (-> Nonempty-Scene
                                 (Listof FlPlane3)
-                                (-> Shape affine Nonnegative-Fixnum Any)
+                                (-> Shape Affine Nonnegative-Fixnum Any)
                                 Nonnegative-Fixnum
                                 Nonnegative-Fixnum))
 (define (nonempty-scene-for-each! s planes f start)
   (let loop ([s s]
-             [t : affine  identity-affine]
+             [t : Affine  identity-affine]
              [parent-planes : (Listof FlPlane3)  planes]
              [i : Nonnegative-Fixnum  start])
     (: side (U 'inside 'outside 'both))
@@ -406,7 +407,7 @@ for `Scene`.
 
 (: scene-for-each! (-> Scene
                        (Listof FlPlane3)
-                       (-> Shape affine Nonnegative-Fixnum Any)
+                       (-> Shape Affine Nonnegative-Fixnum Any)
                        Nonnegative-Fixnum
                        Nonnegative-Fixnum))
 (define (scene-for-each! s planes f start)
@@ -414,13 +415,13 @@ for `Scene`.
       start
       (nonempty-scene-for-each! s planes f start)))
 
-(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape affine B) (Listof B))))
+(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape Affine B) (Listof B))))
 (define (scene-extract s planes f)
   (: bs (Listof B))
   (define bs empty)
   (scene-for-each! s
                    planes
-                   (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                   (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
                      (set! bs (cons (f a t) bs)))
                    0)
   bs)
@@ -450,7 +451,7 @@ for `Scene`.
          [(trans-scene? s)
           (define t0 (trans-scene-affine s))
           (define s0 (trans-scene-scene s))
-          (define new-p (flt3apply/pln (flt3inverse t0) p))
+          (define new-p (flt3apply/pln (flt3inverse (affine-transform t0)) p))
           (cond [new-p  (define new-s0 (loop s0 new-p))
                         (cond [(eq? new-s0 s0)  s]
                               [else  (make-trans-scene t0 new-s0)])]
@@ -467,7 +468,7 @@ for `Scene`.
 
 (: scene-rect-cull* (-> Scene FlRect3 Scene))
 (define (scene-rect-cull* s orig-b)
-  (let loop ([s s] [t : FlAffine3-  identity-flt3] [b orig-b])
+  (let loop ([s s] [t : Affine  identity-affine] [b orig-b])
     (cond
       [(empty-scene? s)  s]
       [(flrect3-contains-rect? b (scene-rect s))  s]
@@ -484,8 +485,8 @@ for `Scene`.
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (define new-t (flt3compose (flt3inverse t0) t))
-       (define new-b (flrect3-transform orig-b new-t))
+       (define new-t (affine-compose (affine-inverse t0) t))
+       (define new-b (flrect3-transform orig-b (affine-transform new-t)))
        (define new-s0 (loop s0 new-t new-b))
        (cond [(eq? new-s0 s0)  s]
              [else  (make-trans-scene t0 new-s0)])]
@@ -516,7 +517,7 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Shape and scene transformation (forced, not lazy)
 
-(: shape-transform (-> Shape FlAffine3- (Listof Shape)))
+(: shape-transform (-> Shape Affine (Listof Shape)))
 (define (shape-transform a t)
   (cond
     [(flidentity3? t)  (list a)]
@@ -533,7 +534,7 @@ for `Scene`.
     [(frozen-scene-shape? a)
      (frozen-scene-shape-transform a t)]))
 
-(: scene-transform-shapes (-> Scene FlAffine3- Scene))
+(: scene-transform-shapes (-> Scene Affine Scene))
 (define (scene-transform-shapes s t)
   (cond
     [(empty-scene? s)  s]
@@ -548,7 +549,7 @@ for `Scene`.
     [(trans-scene? s)
      (define t0 (trans-scene-affine s))
      (define s0 (trans-scene-scene s))
-     (scene-transform-shapes s0 (flt3compose t t0))]
+     (scene-transform-shapes s0 (affine-compose t t0))]
     [(group-scene? s)
      (define s0 (group-scene-scene s))
      (scene-transform-shapes s0 t)]))
@@ -591,10 +592,10 @@ for `Scene`.
   (define end
     (scene-for-each! s
                      planes
-                     (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                     (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
                        (define b (vector-ref bs i))
                        (set-draw-passes-passes! b (shape-passes a))
-                       (set-draw-passes-transform! b t))
+                       (set-draw-passes-affine! b t))
                      0))
   (draw-draw-passes bs end width height
                     view proj
@@ -613,10 +614,10 @@ for `Scene`.
     (for/fold ([end : Nonnegative-Fixnum  0]) ([s  (in-list ss)])
       (scene-for-each! s
                        planes
-                       (λ ([a : Shape] [t : affine] [i : Nonnegative-Fixnum])
+                       (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
                          (define b (vector-ref bs i))
                          (set-draw-passes-passes! b (shape-passes a))
-                         (set-draw-passes-transform! b t))
+                         (set-draw-passes-affine! b t))
                        end)))
   (draw-draw-passes bs end width height
                     view proj
@@ -832,11 +833,11 @@ for `Scene`.
 (define (make-frozen-scene-shape-passes a)
   (define s (frozen-scene-shape-scene a))
   
-  (: transformed-passes (-> Shape affine (Listof passes)))
+  (: transformed-passes (-> Shape Affine (Listof passes)))
   (define (transformed-passes s t)
-    (map shape-passes (shape-transform s (affine-transform t))))
+    (map shape-passes (shape-transform s t)))
   
-  (define ps (append* (scene-extract (scene-transform-shapes s identity-flt3)
+  (define ps (append* (scene-extract (scene-transform-shapes s identity-affine)
                                      empty
                                      transformed-passes)))
   (passes
@@ -856,10 +857,10 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Transform
 
-(: frozen-scene-shape-transform (-> frozen-scene-shape FlAffine3- (Listof Shape)))
+(: frozen-scene-shape-transform (-> frozen-scene-shape Affine (Listof Shape)))
 (define (frozen-scene-shape-transform a t)
   (append*
    (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t)
                   empty
-                  (λ ([a : Shape] [t : affine])
-                    (shape-transform a (affine-transform t))))))
+                  (λ ([a : Shape] [t : Affine])
+                    (shape-transform a t)))))

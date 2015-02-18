@@ -6,7 +6,7 @@
          math/flonum
          profile)
 
-(current-material '(0.05 0.70 0.25 0.1))
+(current-material (make-material 0.05 0.70 0.25 0.1))
 
 (define (random-color)
   (build-list 3 (λ (_) (+ (* (random) 0.5) 0.5))))
@@ -22,7 +22,7 @@
   (time
    (combine
     (combine*
-     (for/list ([_  (in-range 70000)])
+     (for/list ([_  (in-range 280000)])
        (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
          (sphere (random-position)
                  (* 0.25 (+ (random) 0.1))))))
@@ -39,7 +39,7 @@
 
 (define frozen-spheres (freeze spheres))
 
-(define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
+(define frame (new frame% [label "Sphere Field"] [width 32] [height 32]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send canvas set-async-updates? #f)
 (send frame show #t)
@@ -57,12 +57,9 @@
       (define sx2 (sin (* 2 (degrees->radians i))))
       
       (define camera
-        (point-at (list (* -6 cx) (* -6 sx) (* 0.5 sx))
-                  (list (* 6 cx) (* 6 sx) (* -0.5 sx))))
+        (point-at #:from (list (* -6 cx) (* -6 sx) (* 0.5 sx)) #:to origin))
       
       (define pict
-        ;(set-basis spheres 'camera camera-basis)
-        
         (combine
          (basis 'camera camera)
          frozen-spheres
