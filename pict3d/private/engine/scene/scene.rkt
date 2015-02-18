@@ -370,7 +370,7 @@ for `Scene`.
 
 (: nonempty-scene-for-each! (-> Nonempty-Scene
                                 (Listof FlPlane3)
-                                (-> Shape Affine Nonnegative-Fixnum Any)
+                                (-> Shape FlRect3 Affine Nonnegative-Fixnum Any)
                                 Nonnegative-Fixnum
                                 Nonnegative-Fixnum))
 (define (nonempty-scene-for-each! s planes f start)
@@ -387,7 +387,7 @@ for `Scene`.
     (cond
       [(eq? side 'outside)   i]
       [(leaf-scene? s)
-       (f (leaf-scene-shape s) t i)
+       (f (leaf-scene-shape s) (nonempty-scene-rect s) t i)
        (unsafe-fx+ i 1)]
       [(node-scene? s)
        (let* ([i  (loop (node-scene-neg s) t planes i)]
@@ -407,7 +407,7 @@ for `Scene`.
 
 (: scene-for-each! (-> Scene
                        (Listof FlPlane3)
-                       (-> Shape Affine Nonnegative-Fixnum Any)
+                       (-> Shape FlRect3 Affine Nonnegative-Fixnum Any)
                        Nonnegative-Fixnum
                        Nonnegative-Fixnum))
 (define (scene-for-each! s planes f start)
@@ -415,14 +415,14 @@ for `Scene`.
       start
       (nonempty-scene-for-each! s planes f start)))
 
-(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape Affine B) (Listof B))))
+(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape FlRect3 Affine B) (Listof B))))
 (define (scene-extract s planes f)
   (: bs (Listof B))
   (define bs empty)
   (scene-for-each! s
                    planes
-                   (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
-                     (set! bs (cons (f a t) bs)))
+                   (λ ([a : Shape] [r : FlRect3] [t : Affine] [i : Nonnegative-Fixnum])
+                     (set! bs (cons (f a r t) bs)))
                    0)
   bs)
 
@@ -592,7 +592,7 @@ for `Scene`.
   (define end
     (scene-for-each! s
                      planes
-                     (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
+                     (λ ([a : Shape] [_ : FlRect3] [t : Affine] [i : Nonnegative-Fixnum])
                        (define b (vector-ref bs i))
                        (set-draw-passes-passes! b (shape-passes a))
                        (set-draw-passes-affine! b t))
@@ -614,7 +614,7 @@ for `Scene`.
     (for/fold ([end : Nonnegative-Fixnum  0]) ([s  (in-list ss)])
       (scene-for-each! s
                        planes
-                       (λ ([a : Shape] [t : Affine] [i : Nonnegative-Fixnum])
+                       (λ ([a : Shape] [_ : FlRect3] [t : Affine] [i : Nonnegative-Fixnum])
                          (define b (vector-ref bs i))
                          (set-draw-passes-passes! b (shape-passes a))
                          (set-draw-passes-affine! b t))
@@ -677,6 +677,18 @@ for `Scene`.
        [(rectangle-shape? a)  (set-rectangle-shape-material a m)]
        [(sphere-shape? a)     (set-sphere-shape-material a m)])]
     [else  a]))
+
+;; ===================================================================================================
+
+(: smaller-scene-rect (-> Scene FlRect3))
+(define (smaller-scene-rect s)
+  (define bs
+    (scene-extract s empty (λ ([a : Shape] [r : FlRect3] [t : Affine])
+                             (flrect3-transform r (affine-transform t)))))
+  (cond [(empty? bs)  empty-flrect3]
+        [else
+         (for/fold ([b1  (first bs)]) ([b2  (in-list (rest bs))])
+           (flrect3-join b1 b2))]))
 
 ;; ===================================================================================================
 ;; ===================================================================================================
@@ -833,8 +845,8 @@ for `Scene`.
 (define (make-frozen-scene-shape-passes a)
   (define s (frozen-scene-shape-scene a))
   
-  (: transformed-passes (-> Shape Affine (Listof passes)))
-  (define (transformed-passes s t)
+  (: transformed-passes (-> Shape FlRect3 Affine (Listof passes)))
+  (define (transformed-passes s _ t)
     (map shape-passes (shape-transform s t)))
   
   (define ps (append* (scene-extract (scene-transform-shapes s identity-affine)
@@ -862,5 +874,5 @@ for `Scene`.
   (append*
    (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t)
                   empty
-                  (λ ([a : Shape] [t : Affine])
+                  (λ ([a : Shape] [_ : FlRect3] [t : Affine])
                     (shape-transform a t)))))
