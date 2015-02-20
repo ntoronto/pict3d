@@ -67,7 +67,9 @@
          [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
          [b  (scene-rect s)]
          [c  (if (empty-flrect3? b) (flvector 0.0 0.0 0.0) (flrect3-center b))]
-         [d  (if (empty-flrect3? b)  0.0 (flv3mag (flv3- (flrect3-max b) c)))])
+         [d  (if (= 0.0 (flrect3-volume b))
+                 1.0
+                 (flv3mag (flv3- (flrect3-max b) c)))])
     (affine-transform
      (point-at #:from (flv3+ c (make-flvector 3 (/ (* d 1.25) (flsqrt 3.0)))) #:to c))))
 
