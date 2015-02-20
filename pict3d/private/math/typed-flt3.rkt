@@ -12,6 +12,7 @@ Higher precision (try to guarantee 2.5 ulps?)
          racket/match
          racket/unsafe/ops
          math/flonum
+         "../utils.rkt"
          "flv3.rkt"
          "flv4.rkt"
          "flt3-ops.rkt")
@@ -65,6 +66,7 @@ Higher precision (try to guarantee 2.5 ulps?)
  flt3apply/pln
  flt3compose
  flt3consistent?
+ flt3axial?
  ;; Frustum utils
  clip-frustum-plane-x-
  clip-frustum-plane-x+
@@ -487,6 +489,42 @@ Higher precision (try to guarantee 2.5 ulps?)
          (if (fllinear3? n)
              (flaffine3-compose m (->flaffine3 n))
              (flaffine3-compose m n))]))
+
+;; ===================================================================================================
+
+(: v3axis? (-> Flonum Flonum Flonum Flonum Boolean))
+(define (v3axis? x y z tol)
+  (define m (max (abs x) (abs y) (abs z)))
+  (cond [(flrational? (/ m))
+         (let-values ([(x y z)  (values (/ x m) (/ y m) (/ z m))])
+           (define w
+             (cond [(= (abs x) 1.0)  (max (abs y) (abs z))]
+                   [(= (abs y) 1.0)  (max (abs z) (abs x))]
+                   [else             (max (abs x) (abs y))]))
+           (< w tol))]
+        [else  #f]))
+
+(: fllinear3-axial? (-> FlLinear3 Flonum Boolean))
+(define (fllinear3-axial? m tol)
+  (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22)
+    (flvector-values (fltransform3-forward m) 9))
+  (and (v3axis? m00 m10 m20 tol)
+       (v3axis? m01 m11 m21 tol)
+       (v3axis? m02 m12 m22 tol)))
+
+(: flaffine3-axial? (-> FlAffine3 Flonum Boolean))
+(define (flaffine3-axial? m tol)
+  (define-values (m00 m01 m02 _m03 m10 m11 m12 _m13 m20 m21 m22 _m23)
+    (flvector-values (fltransform3-forward m) 12))
+  (and (v3axis? m00 m10 m20 tol)
+       (v3axis? m01 m11 m21 tol)
+       (v3axis? m02 m12 m22 tol)))
+
+(: flt3axial? (-> FlAffine3- Flonum Boolean))
+(define (flt3axial? m tol)
+  (cond [(flidentity3? m)  #t]
+        [(fllinear3? m)  (fllinear3-axial? m tol)]
+        [else  (flaffine3-axial? m tol)]))
 
 ;; ===================================================================================================
 ;; Handedness consistency

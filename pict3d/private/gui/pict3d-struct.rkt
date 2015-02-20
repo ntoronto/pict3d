@@ -65,7 +65,7 @@
 (define (pict3d-auto-camera p)
   (let* ([s  (Pict3D-scene p)]
          [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-         [b  (smaller-scene-rect s)]
+         [b  (scene-rect s)]
          [c  (if (empty-flrect3? b) (flvector 0.0 0.0 0.0) (flrect3-center b))]
          [d  (if (empty-flrect3? b)  0.0 (flv3mag (flv3- (flrect3-max b) c)))])
     (affine-transform

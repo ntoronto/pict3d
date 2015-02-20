@@ -22,7 +22,7 @@
 (provide make-point-light-shape
          make-point-light-shape-passes
          point-light-shape-rect
-         point-light-shape-transform
+         point-light-shape-easy-transform
          )
 
 ;; ===================================================================================================
@@ -172,8 +172,8 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: point-light-shape-transform (-> point-light-shape Affine (List point-light-shape)))
-(define (point-light-shape-transform a t)
+(: point-light-shape-easy-transform (-> point-light-shape Affine point-light-shape))
+(define (point-light-shape-easy-transform a t)
   (match-define (point-light-shape passes color intensity position radius) a)
   (define new-position (flt3apply/pos (affine-transform t) position))
-  (list (point-light-shape (lazy-passes) color intensity new-position radius)))
+  (point-light-shape (lazy-passes) color intensity new-position radius))

@@ -16,7 +16,7 @@
          set-sphere-shape-material
          make-sphere-shape-passes
          sphere-shape-rect
-         sphere-shape-transform
+         sphere-shape-easy-transform
          )
 
 ;; ===================================================================================================
@@ -84,7 +84,7 @@
 ;; ===================================================================================================
 ;; Transform
 
-(: sphere-shape-transform (-> sphere-shape Affine (List sphere-shape)))
-(define (sphere-shape-transform a t)
+(: sphere-shape-easy-transform (-> sphere-shape Affine sphere-shape))
+(define (sphere-shape-easy-transform a t)
   (match-define (sphere-shape passes t0 c e m inside?) a)
-  (list (sphere-shape (lazy-passes) (affine-compose t t0) c e m inside?)))
+  (sphere-shape (lazy-passes) (affine-compose t t0) c e m inside?))

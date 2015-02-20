@@ -21,6 +21,7 @@ for `Scene`.
 
 (require racket/unsafe/ops
          racket/match
+         racket/promise
          racket/flonum
          racket/vector
          racket/list
@@ -41,12 +42,24 @@ for `Scene`.
 
 (provide (all-defined-out))
 
+(define-syntax-rule (maybe-force e)
+  (let ([x e])
+    (if (promise? x) (force x) x)))
+
 ;; ===================================================================================================
 ;; Scene constructors
 
+(: shape->scene (-> Shape Nonempty-Scene))
+(define (shape->scene a)
+  (leaf-scene (shape-rect a) a))
+
 (: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-node-scene s1 s2)
-  (define b (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
+  (define b1 (nonempty-scene-lazy-rect s1))
+  (define b2 (nonempty-scene-lazy-rect s2))
+  (define b (if (and (nonempty-flrect3? b1) (nonempty-flrect3? b2))
+                (flrect3-join b1 b2)
+                (delay (flrect3-join (maybe-force b1) (maybe-force b2)))))
   (define c (fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
   (node-scene b c ms s1 s2))
@@ -57,34 +70,91 @@ for `Scene`.
         [(empty-scene? s2)  s1]
         [else  (make-nonempty-node-scene s1 s2)]))
 
+(: make-simple-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
+(define (make-simple-trans-scene t0 s0)
+  (define b0 (nonempty-scene-lazy-rect s0))
+  (define t (affine-transform t0))
+  (define b (if (flt3axial? t 1e-14)
+                (if (nonempty-flrect3? b0)
+                    (flrect3-transform b0 t)
+                    (delay (flrect3-transform (force b0) t)))
+                (delay (nonempty-scene-trans-rect t0 s0))))
+  (trans-scene b (scene-count s0) (scene-tags s0) t0 s0))
+
 (: make-nonempty-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-trans-scene t s)
   (cond [(eq? t identity-affine)  s]
+        [(leaf-scene? s)
+         (define a (shape-easy-transform (leaf-scene-shape s) t))
+         (if a (shape->scene a) (make-simple-trans-scene t s))]
+        [(node-scene? s)
+         (make-nonempty-node-scene
+          (make-nonempty-trans-scene t (node-scene-neg s))
+          (make-nonempty-trans-scene t (node-scene-pos s)))]
         [(trans-scene? s)
          (make-nonempty-trans-scene (affine-compose t (trans-scene-affine s))
                                     (trans-scene-scene s))]
         [else
-         (trans-scene (flrect3-transform (nonempty-scene-rect s)
-                                         (affine-transform t))
-                      (scene-count s)
-                      (scene-tags s)
-                      t s)]))
+         (make-simple-trans-scene t s)]))
 
 (: make-trans-scene (-> Affine Scene Scene))
 (define (make-trans-scene t s)
   (if (empty-scene? s) s (make-nonempty-trans-scene t s)))
 
-(define zero-rect (nonempty-flrect3 (flvector 0.0 0.0 0.0) (flvector 0.0 0.0 0.0)))
+(define zero-flrect3 (nonempty-flrect3 (flvector 0.0 0.0 0.0) (flvector 0.0 0.0 0.0)))
 
 (: make-group-scene (-> Tag Scene Nonempty-Scene))
 (define (make-group-scene n s)
   (cond [(empty-scene? s)
-         (group-scene zero-rect 0 (singleton-tags n) n s)]
+         (group-scene zero-flrect3 0 (singleton-tags n) n s)]
         [else
-         (group-scene (nonempty-scene-rect s)
+         (group-scene (nonempty-scene-lazy-rect s)
                       (scene-count s)
                       (tags-add (scene-tags s) n)
                       n s)]))
+
+;; ===================================================================================================
+;; Shape bounding box
+
+(: shape-rect (-> Shape Nonempty-FlRect3))
+(define (shape-rect a)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (triangle-shape-rect a)]
+       [(rectangle-shape? a)  (rectangle-shape-rect a)]
+       [(sphere-shape? a)     (sphere-shape-rect a)])]
+    [(light-shape? a)
+     (cond
+       [(directional-light-shape? a)  directional-light-shape-rect]
+       [(point-light-shape? a)        (point-light-shape-rect a)])]
+    [(frozen-scene-shape? a)
+     (frozen-scene-shape-rect a)]))
+
+(: nonempty-scene-trans-rect (-> Affine Nonempty-Scene Nonempty-FlRect3))
+(define (nonempty-scene-trans-rect t s)
+  (cond
+    [(leaf-scene? s)  (flrect3-transform (maybe-force (nonempty-scene-lazy-rect s))
+                                         (affine-transform t))]
+    [(node-scene? s)
+     (define s1 (node-scene-neg s))
+     (define s2 (node-scene-pos s))
+     (flrect3-join (nonempty-scene-trans-rect t s1)
+                   (nonempty-scene-trans-rect t s2))]
+    [(trans-scene? s)
+     (define t0 (trans-scene-affine s))
+     (define s0 (trans-scene-scene s))
+     (nonempty-scene-trans-rect (affine-compose t t0) s0)]
+    [(group-scene? s)
+     (define s0 (group-scene-scene s))
+     (cond [(empty-scene? s0)  (flrect3-transform zero-flrect3 (affine-transform t))]
+           [else  (nonempty-scene-trans-rect t s0)])]))
+
+(: scene-rect (case-> (-> Nonempty-Scene Nonempty-FlRect3)
+                      (-> Scene FlRect3)))
+(define (scene-rect s)
+  (cond [(empty-scene? s)  empty-flrect3]
+        [else  (maybe-force (nonempty-scene-lazy-rect s))]))
 
 ;; ===================================================================================================
 ;; Scene union with rebalancing
@@ -92,14 +162,14 @@ for `Scene`.
 (: node-scene-insert (-> node-scene Nonempty-Scene Nonempty-Scene))
 (define (node-scene-insert s1 s2)
   (match-define (node-scene r1 c1 ms1 s11 s12) s1)
-  (define r2 (nonempty-scene-rect s2))
-  (cond [(flrect3-contains-rect? (nonempty-scene-rect s11) r2)
+  (define r2 (scene-rect s2))
+  (cond [(flrect3-contains-rect? (scene-rect s11) r2)
          (node-scene r1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
                      (nonempty-scene-union s11 s2)
                      s12)]
-        [(flrect3-contains-rect? (nonempty-scene-rect s12) r2)
+        [(flrect3-contains-rect? (scene-rect s12) r2)
          (node-scene r1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
@@ -110,8 +180,8 @@ for `Scene`.
 
 (: nonempty-scene-union (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union s1 s2)
-  (define r1 (nonempty-scene-rect s1))
-  (define r2 (nonempty-scene-rect s2))
+  (define r1 (scene-rect s1))
+  (define r2 (scene-rect s2))
   (cond [(and (node-scene? s1) (flrect3-contains-rect? r1 r2))
          (node-scene-insert s1 s2)]
         [(and (node-scene? s2) (flrect3-contains-rect? r2 r1))
@@ -166,7 +236,7 @@ for `Scene`.
 
 (: nonempty-scene-union/rebalance (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union/rebalance s1 s2)
-  (define r (flrect3-join (nonempty-scene-rect s1) (nonempty-scene-rect s2)))
+  (define r (flrect3-join (scene-rect s1) (scene-rect s2)))
   (define c (unsafe-fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
   (define-values (i x) (flrect3-longest-axis/center r))
@@ -387,7 +457,7 @@ for `Scene`.
     (cond
       [(eq? side 'outside)   i]
       [(leaf-scene? s)
-       (f (leaf-scene-shape s) (nonempty-scene-rect s) t i)
+       (f (leaf-scene-shape s) (scene-rect s) t i)
        (unsafe-fx+ i 1)]
       [(node-scene? s)
        (let* ([i  (loop (node-scene-neg s) t planes i)]
@@ -517,19 +587,35 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Shape and scene transformation (forced, not lazy)
 
+(: shape-easy-transform (-> Shape Affine (U #f Shape)))
+(define (shape-easy-transform a t)
+  (cond
+    [(flidentity3? t)  a]
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (triangle-shape-easy-transform a t)]
+       [(rectangle-shape? a)  #f]
+       [(sphere-shape? a)     (sphere-shape-easy-transform a t)])]
+    [(light-shape? a)
+     (cond
+       [(directional-light-shape? a)  (directional-light-shape-easy-transform a t)]
+       [(point-light-shape? a)        (point-light-shape-easy-transform a t)])]
+    ;; Frozen scene
+    [(frozen-scene-shape? a)  #f]))
+
 (: shape-transform (-> Shape Affine (Listof Shape)))
 (define (shape-transform a t)
   (cond
     [(flidentity3? t)  (list a)]
     [(solid-shape? a)
      (cond
-       [(triangle-shape? a)   (triangle-shape-transform a t)]
+       [(triangle-shape? a)   (list (triangle-shape-easy-transform a t))]
        [(rectangle-shape? a)  (rectangle-shape-transform a t)]
-       [(sphere-shape? a)     (sphere-shape-transform a t)])]
+       [(sphere-shape? a)     (list (sphere-shape-easy-transform a t))])]
     [(light-shape? a)
      (cond
-       [(directional-light-shape? a)  (directional-light-shape-transform a t)]
-       [(point-light-shape? a)        (point-light-shape-transform a t)])]
+       [(directional-light-shape? a)  (list (directional-light-shape-easy-transform a t))]
+       [(point-light-shape? a)        (list (point-light-shape-easy-transform a t))])]
     ;; Frozen scene
     [(frozen-scene-shape? a)
      (frozen-scene-shape-transform a t)]))
@@ -624,28 +710,6 @@ for `Scene`.
                     background ambient-color ambient-intensity))
 
 ;; ===================================================================================================
-;; Shape bounding box
-
-(: shape->scene (-> Shape Nonempty-Scene))
-(define (shape->scene a)
-  (leaf-scene (shape-rect a) a))
-
-(: shape-rect (-> Shape Nonempty-FlRect3))
-(define (shape-rect a)
-  (cond
-    [(solid-shape? a)
-     (cond
-       [(triangle-shape? a)   (triangle-shape-rect a)]
-       [(rectangle-shape? a)  (rectangle-shape-rect a)]
-       [(sphere-shape? a)     (sphere-shape-rect a)])]
-    [(light-shape? a)
-     (cond
-       [(directional-light-shape? a)  directional-light-shape-rect]
-       [(point-light-shape? a)        (point-light-shape-rect a)])]
-    [(frozen-scene-shape? a)
-     (frozen-scene-shape-rect a)]))
-
-;; ===================================================================================================
 ;; Shape color
 
 (: shape-set-color (-> Shape FlVector Shape))
@@ -677,18 +741,6 @@ for `Scene`.
        [(rectangle-shape? a)  (set-rectangle-shape-material a m)]
        [(sphere-shape? a)     (set-sphere-shape-material a m)])]
     [else  a]))
-
-;; ===================================================================================================
-
-(: smaller-scene-rect (-> Scene FlRect3))
-(define (smaller-scene-rect s)
-  (define bs
-    (scene-extract s empty (λ ([a : Shape] [r : FlRect3] [t : Affine])
-                             (flrect3-transform r (affine-transform t)))))
-  (cond [(empty? bs)  empty-flrect3]
-        [else
-         (for/fold ([b1  (first bs)]) ([b2  (in-list (rest bs))])
-           (flrect3-join b1 b2))]))
 
 ;; ===================================================================================================
 ;; ===================================================================================================

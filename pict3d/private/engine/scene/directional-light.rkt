@@ -20,7 +20,7 @@
 (provide make-directional-light-shape
          make-directional-light-shape-passes
          directional-light-shape-rect
-         directional-light-shape-transform
+         directional-light-shape-easy-transform
          )
 
 ;; ===================================================================================================
@@ -150,7 +150,5 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: directional-light-shape-transform (-> directional-light-shape Affine
-                                         (List directional-light-shape)))
-(define (directional-light-shape-transform a t)
-  (list a))
+(: directional-light-shape-easy-transform (-> directional-light-shape Affine directional-light-shape))
+(define (directional-light-shape-easy-transform a t) a)

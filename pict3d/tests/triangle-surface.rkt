@@ -10,7 +10,7 @@
 (current-pict3d-width 512)
 (current-pict3d-height 384)
 (current-color "azure")
-(current-material '(0.01 0.29 0.7 0.2))
+(current-material (make-material 0.01 0.29 0.7 0.2))
 
 ;(: xyz-fun (-> Flonum Flonum FlVector))
 (define (xyz-fun x y)
@@ -77,7 +77,7 @@
      (define z (flvector-ref (xyz-fun (* 0.5 (+ x0 x1)) (* 0.5 (+ y0 y1))) 2))
      (define transparent? (= 0 (modulo (+ xi yi) 4)))
      (with-color (if transparent? '(0.2 0.3 1.0 0.5) '(0.2 1.0 0.3 1.0))
-       (with-material (if transparent? '(0.1 0.2 0.7 0.1) default-material)
+       (with-material (if transparent? (make-material 0.1 0.2 0.7 0.1) default-material)
          (rectangle (list x0 y0 (* 0.5 z))
                     (list x1 y1 (+ (* 0.5 z) 1.0))))))))
 
@@ -88,8 +88,10 @@
             (combine* rects))))
 
 (define pict
-  (combine surface (basis 'camera (point-at '(20 20 20) '(-1 -1 -1)))))
+  (combine surface (basis 'camera (point-at #:from '(20 20 20) #:dir '(-1 -1 -1)))))
 
 (profile
  (for ([_  (in-range 100)])
    (pict3d->bitmap pict 32 32)))
+
+pict

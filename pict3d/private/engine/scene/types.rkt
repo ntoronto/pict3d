@@ -70,7 +70,7 @@
 (struct Empty-Scene scene () #:transparent)
 
 (struct nonempty-scene scene
-  ([rect : Nonempty-FlRect3])
+  ([lazy-rect : (U Nonempty-FlRect3 (Promise Nonempty-FlRect3))])
   #:transparent)
 
 (struct container-scene nonempty-scene
@@ -107,11 +107,6 @@
 
 (define empty-scene (Empty-Scene))
 (define empty-scene? Empty-Scene?)
-
-(: scene-rect (case-> (-> Nonempty-Scene Nonempty-FlRect3)
-                      (-> Scene FlRect3)))
-(define (scene-rect s)
-  (if (empty-scene? s) empty-flrect3 (nonempty-scene-rect s)))
 
 (: scene-count (-> Scene Nonnegative-Fixnum))
 (define (scene-count s)

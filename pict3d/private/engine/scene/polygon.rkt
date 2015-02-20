@@ -27,7 +27,7 @@
          set-triangle-shape-material
          make-triangle-shape-passes
          triangle-shape-rect
-         triangle-shape-transform
+         triangle-shape-easy-transform
          
          make-quad-shapes
          
@@ -496,8 +496,8 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-transform (-> triangle-shape Affine (List triangle-shape)))
-(define (triangle-shape-transform a affine-t)
+(: triangle-shape-easy-transform (-> triangle-shape Affine triangle-shape))
+(define (triangle-shape-easy-transform a affine-t)
   (match-define (triangle-shape passes vs ns cs es ms back?) a)
   (define t (affine-transform affine-t))
   (define consistent? (flt3consistent? t))
@@ -506,17 +506,17 @@ code
                            (if consistent?
                                (flt3apply/nrm t n)
                                (flv3neg (flt3apply/nrm t n)))))
-  (list (triangle-shape (lazy-passes)
-                        (vector-map transform-pos vs)
-                        (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
-                        cs es ms
-                        (if consistent? back? (not back?)))))
+  (triangle-shape (lazy-passes)
+                  (vector-map transform-pos vs)
+                  (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
+                  cs es ms
+                  (if consistent? back? (not back?))))
 
 (: rectangle-shape-transform (-> rectangle-shape Affine (Listof triangle-shape)))
 (define (rectangle-shape-transform a t)
-  (append* (map (λ ([a : triangle-shape])
-                  (triangle-shape-transform a t))
-                (rectangle-shape->triangle-shapes a))))
+  (map (λ ([a : triangle-shape])
+         (triangle-shape-easy-transform a t))
+       (rectangle-shape->triangle-shapes a)))
 
 ;; ===================================================================================================
 ;; Conversions

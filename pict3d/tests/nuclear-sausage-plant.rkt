@@ -40,11 +40,12 @@
 (let loop ([chain chain])
   (when (send frame is-shown?)
     (let ([chain  (rotate-z (wiggle chain) 0.5)])
-      (define start (current-inexact-milliseconds))
-      (send canvas set-pict3d
-            (combine (basis 'camera (point-at #:from '(0 2 4) #:dir '(0 -1/2 -1)))
-                     (sunlight '(-1 0 -1) "yellow" 2)
-                     chain))
-      (define diff (max 0.0 (- (current-inexact-milliseconds) start)))
-      (sleep/yield (/ (max 1.0 (- #i1000/60 diff)) 1000.0))
+      (time
+       (define start (current-inexact-milliseconds))
+       (send canvas set-pict3d
+             (combine (basis 'camera (point-at #:from '(0 2 4) #:dir '(0 -1/2 -1)))
+                      (sunlight '(-1 0 -1) "yellow" 2)
+                      chain))
+       (define diff (max 0.0 (- (current-inexact-milliseconds) start)))
+       (sleep/yield (/ (max 1.0 (- #i1000/60 diff)) 1000.0)))
       (loop chain))))

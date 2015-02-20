@@ -39,7 +39,7 @@
 
 (define frozen-spheres (freeze spheres))
 
-(define frame (new frame% [label "Sphere Field"] [width 32] [height 32]))
+(define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send canvas set-async-updates? #f)
 (send frame show #t)
