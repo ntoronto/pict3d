@@ -78,6 +78,9 @@
  frustum-cull
  ;; Other shapes
  up-arrow
+ arrow
+ cylinder
+ cone
  )
 
 ;; ===================================================================================================
@@ -443,6 +446,9 @@
 ;; ===================================================================================================
 ;; Other shapes
 
+;; ---------------------------------------------------------------------------------------------------
+;; Arrows
+
 (define up-arrow
   (freeze
    (combine
@@ -456,3 +462,121 @@
           '(2/64 -2/64 56/64)
           '(-2/64 -2/64 56/64)
           '(-2/64 2/64 56/64)))))
+
+(: arrow (->* [] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f) #:normalize? Any] Pict3D))
+(define (arrow #:from [from origin]
+               #:to [to #f]
+               #:dir [dir #f]
+               #:normalize? [normalize? #f])
+  (transform up-arrow (point-at #:from from #:to to #:dir dir #:normalize? normalize?)))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Cylinder
+
+(: standard-cylinder-scene (-> Boolean Natural Scene))
+(define (standard-cylinder-scene inside? n)
+  (define c (current-color))
+  (define e (current-emitted))
+  (define m (current-material))
+  (scene-union*
+   (for/list ([i  (in-range n)])
+     (define t1 (* (* 2.0 pi) (/ (fl i) (fl n))))
+     (define t2 (* (* 2.0 pi) (/ (+ (fl i) 1.0) (fl n))))
+     (define x1 (flcos t1))
+     (define y1 (flsin t1))
+     (define x2 (flcos t2))
+     (define y2 (flsin t2))
+     (scene-union*
+      (list
+       ;; Top
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector x1 y1 1.0)
+                 (flvector x2 y2 1.0)
+                 z+)
+         z+ c e m inside?))
+       ;; Sides
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector x1 y1 -1.0)
+                 (flvector x2 y2 -1.0)
+                 (flvector x2 y2 1.0))
+         (vector (flvector x1 y1 0.0)
+                 (flvector x2 y2 0.0)
+                 (flvector x2 y2 0.0))
+         c e m inside?))
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector x1 y1 -1.0)
+                 (flvector x2 y2 1.0)
+                 (flvector x1 y1 1.0))
+         (vector (flvector x1 y1 0.0)
+                 (flvector x2 y2 0.0)
+                 (flvector x1 y1 0.0))
+         c e m inside?))
+       ;; Bottom
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector x2 y2 -1.0)
+                 (flvector x1 y1 -1.0)
+                 z-)
+         z- c e m inside?)))))))
+
+(: cylinder (->* [Vec Vec] [Any #:segments Natural] Pict3D))
+(define (cylinder v1 v2 [inside? #f] #:segments [n 32])
+  (let ([v1  (->flv3 'cylinder v1)]
+        [v2  (->flv3 'cylinder v2)])
+    (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
+                           (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
+    (freeze
+     (pict3d (make-trans-scene (affine t) (standard-cylinder-scene (and inside? #t) n))))))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Cone
+
+(: standard-cone-scene (-> Boolean Natural Scene))
+(define (standard-cone-scene inside? n)
+  (define c (current-color))
+  (define e (current-emitted))
+  (define m (current-material))
+  (define nx (/ 1.0 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))
+  (define ny (/ 0.5 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))
+  (scene-union*
+   (for/list ([i  (in-range n)])
+     (define t0 (* (* 2.0 pi) (/ (+ (fl i) 0.5) (fl n))))
+     (define t1 (* (* 2.0 pi) (/ (fl i) (fl n))))
+     (define t2 (* (* 2.0 pi) (/ (+ (fl i) 1.0) (fl n))))
+     (define x0 (flcos t0))
+     (define y0 (flsin t0))
+     (define x1 (flcos t1))
+     (define y1 (flsin t1))
+     (define x2 (flcos t2))
+     (define y2 (flsin t2))
+     (scene-union*
+      (list
+       ;; Sides
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector 0.0 0.0 1.0)
+                 (flvector x1 y1 -1.0)
+                 (flvector x2 y2 -1.0))
+         (vector (flvector (* nx x0) (* nx y0) ny)
+                 (flvector (* nx x1) (* nx y1) ny)
+                 (flvector (* nx x2) (* nx y2) ny))
+         c e m inside?))
+       ;; Bottom
+       (shape->scene
+        (make-triangle-shape
+         (vector (flvector x2 y2 -1.0)
+                 (flvector x1 y1 -1.0)
+                 z-)
+         z- c e m inside?)))))))
+
+(: cone (->* [Vec Vec] [Any #:segments Natural] Pict3D))
+(define (cone v1 v2 [inside? #f] #:segments [n 32])
+  (let ([v1  (->flv3 'cone v1)]
+        [v2  (->flv3 'cone v2)])
+    (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
+                           (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
+    (freeze
+     (pict3d (make-trans-scene (affine t) (standard-cone-scene (and inside? #t) n))))))

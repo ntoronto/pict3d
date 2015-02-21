@@ -720,6 +720,7 @@ for `Scene`.
        [(triangle-shape? a)   (set-triangle-shape-color a c)]
        [(rectangle-shape? a)  (set-rectangle-shape-color a c)]
        [(sphere-shape? a)     (set-sphere-shape-color a c)])]
+    [(frozen-scene-shape? a)  (set-frozen-scene-shape-color a c)]
     [else  a]))
 
 (: shape-set-emitted (-> Shape FlVector Shape))
@@ -730,6 +731,7 @@ for `Scene`.
        [(triangle-shape? a)   (set-triangle-shape-emitted a e)]
        [(rectangle-shape? a)  (set-rectangle-shape-emitted a e)]
        [(sphere-shape? a)     (set-sphere-shape-emitted a e)])]
+    [(frozen-scene-shape? a)  (set-frozen-scene-shape-emitted a e)]
     [else  a]))
 
 (: shape-set-material (-> Shape material Shape))
@@ -740,6 +742,7 @@ for `Scene`.
        [(triangle-shape? a)   (set-triangle-shape-material a m)]
        [(rectangle-shape? a)  (set-rectangle-shape-material a m)]
        [(sphere-shape? a)     (set-sphere-shape-material a m)])]
+    [(frozen-scene-shape? a)  (set-frozen-scene-shape-material a m)]
     [else  a]))
 
 ;; ===================================================================================================
@@ -750,7 +753,7 @@ for `Scene`.
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-frozen-scene-shape (-> Nonempty-Scene Shape))
+(: make-frozen-scene-shape (-> Nonempty-Scene frozen-scene-shape))
 (define (make-frozen-scene-shape s)
   (frozen-scene-shape (lazy-passes) s))
 
@@ -910,6 +913,36 @@ for `Scene`.
    (merge-shape-params (apply vector-append (map passes-opaque-color ps)))
    (merge-shape-params (apply vector-append (map passes-transparent-material ps)))
    (merge-shape-params (apply vector-append (map passes-transparent-color ps)))))
+
+;; ===================================================================================================
+;; Set attributes
+
+(: set-frozen-scene-shape-color (-> frozen-scene-shape FlVector frozen-scene-shape))
+(define (set-frozen-scene-shape-color a c)
+  (cond [(not (= (flvector-length c) 4))
+         (raise-argument-error 'set-frozen-scene-shape-color "length-4 flvector" 1 a c)]
+        [else
+         (define s (frozen-scene-shape-scene a))
+         (define new-s (scene-map-shapes s (λ ([a : Shape]) (shape-set-color a c))))
+         (cond [(eq? new-s s)  a]
+               [else  (make-frozen-scene-shape (assert new-s nonempty-scene?))])]))
+
+(: set-frozen-scene-shape-emitted (-> frozen-scene-shape FlVector frozen-scene-shape))
+(define (set-frozen-scene-shape-emitted a e)
+  (cond [(not (= (flvector-length e) 4))
+         (raise-argument-error 'set-frozen-scene-shape-emitted "length-4 flvector" 1 a e)]
+        [else
+         (define s (frozen-scene-shape-scene a))
+         (define new-s (scene-map-shapes s (λ ([a : Shape]) (shape-set-emitted a e))))
+         (cond [(eq? new-s s)  a]
+               [else  (make-frozen-scene-shape (assert new-s nonempty-scene?))])]))
+
+(: set-frozen-scene-shape-material (-> frozen-scene-shape material frozen-scene-shape))
+(define (set-frozen-scene-shape-material a m)
+  (define s (frozen-scene-shape-scene a))
+  (define new-s (scene-map-shapes s (λ ([a : Shape]) (shape-set-material a m))))
+  (cond [(eq? new-s s)  a]
+        [else  (make-frozen-scene-shape (assert new-s nonempty-scene?))]))
 
 ;; ===================================================================================================
 ;; Bounding box
