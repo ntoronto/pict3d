@@ -258,9 +258,12 @@ vec3 attenuate_linear(vec3 light_color, float radius, float dist) {
 float specular(vec3 N, vec3 L, vec3 V, float dotLN, float dotVN, float m) {
   vec3 uH = L+V;  // unnormalized half vector
   float dotsum = dotVN + dotLN;
-  float dotHNsqr = dotsum * dotsum / dot(uH,uH);  // pow(dot(N,normalize(uH)),2)
+  float dd = dotsum * dotsum;
+  float uu = dot(uH,uH);
   float mm = m * m;
-  return sqrt(dotLN/dotVN) / (12.566371 * mm) * exp((dotHNsqr - 1.0) / (mm * dotHNsqr));
+  float tt = dotLN * dotVN;
+  float sqrt_part = sqrt(tt) / (0.1 + tt);
+  return min(16.0, exp(-(uu-dd)/(mm*dd)) * sqrt_part / (12.566371 * mm));
 }
 
 out vec4 out_diffuse;
@@ -270,14 +273,14 @@ void output_light(vec3 light, surface s, vec3 L, vec3 V) {
   vec3 N = s.normal;
 
   // Diffuse
-  float dotNL = dot(N,L);
-  if (dotNL < 1e-7) discard;
+  float dotNL = max(0.0,dot(N,L));
+  if (dotNL == 0.0) discard;  // if true, every light value is 0.0
   out_diffuse = vec4(light * dotNL, 1.0);
 
   // Specular
   float dotNV = dot(N,V);
-  if (dotNV < 1e-7) discard;
-  out_specular = vec4(light * specular(N,L,V,dotNL,dotNV,max(0.03125,s.roughness)), 1.0);
+  float spec = dotNV <= 0.0 ? 0.0 : specular(N,L,V,dotNL,dotNV,max(0.03125,s.roughness));
+  out_specular = vec4(light * dotNL * spec, 1.0);
 }
 code
    "\n\n"))
