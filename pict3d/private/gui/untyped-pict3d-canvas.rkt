@@ -234,5 +234,6 @@
       (do-render pict width height
                  z-near z-far fov-degrees
                  background ambient-color ambient-intensity
-                 #t))
+                 #t)
+      (super on-paint))
     ))

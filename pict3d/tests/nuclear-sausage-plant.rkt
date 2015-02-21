@@ -2,6 +2,7 @@
 
 (require racket/gui
          pict3d
+         pict3d/universe
          plot/utils)
 
 (current-color '(1 1 1 1))
@@ -26,26 +27,26 @@
                     (set-emitted (make-segment n) (list 0 1 0 0.25))
                     'bottom)]))
 
-(define frame (new frame% [label "Wiggly Segments"] [width 800] [height 600]))
-(define canvas (new pict3d-canvas% [parent frame]))
-(send canvas set-async-updates? #f)
-(send frame show #t)
-
 (define chain (segment-chain 18))
 
 (define (wiggle p)
   (replace-in-group p 'top (λ (p) (rotate-z (wiggle p)
                                             (* 0.5 (+ 0.9 (* 0.1 (random))))))))
 
-(let loop ([chain chain])
-  (when (send frame is-shown?)
-    (let ([chain  (rotate-z (wiggle chain) 0.5)])
-      (time
-       (define start (current-inexact-milliseconds))
-       (send canvas set-pict3d
-             (combine (basis 'camera (point-at #:from '(0 2 4) #:dir '(0 -1/2 -1)))
-                      (sunlight '(-1 0 -1) "yellow" 2)
-                      chain))
-       (define diff (max 0.0 (- (current-inexact-milliseconds) start)))
-       (sleep/yield (/ (max 1.0 (- #i1000/60 diff)) 1000.0)))
-      (loop chain))))
+(big-bang3d
+ (list chain (current-inexact-milliseconds))
+ #:name "Nuclear Sausage Plant"
+ #:width 800
+ #:height 600
+ #:on-frame
+ (λ (s n t)
+   (match-define (list p t0) s)
+   (printf "frame num: ~a time ~a~n" n (- t t0))
+   (list (rotate-z (wiggle p) 0.5) t))
+ #:on-draw
+ (λ (s)
+   (match-define (list p t) s)
+   (combine (basis 'camera (point-at #:from '(0 2 4) #:dir '(0 -1/2 -1)))
+            (sunlight '(-1 0 -1) "yellow" 2)
+            p))
+ )
