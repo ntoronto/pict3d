@@ -187,6 +187,9 @@ Universe/networking
   ;; Wait until after the first paint
   (semaphore-wait start-sema)
   
+  (define first-frame? #t)
+  (define first-frame-time 0.0)
+  
   ;; Main loop
   (let loop ([frame : Natural  0])
     (when (and (send window is-shown?)
@@ -194,8 +197,11 @@ Universe/networking
                running?)
       ;; Mark the start of the frame
       (define start (current-inexact-milliseconds))
+      (when first-frame?
+        (set! first-frame? #f)
+        (set! first-frame-time start))
       ;; Call the user's on-frame handler
-      (set-current-state! 'on-frame (on-frame current-state frame start))
+      (set-current-state! 'on-frame (on-frame current-state frame (- start first-frame-time)))
       ;; Call the user's on-draw and set the result in the canvas
       (send canvas set-pict3d (on-draw current-state))
       ;; Work through all the input events
