@@ -217,7 +217,7 @@
             [z-axis  (cond [dest  (flv3- dest origin)]
                            [else  (->flv3 'point-at (assert z-axis values))])]
             [z-axis  (if normalize? (flv3normalize z-axis) z-axis)]
-            [z-axis  (if z-axis z-axis z+)]
+            [z-axis : FlVector  (if z-axis z-axis z+)]
             [angle  (degrees->radians (fl angle))]
             [up  (flv3normalize (->flv3 'point-at up))]
             [up  (if up up z+)])

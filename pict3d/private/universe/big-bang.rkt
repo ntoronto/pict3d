@@ -13,8 +13,7 @@ Universe/networking
          typed/racket/gui
          typed/racket/class
          typed/racket/async-channel
-         "../../main.rkt"
-         "../gl.rkt")
+         "../../main.rkt")
 
 (provide Pict3D-World-Canvas%
          pict3d-world-canvas%
@@ -196,7 +195,7 @@ Universe/networking
                (< frame frame-limit)
                running?)
       ;; Mark the start of the frame
-      (define start (current-inexact-milliseconds))
+      (define start (real->double-flonum (current-inexact-milliseconds)))
       (when first-frame?
         (set! first-frame? #f)
         (set! first-frame-time start))
@@ -227,7 +226,7 @@ Universe/networking
           [_
            (void)]))
       ;; Determine how much time is left in the frame
-      (define duration (max 0.0 (- (current-inexact-milliseconds) start)))
+      (define duration (max 0.0 (- (real->double-flonum (current-inexact-milliseconds)) start)))
       (define delay (/ (max 1.0 (- frame-delay duration)) 1000.0))
       ;; Sleep for the remainder of the frame and let GUI events run
       (sleep/yield delay)
