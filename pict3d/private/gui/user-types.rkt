@@ -34,6 +34,7 @@
  ->flcolor4
  ->flcolor3
  transparent
+ intensity
  ;; Affine transforms
  Affine
  affine?
@@ -60,7 +61,7 @@
   (engine:material (fl a) (fl d) (fl s) (fl r)))
 
 (: material (->* [] [#:ambient Real #:diffuse Real #:specular Real #:roughness Real] Material))
-(define (material #:ambient [a 0.05] #:diffuse [d 0.6] #:specular [s 0.35] #:roughness [r 0.3])
+(define (material #:ambient [a 0.0] #:diffuse [d 0.0] #:specular [s 0.0] #:roughness [r 0.1])
   (make-material a d s r))
 
 ;; ===================================================================================================
@@ -153,6 +154,12 @@
 (: transparent (-> Pict3D-Color Real FlVector))
 (define (transparent col a)
   (define v (flvector-copy (->flcolor4 'transparent col)))
+  (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
+  v)
+
+(: intensity (-> Pict3D-Color Real FlVector))
+(define (intensity col a)
+  (define v (flvector-copy (->flcolor4 'intensity col)))
   (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
   v)
 
