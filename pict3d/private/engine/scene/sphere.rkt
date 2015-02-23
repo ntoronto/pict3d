@@ -3,6 +3,7 @@
 (require racket/match
          typed/opengl
          math/flonum
+         "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
@@ -17,6 +18,7 @@
          make-sphere-shape-passes
          sphere-shape-rect
          sphere-shape-easy-transform
+         sphere-shape-line-intersect
          )
 
 ;; ===================================================================================================
@@ -88,3 +90,26 @@
 (define (sphere-shape-easy-transform a t)
   (match-define (sphere-shape passes t0 c e m inside?) a)
   (sphere-shape (lazy-passes) (affine-compose t t0) c e m inside?))
+
+;; ===================================================================================================
+;; Ray intersection
+
+(: unit-sphere-line-intersects (-> FlVector FlVector (Values (U #f Flonum) (U #f Flonum))))
+(define (unit-sphere-line-intersects p d)
+  (define m^2 (flv3mag^2 d))
+  (define b (/ (- (flv3dot p d)) m^2))
+  (define c (/ (- (flv3mag^2 p) 1.0) m^2))
+  (let ([discr  (- (* b b) c)])
+    (if (< discr 0.0)
+        (values #f #f)  ; Missed sphere
+        (let* ([q  (flsqrt discr)])
+          (values (- b q) (+ b q))))))
+
+(: sphere-shape-line-intersect (-> sphere-shape FlVector FlVector (U #f Flonum)))
+(define (sphere-shape-line-intersect a v dv)
+  (define t (flt3inverse (affine-transform (sphere-shape-affine a))))
+  (define-values (tmin tmax)
+    (let ([v  (flt3apply/pos t v)]
+          [dv  (flt3apply/dir t dv)])
+      (unit-sphere-line-intersects v dv)))
+  (if (sphere-shape-inside? a) tmax tmin))

@@ -47,6 +47,7 @@
  flrect3-disjoint?
  flrect3-longest-axis/center
  flrect3-transform
+ flrect3-line-intersects
  )
 
 ;; ===================================================================================================
@@ -332,3 +333,37 @@
   (cond [(flidentity3? t)  b]
         [(empty-flrect3? b)  b]
         [else  (nonempty-flrect3-transform b t)]))
+
+(: nonempty-flrect3-line-intersects (-> Nonempty-FlRect3 FlVector FlVector
+                                        (Values (U #f Flonum) (U #f Flonum))))
+(define (nonempty-flrect3-line-intersects bb v dv)
+  (match-define (Nonempty-FlRect3 mn mx) bb)
+  ;; Test all three slabs indexed by i
+  (let loop ([tmin -inf.0] [tmax +inf.0] [i : Index  0])
+    (cond
+      [(< i 3)
+       (define x (flvector-ref v i))
+       (define dx (flvector-ref dv i))
+       (define x1 (flvector-ref mn i))
+       (define x2 (flvector-ref mx i))
+       (cond [(and (< (abs dx) epsilon.0) (not (< x1 x x2)))
+              ;; The ray is (approximately) parallel and the origin isn't inside this slab
+              (values #f #f)]
+             [else
+              ;; Find intersection against near and far planes of slab
+              (define t1 (/ (- x1 x) dx))
+              (define t2 (/ (- x2 x) dx))
+              ;; Get updated tmin and tmax
+              (let ([tmin  (max (min t1 t2) tmin)]
+                    [tmax  (min (max t1 t2) tmax)])
+                (if (> tmin tmax)
+                    (values #f #f)
+                    (loop tmin tmax (+ i 1))))])]
+      [else
+       (values tmin tmax)])))
+
+(: flrect3-line-intersects (-> FlRect3 FlVector FlVector (Values (U #f Flonum) (U #f Flonum))))
+(define (flrect3-line-intersects bb v dv)
+  (if (empty-flrect3? bb)
+      (values #f #f)
+      (nonempty-flrect3-line-intersects bb v dv)))

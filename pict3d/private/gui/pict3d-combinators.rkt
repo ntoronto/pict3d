@@ -81,6 +81,8 @@
  arrow
  cylinder
  cone
+ ;; Collision detection
+ trace
  )
 
 ;; ===================================================================================================
@@ -218,8 +220,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (->* [Vec Vec Vec] [Any] Pict3D))
-(define (triangle v1 v2 v3 [back? #f])
+(: triangle (->* [Vec Vec Vec] [#:back? Any] Pict3D))
+(define (triangle v1 v2 v3 #:back? [back? #f])
   (define vs (vector (->flv3 'triangle v1) (->flv3 'triangle v2) (->flv3 'triangle v3)))
   (define norm (flv3polygon-normal vs))
   (pict3d
@@ -234,8 +236,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
-(: quad (->* [Vec Vec Vec Vec] [Any] Pict3D))
-(define (quad v1 v2 v3 v4 [back? #f])
+(: quad (->* [Vec Vec Vec Vec] [#:back? Any] Pict3D))
+(define (quad v1 v2 v3 v4 #:back? [back? #f])
   (define vs (vector (->flv3 'quad v1) (->flv3 'quad v2) (->flv3 'quad v3) (->flv3 'quad v4)))
   (define norm (flv3polygon-normal vs))
   (pict3d
@@ -252,8 +254,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
 
-(: rectangle (->* [Vec Vec] [Any] Pict3D))
-(define (rectangle v1 v2 [inside? #f])
+(: rectangle (->* [Vec Vec] [#:inside? Any] Pict3D))
+(define (rectangle v1 v2 #:inside? [inside? #f])
   (pict3d
    (shape->scene
     (make-rectangle-shape (assert (flv3rect (vector (->flv3 'rectangle v1)
@@ -267,8 +269,8 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Ellipsoid
 
-(: sphere (->* [Vec Real] [Any] Pict3D))
-(define (sphere center radius [inside? #f])
+(: sphere (->* [Vec Real] [#:inside? Any] Pict3D))
+(define (sphere center radius #:inside? [inside? #f])
   (define r (fl radius))
   (define t (flt3compose (translate-flt3 (->flv3 'sphere center))
                          (scale-flt3 (flvector r r r))))
@@ -280,8 +282,8 @@
                        (current-material)
                        (and inside? #t)))))
 
-(: ellipsoid (->* [Vec Vec] [Any] Pict3D))
-(define (ellipsoid v1 v2 [inside? #f])
+(: ellipsoid (->* [Vec Vec] [#:inside? Any] Pict3D))
+(define (ellipsoid v1 v2 #:inside? [inside? #f])
   (let ([v1  (->flv3 'ellipsoid v1)]
         [v2  (->flv3 'ellipsoid v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
@@ -522,8 +524,8 @@
                  z-)
          z- c e m inside?)))))))
 
-(: cylinder (->* [Vec Vec] [Any #:segments Natural] Pict3D))
-(define (cylinder v1 v2 [inside? #f] #:segments [n 32])
+(: cylinder (->* [Vec Vec] [#:inside? Any #:segments Natural] Pict3D))
+(define (cylinder v1 v2 #:inside? [inside? #f] #:segments [n 32])
   (let ([v1  (->flv3 'cylinder v1)]
         [v2  (->flv3 'cylinder v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
@@ -574,11 +576,34 @@
                  z-)
          z- c e m inside?)))))))
 
-(: cone (->* [Vec Vec] [Any #:segments Natural #:smooth? Any] Pict3D))
-(define (cone v1 v2 [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
+(: cone (->* [Vec Vec] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
+(define (cone v1 v2 #:inside? [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
   (let ([v1  (->flv3 'cone v1)]
         [v2  (->flv3 'cone v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
                            (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
     (define s (standard-cone-scene (and inside? #t) n (and smooth? #t)))
     (freeze (pict3d (make-trans-scene (affine t) s)))))
+
+;; ===================================================================================================
+;; Collision detection
+
+(: trace (->* [Pict3D] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f)] (U #f FlVector)))
+(define (trace p #:from [v1 origin] #:to [v2 #f] #:dir [dv #f])
+  (cond
+    [(and v2 dv)
+     (error 'trace "expected exactly one of #:to or #:dir; got #:to ~e and #:dir ~e" v2 dv)]
+    [(not (or v2 dv))
+     (error 'trace "expected exactly one of #:to or #:dir; got neither")]
+    [v2
+     (let ([v1  (->flv3 'trace v1)]
+           [v2  (->flv3 'trane v2)])
+       (define dv (flv3- v2 v1))
+       (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (cond [(and tmin (<= tmin 1.0))  (flv3+ v1 (flv3* dv tmin))]
+             [else  #f]))]
+    [dv
+     (let ([v1  (->flv3 'trace v1)]
+           [dv  (->flv3 'trace dv)])
+       (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (if tmin (flv3+ v1 (flv3* dv tmin)) #f))]))

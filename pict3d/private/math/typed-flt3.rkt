@@ -62,6 +62,7 @@ Higher precision (try to guarantee 2.5 ulps?)
  flt3apply
  flt3apply-invtrans
  flt3apply/pos
+ flt3apply/dir
  flt3apply/nrm
  flt3apply/pln
  flt3compose
@@ -438,6 +439,10 @@ Higher precision (try to guarantee 2.5 ulps?)
 (: flt3apply/pos (-> FlTransform3 FlVector FlVector))
 (define (flt3apply/pos t v)
   (flv4->pos (flt3apply t (pos->flv4 v))))
+
+(: flt3apply/dir (-> FlTransform3 FlVector FlVector))
+(define (flt3apply/dir t v)
+  (flv4->norm (flt3apply t (norm->flv4 v))))
 
 (: flt3apply/nrm (-> FlTransform3 FlVector FlVector))
 (define (flt3apply/nrm t v)

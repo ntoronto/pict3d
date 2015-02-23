@@ -428,6 +428,51 @@ for `Scene`.
                [else  (make-group-scene n0 new-s0)]))))
 
 ;; ===================================================================================================
+;; Scene-ray-intersection
+
+(: shape-line-intersect (-> Shape FlVector FlVector (U #f Flonum)))
+(define (shape-line-intersect a v dv)
+  (cond
+    [(solid-shape? a)
+     (cond
+       [(triangle-shape? a)   (triangle-shape-line-intersect a v dv)]
+       [(rectangle-shape? a)  (rectangle-shape-line-intersect a v dv)]
+       [(sphere-shape? a)     (sphere-shape-line-intersect a v dv)])]
+    [else  #f]))
+
+(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlVector FlVector (U #f Flonum)))
+(define (nonempty-scene-ray-intersect s v dv)
+  (define bb (scene-rect s))
+  (define-values (tmin tmax) (flrect3-line-intersects bb v dv))
+  (cond
+    [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
+    [(leaf-scene? s)
+     (define a (leaf-scene-shape s))
+     (cond [(frozen-scene-shape? a)
+            (nonempty-scene-ray-intersect (frozen-scene-shape-scene a) v dv)]
+           [else
+            (define tmin (shape-line-intersect a v dv))
+            (if (or (not tmin) (< tmin 0.0)) #f tmin)])]
+    [(node-scene? s)
+     (define tmin1 (nonempty-scene-ray-intersect (node-scene-neg s) v dv))
+     (define tmin2 (nonempty-scene-ray-intersect (node-scene-pos s) v dv))
+     (cond [(and tmin1 tmin2)  (min tmin1 tmin2)]
+           [tmin1  tmin1]
+           [else   tmin2])]
+    [(trans-scene? s)
+     (define t0 (flt3inverse (affine-transform (trans-scene-affine s))))
+     (define s0 (trans-scene-scene s))
+     (let ([v  (flt3apply/pos t0 v)]
+           [dv  (flt3apply/dir t0 dv)])
+       (nonempty-scene-ray-intersect s0 v dv))]
+    [(group-scene? s)
+     (scene-ray-intersect (group-scene-scene s) v dv)]))
+
+(: scene-ray-intersect (-> Scene FlVector FlVector (U #f Flonum)))
+(define (scene-ray-intersect s v dv)
+  (if (empty-scene? s) #f (nonempty-scene-ray-intersect s v dv)))
+
+;; ===================================================================================================
 ;; Tastes almost-but-not-quite-entirely-unlike map
 
 (: transform-planes (-> Affine (Listof FlPlane3) (Listof FlPlane3)))

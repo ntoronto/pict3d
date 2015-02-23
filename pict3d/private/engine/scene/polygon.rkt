@@ -28,6 +28,7 @@
          make-triangle-shape-passes
          triangle-shape-rect
          triangle-shape-easy-transform
+         triangle-shape-line-intersect
          
          make-quad-shapes
          
@@ -38,6 +39,7 @@
          make-rectangle-shape-passes
          ;rectangle-shape-rect  ; already an accessor
          rectangle-shape-transform
+         rectangle-shape-line-intersect
          
          rectangle-shape->triangle-shapes
          )
@@ -547,3 +549,36 @@ code
          (make-quad-shapes (vector v3 v4 v8 v7) vec-y+ c e m inside?)
          (make-quad-shapes (vector v4 v1 v5 v8) vec-x- c e m inside?)
          (make-quad-shapes (vector v2 v3 v7 v6) vec-x+ c e m inside?))))
+
+;; ===================================================================================================
+;; Ray intersection
+
+(: triangle-shape-line-intersect (-> triangle-shape FlVector FlVector (U #f Flonum)))
+;; Moller-Trumbore
+(define (triangle-shape-line-intersect a o d)
+  (match-define (vector v0 v1 v2) (triangle-shape-vertices a))
+  (let-values ([(v0 v1)  (if (triangle-shape-back? a) (values v1 v0) (values v0 v1))])
+    (define e1 (flv3- v1 v0))
+    (define e2 (flv3- v2 v0))
+    (define p (flv3cross d e2))
+    (define det (flv3dot e1 p))
+    (cond
+      [(< det epsilon.0)  #f]
+      [else
+       (define t (flv3- o v0))
+       (define u (flv3dot t p))
+       (cond
+         [(or (< u 0.0) (> u det))  #f]
+         [else
+          (define q (flv3cross t e1))
+          (define v (flv3dot d q))
+          (cond
+            [(or (< v 0.0) (> (+ u v) det))  #f]
+            [else
+             (/ (flv3dot e2 q) det)])])])))
+
+(: rectangle-shape-line-intersect (-> rectangle-shape FlVector FlVector (U #f Flonum)))
+(define (rectangle-shape-line-intersect a v dv)
+  (define-values (tmin tmax)
+    (flrect3-line-intersects (rectangle-shape-rect a) v dv))
+  (if (rectangle-shape-inside? a) tmax tmin))
