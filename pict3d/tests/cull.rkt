@@ -13,9 +13,9 @@
 
 (define sphere-vs 
   (for/list ([_  (in-range 5000)])
-    (list (* (- (random) 0.5) 2)
-          (* (- (random) 0.5) 2)
-          (* (- (random) 0.5) 2))))
+    (pos (* (- (random) 0.5) 2)
+         (* (- (random) 0.5) 2)
+         (* (- (random) 0.5) 2))))
 
 (define spheres
   (combine*
@@ -29,10 +29,10 @@
        (sphere v #i1/16)))))
 
 (define wacky-spheres
-  (rotate-z (move (scale-y (rotate-x spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
+  (rotate-z (move (scale-y (rotate-x spheres 30) 1.5) (dir -0.25 -0.25 -0.25)) 30))
 
 (define wacky-blue-spheres
-  (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) '(-0.25 -0.25 -0.25)) 30))
+  (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) (dir -0.25 -0.25 -0.25)) 30))
 
 ;(: frustum (-> FlTransform3 Pict3D))
 (define (frustum t)
@@ -41,7 +41,7 @@
     (for*/list ([z  (list -1.0 1.0)]
                 [y  (list -1.0 1.0)]
                 [x  (list -1.0 1.0)])
-      (flt3apply/pos tinv (flvector x y z))))
+      (flvector->pos (flt3apply/pos tinv (flvector x y z)))))
   
   (combine
    (quad v1 v2 v3 v4)
@@ -56,9 +56,9 @@
 (define znear 0.25)
 (define zfar 4.0)
 (define fov-radians (degrees->radians (fl 30.0)))
-(define camera (point-at #:from '(1.25 1.25 1.25) #:dir '(-1 -1 -1)))
+(define camera (point-at (pos 1.25 1.25 1.25) origin))
 (define proj (perspective-flt3/viewport (fl 800) (fl 600) fov-radians znear zfar))
-(define view (affine-compose (scale '(1 -1 -1))
+(define view (affine-compose (scale (dir 1 -1 -1))
                              (affine-inverse camera)))
 (define t (flt3compose proj (affine-transform view)))
 
@@ -86,7 +86,7 @@
            (flvector 1.0 1.0 1.0)))
  (with-color '(0.75 0 0 0.5)
    (with-emitted '(0.25 0 0)
-     (rectangle '(0 0 0) '(1 1 1))))
+     (rectangle (pos 0 0 0) (pos 1 1 1))))
  blue-spheres)
 
 (combine
@@ -96,5 +96,5 @@
            (flvector 1.0 1.0 1.0)))
  (with-color '(0.75 0 0 0.5)
    (with-emitted '(0.25 0 0)
-     (rectangle '(0 0 0) '(1 1 1))))
+     (rectangle (pos 0 0 0) (pos 1 1 1))))
  wacky-blue-spheres)

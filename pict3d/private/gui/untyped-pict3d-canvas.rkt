@@ -9,10 +9,12 @@
          typed/opengl
          "../math/flt3.rkt"
          "../engine/scene.rkt"
+         "../engine/types.rkt"
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
+         "pict3d-combinators.rkt"
          )
 
 (provide pict3d-canvas%)
@@ -56,7 +58,7 @@
                                      ack-channel)
          cmd)
        ;; Get the view matrix
-       (define view (pict3d-view-transform pict))
+       (define view (affine-transform (pict3d-view-transform pict)))
        ;; Compute the projection matrix
        (define fov-radians (degrees->radians fov-degrees))
        (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))

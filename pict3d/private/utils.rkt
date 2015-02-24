@@ -8,7 +8,8 @@
          "untyped-utils.rkt")
 
 (provide (all-defined-out)
-         (all-from-out "untyped-utils.rkt"))
+         (all-from-out "untyped-utils.rkt")
+         make-constructor-style-printer)
 
 (require/typed
  profile
@@ -16,6 +17,13 @@
 
 (define-syntax-rule (profile body ...)
   (profile-thunk (λ () body ...)))
+
+(require/typed
+ unstable/custom-write
+ [make-constructor-style-printer
+  (All (A) (-> (-> A (U Symbol String))
+               (-> A (Sequenceof Any))
+               (-> A Output-Port (U #t #f 0 1) Void)))])
 
 ;; ===================================================================================================
 ;; Lists with minimum length

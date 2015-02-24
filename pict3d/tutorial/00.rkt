@@ -12,7 +12,7 @@ widget. This, for example, displays a sphere at the origin with radius 1/2:
 ")
 (example
  (require pict3d)
- (sphere '(0 0 0) 1/2))
+ (sphere origin 1/2))
 (display "
 Click on it, then use the mouse to look around. Clicking again gives control of
 the mouse and keyboard back to DrRacket. Use
@@ -35,8 +35,8 @@ The most basic Pict3D combinator is 'combine', which merges the shapes in one
 or more Pict3Ds.
 ")
 (example
- (combine (sphere '(0 0 0) 1/2)
-          (sphere '(1/2 0 0) 1/3)))
+ (combine (sphere origin 1/2)
+          (sphere (pos 1/2 0 0) 1/3)))
 (press-enter)
 
 (display "
@@ -45,22 +45,17 @@ position vectors. These vectors are regarded as opposite corners of a box that
 the ellipsoid will fill.
 ")
 (example
- (combine (ellipsoid '(0 0 0) '(1 1/2 1/4))
-          (ellipsoid '(0 0 1/4) '(1 1/2 1/2))))
+ (combine (ellipsoid (pos 0 0 0) (pos 1 1/2 1/4))
+          (ellipsoid (pos 0 0 1/4) (pos 1 1/2 1/2))))
 (press-enter)
 
 (display "
-A 'position vector' or 'direction vector' is a length-3 flvector, or length-3
-list or vector of real numbers. Typed Racket doesn't check the length at compile
-time, but every Pict3D function checks lengths at runtime, while converting all
-input vectors to length-3 flvectors.
-
 Like 'append*', 'combine*' combines a list:
 ")
 (example
  (combine*
-  (for/list ([z  (in-range 0.0 2.0 0.5)]
-             [r  (in-range 1.0 0.0 -0.25)])
-    (sphere (flvector 0.0 0.0 z) r))))
+  (for/list ([z  (in-range 0 2 0.5)]
+             [r  (in-range 1 0 -0.25)])
+    (sphere (pos 0 0 z) r))))
 (header "End 00: Basics")
 (press-enter)

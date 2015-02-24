@@ -16,15 +16,15 @@
 (define (xyz-fun x y)
   (let ([x  (+ x (* 0.1 (sin (* (+ x y) 10))))]
         [y  (+ y (* 0.1 (cos (* (+ x y) 10))))])
-    (flvector x y (* 1.0 (sin x) (cos y)))))
+    (pos x y (* 1.0 (sin x) (cos y)))))
 
 ;(: norm-fun (-> Flonum Flonum FlVector))
 (define (norm-fun x y)
   (let ([x  (+ x (* 0.1 (sin (* (+ x y) 10))))]
         [y  (+ y (* 0.1 (cos (* (+ x y) 10))))])
-    (flv3normalize (flvector (* -1.0 (cos x) (cos y))
-                             (* +1.0 (sin x) (sin y))
-                             1.0))))
+    (dir-normalize (dir (* -1.0 (cos x) (cos y))
+                        (* +1.0 (sin x) (sin y))
+                        1.0))))
 
 (define grid-size 64)
 
@@ -41,8 +41,8 @@
      (define v2 (xyz-fun x1 y1))
      (define v3 (xyz-fun x0 y1))
      ;; Split on shortest diagonal
-     (if (< (flv3dist v0 v2)
-            (flv3dist v1 v3))
+     (if (< (pos-dist v0 v2)
+            (pos-dist v1 v3))
          (values (list (list v0 v1 v2)
                        (list v0 v2 v3)))
          (values (list (list v0 v1 v3)
@@ -58,13 +58,13 @@
   (time
    (append
     
-    (list (light '(0 0 2) '(1.0 1.0 0.95) 5))
+    (list (light (pos 0 0 2) '(1.0 1.0 0.95) 5))
     
     (for*/list ([xi  (in-range 0 grid-size 8)]
                 [yi  (in-range 0 grid-size 8)])
       (define x0 (* 0.5 (- xi (* 0.5 grid-size))))
       (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
-      (light (list x0 y0 2) '(1 1 0.95) 2)))))
+      (light (pos x0 y0 2) '(1 1 0.95) 2)))))
 
 (define rects
   (time
@@ -74,12 +74,12 @@
      (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
      (define x1 (+ x0 0.5))
      (define y1 (+ y0 0.5))
-     (define z (flvector-ref (xyz-fun (* 0.5 (+ x0 x1)) (* 0.5 (+ y0 y1))) 2))
+     (define z (flvector-ref (pos->flvector (xyz-fun (* 0.5 (+ x0 x1)) (* 0.5 (+ y0 y1)))) 2))
      (define transparent? (= 0 (modulo (+ xi yi) 4)))
      (with-color (if transparent? '(0.2 0.3 1.0 0.5) '(0.2 1.0 0.3 1.0))
        (with-material (if transparent? (make-material 0.1 0.2 0.7 0.1) default-material)
-         (rectangle (list x0 y0 (* 0.5 z))
-                    (list x1 y1 (+ (* 0.5 z) 1.0))))))))
+         (rectangle (pos x0 y0 (* 0.5 z))
+                    (pos x1 y1 (+ (* 0.5 z) 1.0))))))))
 
 (define surface
   (time
@@ -88,7 +88,7 @@
             (combine* rects))))
 
 (define pict
-  (combine surface (basis 'camera (point-at #:from '(20 20 20) #:dir '(-1 -1 -1)))))
+  (combine surface (basis 'camera (point-at (pos 20 20 20) origin))))
 
 (profile
  (for ([_  (in-range 100)])

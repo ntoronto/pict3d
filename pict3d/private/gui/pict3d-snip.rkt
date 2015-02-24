@@ -18,9 +18,11 @@
          "../engine/utils.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
+         "../engine/types.rkt"
          "../gl.rkt"
          "../utils.rkt"
          "pict3d-struct.rkt"
+         "pict3d-combinators.rkt"
          "parameters.rkt"
          "utils.rkt"
          "axes-scene.rkt"
@@ -155,7 +157,7 @@
     (define camera
       (let ([t  (pict3d-view-transform (pict3d (send pict get-scene)))])
         (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-          (flvector->list (fltransform3-inverse t)))
+          (flvector->list (fltransform3-inverse (affine-transform t))))
         (define position (flvector m03 m13 m23))
         (define yaw (+ (atan m12 m02) (/ pi 2)))
         (define pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22)))))))
@@ -490,8 +492,7 @@
           #f))
     ))
 
-(define (pict3d->pict3d% p)
-  (define scene (pict3d-scene p))
+(define (scene->pict3d scene)
   (make-object pict3d%
     scene
     (pict3d-legacy-contexts?)
@@ -504,15 +505,15 @@
     (current-pict3d-ambient-color)
     (current-pict3d-ambient-intensity)))
 
-(define (pict3d-custom-write p out mode)
+(define (pict3d-custom-write scene out mode)
   (define print-it
     (cond [(eq? mode #t)  write]
           [(eq? mode #f)  display]
           [else  print]))
-  (print-it (pict3d->pict3d% p) out))
+  (print-it (scene->pict3d scene) out))
 
-(define (pict3d-print-converter p recur)
-  (pict3d->pict3d% p))
+(define (pict3d-print-converter scene recur)
+  (scene->pict3d scene))
 
 ;; Set the custom printer so Pict3D instances will print nicely in Racket
 (current-pict3d-custom-write pict3d-custom-write)

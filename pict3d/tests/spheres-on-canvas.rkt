@@ -16,7 +16,9 @@
   (map (λ (r) (/ r mx)) rgb))
 
 (define (random-position)
-  (build-list 3 (λ (_) (* (- (random) 0.5) 50))))
+  (pos (* (- (random) 0.5) 50)
+       (* (- (random) 0.5) 50)
+       (* (- (random) 0.5) 50)))
 
 (define spheres
   (time
@@ -46,7 +48,7 @@
 
 (require profile)
 
-(profile
+(values
  (let loop ([i 0])
    (when (and (< i 1000) (send frame is-shown?))
      (time
@@ -57,7 +59,7 @@
       (define sx2 (sin (* 2 (degrees->radians i))))
       
       (define camera
-        (point-at #:from (list (* -6 cx) (* -6 sx) (* 0.5 sx)) #:to origin))
+        (point-at (pos (* -6 cx) (* -6 sx) (* 0.5 sx)) origin))
       
       (define pict
         (combine
@@ -65,8 +67,8 @@
          frozen-spheres
          (with-color "black"
            (with-emitted '(1 1 1 4)
-             (sphere (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-         (light (list (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
+             (sphere (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
+         (light (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
       
       (send canvas set-pict3d pict)
       ;; Rate-limit to 60 FPS

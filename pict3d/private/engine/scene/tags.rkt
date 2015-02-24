@@ -5,6 +5,11 @@
 (provide (all-defined-out))
 
 (define-type Tag (U Symbol Integer))
+
+(: tag? (-> Any Boolean : Tag))
+(define (tag? v)
+  (or (symbol? v) (exact-integer? v)))
+
 (define-type Tags (Setof Tag))
 
 (define empty-tags ((inst set Tag)))

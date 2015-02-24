@@ -43,7 +43,6 @@
  remove-in-group
  map-group
  map-group/transform
- set-origin
  ;; Basic shapes
  triangle
  quad
@@ -67,6 +66,9 @@
  move-y
  move-z
  move
+ set-origin
+ point-at
+ pict3d-view-transform
  ;; Combining scenes
  combine
  combine*
@@ -204,62 +206,52 @@
                          (f (affine-compose t t0) p)))))))
       (map-group/transform* p n f)))
 
-(: set-origin (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
-(define (set-origin p n)
-  (: fail (-> Index Nothing))
-  (define (fail m)
-    (error 'set-origin "epected one group named ~e; given a Pict3D with ~a groups named ~e" n m n))
-  (define ps (map-group/transform p n (λ ([t : Affine] _) (transform p (affine-inverse t)))))
-  (cond [(empty? ps)  (fail 0)]
-        [(empty? (rest ps))  (first ps)]
-        [else  (fail (length ps))]))
-
 ;; ===================================================================================================
 ;; Basic shapes
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (->* [Vec Vec Vec] [#:back? Any] Pict3D))
+(: triangle (->* [Pos Pos Pos] [#:back? Any] Pict3D))
 (define (triangle v1 v2 v3 #:back? [back? #f])
-  (define vs (vector (->flv3 'triangle v1) (->flv3 'triangle v2) (->flv3 'triangle v3)))
+  (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3)))
   (define norm (flv3polygon-normal vs))
-  (pict3d
-   (shape->scene
-    (make-triangle-shape vs
-                         (if norm norm (flvector 0.0 0.0 0.0))
-                         (current-color)
-                         (current-emitted)
-                         (current-material)
-                         (and back? #t)))))
+  (cond [norm
+         (pict3d
+          (shape->scene
+           (make-triangle-shape vs norm
+                                (current-color)
+                                (current-emitted)
+                                (current-material)
+                                (and back? #t))))]
+        [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
-(: quad (->* [Vec Vec Vec Vec] [#:back? Any] Pict3D))
+(: quad (->* [Pos Pos Pos Pos] [#:back? Any] Pict3D))
 (define (quad v1 v2 v3 v4 #:back? [back? #f])
-  (define vs (vector (->flv3 'quad v1) (->flv3 'quad v2) (->flv3 'quad v3) (->flv3 'quad v4)))
+  (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3) (pos->flvector v4)))
   (define norm (flv3polygon-normal vs))
-  (pict3d
-   (scene-union*
-    (map
-     shape->scene
-     (make-quad-shapes vs
-                       (if norm norm (flvector 0.0 0.0 0.0))
-                       (current-color)
-                       (current-emitted)
-                       (current-material)
-                       (and back? #t))))))
+  (cond [norm  (pict3d
+                (scene-union*
+                 (map
+                  shape->scene
+                  (make-quad-shapes vs norm
+                                    (current-color)
+                                    (current-emitted)
+                                    (current-material)
+                                    (and back? #t)))))]
+        [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
 
-(: rectangle (->* [Vec Vec] [#:inside? Any] Pict3D))
+(: rectangle (->* [Pos Pos] [#:inside? Any] Pict3D))
 (define (rectangle v1 v2 #:inside? [inside? #f])
   (pict3d
    (shape->scene
-    (make-rectangle-shape (assert (flv3rect (vector (->flv3 'rectangle v1)
-                                                    (->flv3 'rectangle v2)))
+    (make-rectangle-shape (assert (flv3rect (vector (pos->flvector v1) (pos->flvector v2)))
                                   nonempty-flrect3?)
                           (current-color)
                           (current-emitted)
@@ -269,10 +261,10 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Ellipsoid
 
-(: sphere (->* [Vec Real] [#:inside? Any] Pict3D))
+(: sphere (->* [Pos Real] [#:inside? Any] Pict3D))
 (define (sphere center radius #:inside? [inside? #f])
   (define r (fl radius))
-  (define t (flt3compose (translate-flt3 (->flv3 'sphere center))
+  (define t (flt3compose (translate-flt3 (pos->flvector center))
                          (scale-flt3 (flvector r r r))))
   (pict3d
    (shape->scene
@@ -282,10 +274,10 @@
                        (current-material)
                        (and inside? #t)))))
 
-(: ellipsoid (->* [Vec Vec] [#:inside? Any] Pict3D))
+(: ellipsoid (->* [Pos Pos] [#:inside? Any] Pict3D))
 (define (ellipsoid v1 v2 #:inside? [inside? #f])
-  (let ([v1  (->flv3 'ellipsoid v1)]
-        [v2  (->flv3 'ellipsoid v2)])
+  (let ([v1  (pos->flvector v1)]
+        [v2  (pos->flvector v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
                            (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
     (pict3d
@@ -299,14 +291,14 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
 
-(: sunlight (-> Vec Pict3D-Color Real Pict3D))
+(: sunlight (-> Dir Pict3D-Color Real Pict3D))
 (define (sunlight direction color intensity)
-  (define dir (flv3normalize (->flv3 'sunlight direction)))
-  (pict3d
-   (shape->scene
-    (make-directional-light-shape (->flcolor3 'sunlight color)
-                                  (fl intensity)
-                                  (if dir dir (flvector 0.0 0.0 0.0))))))
+  (let ([direction  (flv3normalize (dir->flvector direction))]
+        [color      (->flcolor3 'sunlight color)]
+        [intensity  (fl intensity)])
+    (if direction
+        (pict3d (shape->scene (make-directional-light-shape color intensity direction)))
+        empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
@@ -315,12 +307,12 @@
 (define (default-light-radius intensity)
   (flsqrt (* 20.0 intensity)))
 
-(: light (->* [Vec] [Pict3D-Color Real Real] Pict3D))
+(: light (->* [Pos] [Pict3D-Color Real Real] Pict3D))
 (define (light position
                [color  (flvector 1.0 1.0 1.0)]
                [intensity  1.0]
                [radius  #f])
-  (let* ([position  (->flv3 'light position)]
+  (let* ([position  (pos->flvector position)]
          [color  (->flcolor3 'light color)]
          [intensity  (fl intensity)]
          [radius  (if radius (fl radius) (default-light-radius intensity))])
@@ -353,21 +345,30 @@
     [(v)  (affine (f v))]
     [(p v)  (transform p (affine (f v)))]))
 
+
+(: set-origin (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
+(define (set-origin p n)
+  (: fail (-> Index Nothing))
+  (define (fail m)
+    (error 'set-origin "epected one group named ~e; given a Pict3D with ~a groups named ~e" n m n))
+  (define ps (map-group/transform p n (λ ([t : Affine] _) (transform p (affine-inverse t)))))
+  (cond [(empty? ps)  (fail 0)]
+        [(empty? (rest ps))  (first ps)]
+        [else  (fail (length ps))]))
+
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
 
-(: check-scale (-> Symbol (U Real Vec) FlVector))
+(: check-scale (-> Symbol (U Flonum FlVector) FlVector))
 (define (check-scale name v)
-  (cond [(real? v)
-         (let ([v  (fl v)])
-           (cond [(= v 0.0)  (raise-argument-error name "nonzero scale" v)]
-                 [else  (flvector v v v)]))]
+  (cond [(flonum? v)
+         (cond [(= v 0.0)  (raise-argument-error name "nonzero scale" v)]
+               [else  (flvector v v v)])]
         [else
-         (let ([v  (->flv3 name v)])
-           (define-values (x y z) (flv3-values v))
-           (cond [(or (= x 0.0) (= y 0.0) (= z 0.0))
-                  (raise-argument-error name "nonzero scale" v)]
-                 [else  v]))]))
+         (define-values (x y z) (flv3-values v))
+         (cond [(or (= x 0.0) (= y 0.0) (= z 0.0))
+                (raise-argument-error name "nonzero scale" v)]
+               [else  v])]))
 
 (define scale-x
   (make-transformer (λ ([v : Real]) (scale-flt3 (check-scale 'scale-x (flvector (fl v) 1.0 1.0))))))
@@ -379,7 +380,8 @@
   (make-transformer (λ ([v : Real]) (scale-flt3 (check-scale 'scale-z (flvector 1.0 1.0 (fl v)))))))
 
 (define scale
-  (make-transformer (λ ([v : (U Real Vec)]) (scale-flt3 (check-scale 'scale v)))))
+  (make-transformer (λ ([v : (U Real Dir)])
+                      (scale-flt3 (check-scale 'scale (if (real? v) (fl v) (dir->flvector v)))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Translate
@@ -387,26 +389,83 @@
 (define move-x (make-transformer (λ ([v : Real]) (translate-flt3 (flvector (fl v) 0.0 0.0)))))
 (define move-y (make-transformer (λ ([v : Real]) (translate-flt3 (flvector 0.0 (fl v) 0.0)))))
 (define move-z (make-transformer (λ ([v : Real]) (translate-flt3 (flvector 0.0 0.0 (fl v))))))
-(define move (make-transformer (λ ([v : Vec]) (translate-flt3 (->flv3 'move v)))))
+(define move (make-transformer (λ ([v : Dir]) (translate-flt3 (dir->flvector v)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rotate
 
-(: check-axis (-> Symbol Vec FlVector))
-(define (check-axis name v)
-  (let ([v  (flv3normalize (->flv3 name v))])
-    (if v v (raise-argument-error name "nonzero axis vector" v))))
+(: check-axis (-> Symbol Dir FlVector))
+(define (check-axis name orig-v)
+  (define v (flv3normalize (dir->flvector orig-v)))
+  (if v v (raise-argument-error name "nonzero axis vector" v)))
 
-(define rotate-x (make-transformer (λ ([a : Real]) (rotate-flt3 x+ (degrees->radians (fl a))))))
-(define rotate-y (make-transformer (λ ([a : Real]) (rotate-flt3 y+ (degrees->radians (fl a))))))
-(define rotate-z (make-transformer (λ ([a : Real]) (rotate-flt3 z+ (degrees->radians (fl a))))))
+(define rotate-x (make-transformer (λ ([a : Real])
+                                     (rotate-flt3 (dir->flvector x+) (degrees->radians (fl a))))))
+(define rotate-y (make-transformer (λ ([a : Real])
+                                     (rotate-flt3 (dir->flvector y+) (degrees->radians (fl a))))))
+(define rotate-z (make-transformer (λ ([a : Real])
+                                     (rotate-flt3 (dir->flvector z+) (degrees->radians (fl a))))))
 
-(: rotate (case-> (-> Vec Real Affine)
-                  (-> Pict3D Vec Real Pict3D)))
+(: rotate (case-> (-> Dir Real Affine)
+                  (-> Pict3D Dir Real Pict3D)))
 (define rotate
   (case-lambda
     [(v a)  (affine (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a))))]
     [(p v a)  (transform p (rotate v a))]))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Point at/to
+
+(: point-at (->* [Pos (U Pos Dir)] [#:angle Real #:up Dir #:normalize? Any] Affine))
+(define (point-at from to 
+                  #:angle [angle 0.0]
+                  #:up [up z+]
+                  #:normalize? [normalize? #t])
+  (define z-axis (if (dir? to) to (pos- to from)))
+  (let* ([z-axis  (if normalize? (dir-normalize z-axis) z-axis)]
+         [z-axis : Dir  (if z-axis z-axis z+)]
+         [angle  (degrees->radians (fl angle))]
+         [up  (dir-normalize up)]
+         [up  (if up up z+)])
+    (define x-axis (dir-normalize (dir-cross z-axis up)))
+    (define t
+      (cond
+        [x-axis
+         (define y-axis (assert (dir-normalize (dir-cross z-axis x-axis)) values))
+         (cols->affine x-axis y-axis z-axis from)]
+        [(>= (flvector-ref (dir->flvector z-axis) 2) 0.0)
+         (move (pos- from origin))]
+        [else
+         (affine-compose (move (pos- from origin))
+                         (scale (dir -1.0 1.0 -1.0)))]))
+    (affine-compose t (affine (rotate-z-flt3 angle)))))
+
+;; ===================================================================================================
+;; View transform and auto camera
+
+(: pict3d-camera (-> Pict3D (U #f Affine)))
+(define (pict3d-camera p)
+  (define ts (scene-map-group/transform (pict3d-scene p) 'camera (λ ([t : Affine] _) t)))
+  (if (pair? ts) (first ts) #f))
+
+(: pict3d-auto-camera (-> Pict3D Affine))
+(define (pict3d-auto-camera p)
+  (let* ([s  (pict3d-scene p)]
+         [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
+         [b  (scene-rect s)]
+         [c  (if (empty-flrect3? b) origin (flvector->pos (flrect3-center b)))]
+         [d  (if (= 0.0 (flrect3-volume b))
+                 1.0
+                 (dir-dist (pos- (flvector->pos (flrect3-max b)) c)))]
+         [d  (/ (* d 1.25) (flsqrt 3.0))])
+    (point-at (pos+ c (dir d d d)) c)))
+
+(: pict3d-view-transform (-> Pict3D Affine))
+(define (pict3d-view-transform p)
+  (let* ([t  (pict3d-camera p)]
+         [t  (if t t (pict3d-auto-camera p))])
+    (affine-compose (scale (dir 1.0 -1.0 -1.0))
+                    (affine-inverse t))))
 
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)
@@ -451,26 +510,23 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Arrows
 
-(define up-arrow
+(define (up-arrow)
   (freeze
    (combine
-    (rectangle '(-1/64 -1/64 0)
-               '(1/64 1/64 56/64))
-    (let ([p  (triangle '(2/64 2/64 56/64)
-                        '(-2/64 2/64 56/64)
-                        '(0 0 1))])
+    (rectangle (pos -1/64 -1/64 0)
+               (pos 1/64 1/64 56/64))
+    (let ([p  (triangle (pos 2/64 2/64 56/64)
+                        (pos -2/64 2/64 56/64)
+                        (pos 0 0 1))])
       (combine p (rotate-z p 90) (rotate-z p 180) (rotate-z p 270)))
-    (quad '(2/64 2/64 56/64)
-          '(2/64 -2/64 56/64)
-          '(-2/64 -2/64 56/64)
-          '(-2/64 2/64 56/64)))))
+    (quad (pos 2/64 2/64 56/64)
+          (pos 2/64 -2/64 56/64)
+          (pos -2/64 -2/64 56/64)
+          (pos -2/64 2/64 56/64)))))
 
-(: arrow (->* [] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f) #:normalize? Any] Pict3D))
-(define (arrow #:from [from origin]
-               #:to [to #f]
-               #:dir [dir #f]
-               #:normalize? [normalize? #f])
-  (transform up-arrow (point-at #:from from #:to to #:dir dir #:normalize? normalize?)))
+(: arrow (->* [Pos (U Pos Dir)] [#:normalize? Any] Pict3D))
+(define (arrow from to #:normalize? [normalize? #f])
+  (transform (up-arrow) (point-at from to #:normalize? normalize?)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Cylinder
@@ -495,8 +551,9 @@
         (make-triangle-shape
          (vector (flvector x1 y1 1.0)
                  (flvector x2 y2 1.0)
-                 z+)
-         z+ c e m inside?))
+                 (dir->flvector z+))
+         (dir->flvector z+)
+         c e m inside?))
        ;; Sides
        (shape->scene
         (make-triangle-shape
@@ -521,13 +578,14 @@
         (make-triangle-shape
          (vector (flvector x2 y2 -1.0)
                  (flvector x1 y1 -1.0)
-                 z-)
-         z- c e m inside?)))))))
+                 (dir->flvector z-))
+         (dir->flvector z-)
+         c e m inside?)))))))
 
-(: cylinder (->* [Vec Vec] [#:inside? Any #:segments Natural] Pict3D))
+(: cylinder (->* [Pos Pos] [#:inside? Any #:segments Natural] Pict3D))
 (define (cylinder v1 v2 #:inside? [inside? #f] #:segments [n 32])
-  (let ([v1  (->flv3 'cylinder v1)]
-        [v2  (->flv3 'cylinder v2)])
+  (let ([v1  (pos->flvector v1)]
+        [v2  (pos->flvector v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
                            (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
     (freeze
@@ -573,13 +631,14 @@
         (make-triangle-shape
          (vector (flvector x2 y2 -1.0)
                  (flvector x1 y1 -1.0)
-                 z-)
-         z- c e m inside?)))))))
+                 (dir->flvector z-))
+         (dir->flvector z-)
+         c e m inside?)))))))
 
-(: cone (->* [Vec Vec] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
+(: cone (->* [Pos Pos] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
 (define (cone v1 v2 #:inside? [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
-  (let ([v1  (->flv3 'cone v1)]
-        [v2  (->flv3 'cone v2)])
+  (let ([v1  (pos->flvector v1)]
+        [v2  (pos->flvector v2)])
     (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
                            (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
     (define s (standard-cone-scene (and inside? #t) n (and smooth? #t)))
@@ -588,22 +647,18 @@
 ;; ===================================================================================================
 ;; Collision detection
 
-(: trace (->* [Pict3D] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f)] (U #f FlVector)))
-(define (trace p #:from [v1 origin] #:to [v2 #f] #:dir [dv #f])
+(: trace (-> Pict3D Pos (U Pos Dir) (U #f Pos)))
+(define (trace p v1 to)
   (cond
-    [(and v2 dv)
-     (error 'trace "expected exactly one of #:to or #:dir; got #:to ~e and #:dir ~e" v2 dv)]
-    [(not (or v2 dv))
-     (error 'trace "expected exactly one of #:to or #:dir; got neither")]
-    [v2
-     (let ([v1  (->flv3 'trace v1)]
-           [v2  (->flv3 'trane v2)])
+    [(pos? to)
+     (let ([v1  (pos->flvector v1)]
+           [v2  (pos->flvector to)])
        (define dv (flv3- v2 v1))
        (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (cond [(and tmin (<= tmin 1.0))  (flv3+ v1 (flv3* dv tmin))]
+       (cond [(and tmin (<= tmin 1.0))  (flvector->pos (flv3+ v1 (flv3* dv tmin)))]
              [else  #f]))]
-    [dv
-     (let ([v1  (->flv3 'trace v1)]
-           [dv  (->flv3 'trace dv)])
+    [else
+     (let ([v1  (pos->flvector v1)]
+           [dv  (dir->flvector to)])
        (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (if tmin (flv3+ v1 (flv3* dv tmin)) #f))]))
+       (if tmin (flvector->pos (flv3+ v1 (flv3* dv tmin))) #f))]))

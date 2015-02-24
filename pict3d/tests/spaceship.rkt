@@ -19,14 +19,14 @@
   (define r (flsqrt (+ (sqr x) (sqr y) (sqr z))))
   (values (atan y x) (asin (/ z r)) r))
 
-(: retesselate (-> (-> FlVector FlVector)
-                   (-> (List FlVector FlVector FlVector)
-                       (Listof (List FlVector FlVector FlVector)))))
+(: retesselate (-> (-> Pos Pos)
+                   (-> (List Pos Pos Pos)
+                       (Listof (List Pos Pos Pos)))))
 (define ((retesselate f) vs)
   (match-define (list v0 v1 v2) vs)
-  (define v01 (f (flv3* (flv3+ v0 v1) 0.5)))
-  (define v12 (f (flv3* (flv3+ v1 v2) 0.5)))
-  (define v20 (f (flv3* (flv3+ v2 v0) 0.5)))
+  (define v01 (f (pos-between v0 v1 0.5)))
+  (define v12 (f (pos-between v1 v2 0.5)))
+  (define v20 (f (pos-between v2 v0 0.5)))
   (list (list v0 v01 v20)
         (list v1 v12 v01)
         (list v2 v20 v12)
@@ -40,52 +40,52 @@
 (define (make-planetoid-pict)
   (define n 200)
   (define as
-    (build-list n (λ (_) (assert (flv3normalize (flvector (- (random) 0.5)
-                                                          (- (random) 0.5)
-                                                          (- (random) 0.5)))
+    (build-list n (λ (_) (assert (dir-normalize (dir (- (random) 0.5)
+                                                     (- (random) 0.5)
+                                                     (- (random) 0.5)))
                                  values))))
   (define ws (build-list n (λ (_) 4.0 #;(+ 0.5 (* (random) 10.0)))))
   (define ss (build-list n (λ (_) 0.025 #;(+ 0.05 (* (random) 0.05)))))
   
-  (: f (-> FlVector FlVector))
+  (: f (-> Pos Pos))
   (define (f v)
-    (let ([v  (assert (flv3normalize v) values)])
+    (let ([v  (assert (dir-normalize (pos- v origin)) values)])
       (define r
         (for/fold ([r : Flonum  1.0]) ([a  (in-list as)]
                                        [w  (in-list ws)]
                                        [s  (in-list ss)])
-          (+ r (* s (flexp (* (sqr w) (- (flv3dot v a) 1.0)))))))
-      (flv3* v r)))
+          (+ r (* s (flexp (* (sqr w) (- (dir-dot v a) 1.0)))))))
+      (pos+ origin (dir-scale v r))))
   
   (define vss
     (map
-     (λ ([vs : (List FlVector FlVector FlVector)])
+     (λ ([vs : (List Pos Pos Pos)])
        (match-define (list v0 v1 v2) vs)
        (list (f v0) (f v1) (f v2)))
-     (list (list (flvector 1.0 0.0 0.0)
-                 (flvector 0.0 1.0 0.0)
-                 (flvector 0.0 0.0 1.0))
-           (list (flvector 0.0 1.0 0.0)
-                 (flvector -1.0 0.0 0.0)
-                 (flvector 0.0 0.0 1.0))
-           (list (flvector -1.0 0.0 0.0)
-                 (flvector 0.0 -1.0 0.0)
-                 (flvector 0.0 0.0 1.0))
-           (list (flvector 0.0 -1.0 0.0)
-                 (flvector 1.0 0.0 0.0)
-                 (flvector 0.0 0.0 1.0))
-           (list (flvector 0.0 1.0 0.0)
-                 (flvector 1.0 0.0 0.0)
-                 (flvector 0.0 0.0 -1.0))
-           (list (flvector -1.0 0.0 0.0)
-                 (flvector 0.0 1.0 0.0)
-                 (flvector 0.0 0.0 -1.0))
-           (list (flvector 0.0 -1.0 0.0)
-                 (flvector -1.0 0.0 0.0)
-                 (flvector 0.0 0.0 -1.0))
-           (list (flvector 1.0 0.0 0.0)
-                 (flvector 0.0 -1.0 0.0)
-                 (flvector 0.0 0.0 -1.0)))))
+     (list (list (pos 1.0 0.0 0.0)
+                 (pos 0.0 1.0 0.0)
+                 (pos 0.0 0.0 1.0))
+           (list (pos 0.0 1.0 0.0)
+                 (pos -1.0 0.0 0.0)
+                 (pos 0.0 0.0 1.0))
+           (list (pos -1.0 0.0 0.0)
+                 (pos 0.0 -1.0 0.0)
+                 (pos 0.0 0.0 1.0))
+           (list (pos 0.0 -1.0 0.0)
+                 (pos 1.0 0.0 0.0)
+                 (pos 0.0 0.0 1.0))
+           (list (pos 0.0 1.0 0.0)
+                 (pos 1.0 0.0 0.0)
+                 (pos 0.0 0.0 -1.0))
+           (list (pos -1.0 0.0 0.0)
+                 (pos 0.0 1.0 0.0)
+                 (pos 0.0 0.0 -1.0))
+           (list (pos 0.0 -1.0 0.0)
+                 (pos -1.0 0.0 0.0)
+                 (pos 0.0 0.0 -1.0))
+           (list (pos 1.0 0.0 0.0)
+                 (pos 0.0 -1.0 0.0)
+                 (pos 0.0 0.0 -1.0)))))
   (let* ([vss  (append* (map (retesselate f) vss))]
          [vss  (append* (map (retesselate f) vss))]
          ;[vss  (append* (map (retesselate f) vss))]
@@ -93,7 +93,7 @@
          ;[vss  (append* (map (retesselate f) vss))]
          )
     (combine*
-     (map (λ ([vs : (List FlVector FlVector FlVector)]) (apply triangle vs)) vss))))
+     (map (λ ([vs : (List Pos Pos Pos)]) (apply triangle vs)) vss))))
 
 (define num-planetoid-picts 20)
 (define num-planetoids 500)
@@ -112,14 +112,14 @@
            (make-planetoid-pict))
          (with-material (make-material 0.01 0.19 0.80 0.3)
            (with-color '(1 0.25 0.5)
-             (sphere '(0 0 0) 1.125)))
+             (sphere (pos 0 0 0) 1.125)))
          (with-material (make-material 0.1 0.8 0.1 0.5)
            (with-color '(1/4 1/2 1 0.075)
-             (sphere '(0 0 0) 1.35)))))))))
+             (sphere (pos 0 0 0) 1.35)))))))))
 
 (struct planetoid ([pict : Pict3D]
-                   [position : Vec]
-                   [axis : Vec]
+                   [position : Pos]
+                   [axis : Dir]
                    [speed : Real])
   #:transparent)
 
@@ -128,10 +128,10 @@
    num-planetoids
    (λ (n)
      (planetoid (vector-ref planetoid-picts (random (vector-length planetoid-picts)))
-                (list (* (- (random) 0.5) 40.0)
-                      (* (- (random) 0.5) 40.0)
-                      (* (- (random) 0.5) 40.0))
-                (list (- (random) 0.5) (- (random) 0.5) (- (random) 0.5))
+                (pos (* (- (random) 0.5) 40.0)
+                     (* (- (random) 0.5) 40.0)
+                     (* (- (random) 0.5) 40.0))
+                (dir (- (random) 0.5) (- (random) 0.5) (- (random) 0.5))
                 (+ 0.1 (random))))))
 
 (define frame (new frame% [label "1"] [width 400] [height 400]))
@@ -143,23 +143,24 @@
   (combine
    (with-color "black"
      (with-emitted '(1 0.8 0.6 4)
-       (sphere '(0 0 0) 1)))
-   (light '(0 0 0) '(2.0 1.6 1.2) 50)))
+       (sphere (pos 0 0 0) 1)))
+   (light (pos 0 0 0) '(2.0 1.6 1.2) 50)))
 
 (define pict
   (combine
    sun
-   (basis 'camera (point-at #:from '(0 -40 0) #:dir '(0 1 0)))
+   (basis 'camera (point-at (pos 0 -40 0) (dir 0 1 0)))
    (combine*
     (for/list ([p  (in-list planetoids)])
       (match-define (planetoid pict pos axis speed) p)
-      (move (rotate pict axis (* speed (* 2 pi (random)))) pos)))))
+      (move (rotate pict axis (* speed (* 2 pi (random))))
+            (pos- pos origin))))))
 
 (define spheres
   (for/list : (Listof Pict3D) ([_  (in-range 1000)])
-    (sphere (list (* (- (random) 0.5) 40.0)
-                  (* (- (random) 0.5) 40.0)
-                  (* (- (random) 0.5) 40.0))
+    (sphere (pos (* (- (random) 0.5) 40.0)
+                 (* (- (random) 0.5) 40.0)
+                 (* (- (random) 0.5) 40.0))
             0.5)))
 
 (require/typed
@@ -174,12 +175,12 @@
         (define pict
           (combine
            sun
-           (basis 'camera (point-at #:from '(0 -40 0) #:dir '(0 1 0)))
+           (basis 'camera (point-at (pos 0 -40 0) (dir 0 1 0)))
            (combine*
             (for/list ([p  (in-list planetoids)])
               (match-define (planetoid pict pos axis speed) p)
-              (rotate (move (rotate pict axis (* speed angle)) pos)
-                      '(0 0 1)
+              (rotate (move (rotate pict axis (* speed angle)) (pos- pos origin))
+                      (dir 0 0 1)
                       (* angle 0.1))))))
         (send canvas set-pict3d pict)
         (sleep/yield #i1/1000))
@@ -189,17 +190,17 @@
 
 (define body
   (let* ([body  (combine
-                 (rectangle '(-1/4 -1/8 -1) '(1/4 1/8 2))
+                 (rectangle (pos -1/4 -1/8 -1) (pos 1/4 1/8 2))
                  (with-color '(1/4 1/2 1 1/2)
                    (with-emitted '(1/4 1/2 1 8)
-                     (rectangle '(-1/8 -1/16 -1.125) '(1/8 1/16 2.25))))
+                     (rectangle (pos -1/8 -1/16 -1.125) (pos 1/8 1/16 2.25))))
                  (scale
                   (with-color '(1/4 1/2 1 1/2)
                     (with-emitted '(1/4 1/2 1 8)
-                      (sphere '(0 0 0) 1/4)))
-                  '(1 1 2)))]
-         [body  (combine body (basis 'right-wing (point-at #:from '(3/16 0 0) #:dir '(1 1/3 0))))]
-         [body  (combine body (basis 'left-wing (point-at #:from '(-3/16 0 0) #:dir '(-1 1/3 0))))])
+                      (sphere (pos 0 0 0) 1/4)))
+                  (dir 1 1 2)))]
+         [body  (combine body (basis 'right-wing (point-at (pos 3/16 0 0) (dir 1 1/3 0))))]
+         [body  (combine body (basis 'left-wing (point-at (pos -3/16 0 0) (dir -1 1/3 0))))])
     body))
 
 (: make-wing (-> Symbol Pict3D))
@@ -208,49 +209,49 @@
     (combine
      ;; Attachment thingies
      (combine
-      (rectangle '(-2 -1/16 -1/8) '(-1 1/16 1/8))
+      (rectangle (pos -2 -1/16 -1/8) (pos -1 1/16 1/8))
       (with-color '(1 3/4 1/4 1/2)
         (with-emitted '(1 3/4 1/4 4)
-          (rectangle (list (+ -2 1/32) (+ -1/16 1/32) (- -1/8 1/32))
-                     (list (- -1 1/32) (-  1/16 1/32) (+  1/8 1/16)))))
+          (rectangle (pos (+ -2 1/32) (+ -1/16 1/32) (- -1/8 1/32))
+                     (pos (- -1 1/32) (-  1/16 1/32) (+  1/8 1/16)))))
       (combine*
        (for/list ([x  (in-range 1/32 1 1/16)])
          (combine
-          (light (list (- -1 x) 0 (- -1/8 1/64)) '(1 3/4 1/4) #i1/256)
-          (light (list (- -1 x) 0 (+  1/8 1/32)) '(1 3/4 1/4) #i1/256)))))
+          (light (pos (- -1 x) 0 (- -1/8 1/64)) '(1 3/4 1/4) #i1/256)
+          (light (pos (- -1 x) 0 (+  1/8 1/32)) '(1 3/4 1/4) #i1/256)))))
      ;; Lasers
      (combine
-      (rectangle '(-1/16 -1/16 -1/2) '(1/16 1/16 2))
+      (rectangle (pos -1/16 -1/16 -1/2) (pos 1/16 1/16 2))
       (with-color '(1 3/4 1/4 1/2)
         (with-emitted '(1 12/16 1/16 16)
-          (rectangle '(-1/32 -1/32 2) '(1/32 1/32 2.5))))
-      (light '(0 0 2.25) '(1 3/4 1/4) 1))
+          (rectangle (pos -1/32 -1/32 2) (pos 1/32 1/32 2.5))))
+      (light (pos 0 0 2.25) '(1 3/4 1/4) 1))
      (rotate-y (scale (rotate-y
                        (combine
-                        (rectangle '(-1 -1/8 -1) '(0 1/8 1/2))
+                        (rectangle (pos -1 -1/8 -1) (pos 0 1/8 1/2))
                         (with-color '(1/4 1/2 1 1/2)
                           (with-emitted '(1/4 1/2 1 8)
-                            (move (scale (sphere '(0 0 0) 1)
-                                         '(1/2 1/4 3/4))
-                                  '(-1/2 0 -1/4))))
+                            (move (scale (sphere (pos 0 0 0) 1)
+                                         (dir 1/2 1/4 3/4))
+                                  (dir -1/2 0 -1/4))))
                         ;; Engines
                         (with-color '(1 1/2 1/2 1/2)
                           (with-emitted '(1 1/16 1/16 8)
-                            (rectangle (list (+ -1 1/8) (+ -1/8 1/16) (- -1 1/16))
-                                       (list (-  0 1/8) (-  1/8 1/16) (+ 1/2 1/16))))))
+                            (rectangle (pos (+ -1 1/8) (+ -1/8 1/16) (- -1 1/16))
+                                       (pos (-  0 1/8) (-  1/8 1/16) (+ 1/2 1/16))))))
                        30)
-                      '(1 1 2))
+                      (dir 1 1 2))
                -30)))
-  (let* ([wing  (combine wing (basis 'wing-attach (point-at #:from '(-2 0 0) #:dir '(1 0 0))))]
-         [wing  (combine wing (basis gun-name (point-at #:from '(0 0 2) #:dir '(0 0 1))))])
+  (let* ([wing  (combine wing (basis 'wing-attach (point-at (pos -2 0 0) (dir 1 0 0))))]
+         [wing  (combine wing (basis gun-name (point-at (pos 0 0 2) (dir 0 0 1))))])
     wing))
 
 (define ship
   (rotate-x
    (weld (weld body 'right-wing (make-wing 'right-gun) 'wing-attach)
-        'left-wing
-        (make-wing 'left-gun)
-        'wing-attach)
+         'left-wing
+         (make-wing 'left-gun)
+         'wing-attach)
    -90))
 
 ship

@@ -1,11 +1,10 @@
 #lang typed/racket/base
 
-(require racket/match
-         racket/sequence
+(require (only-in racket/unsafe/ops unsafe-flvector-ref)
+         racket/match
          typed/racket/class
          typed/racket/gui
          math/flonum
-         math/base
          "../engine/scene/tags.rkt"
          (except-in "../engine/types.rkt"
                     material)
@@ -19,36 +18,49 @@
 
 (provide
  Tag
+ tag?
  ;; Materials
  Material
  material?
  material
  make-material
- ;; Vectors
- Vec
- ->flv3
- ->flv4
  ;; Colors
  Pict3D-Color
- origin x+ x- y+ y- z+ z-
  ->flcolor4
  ->flcolor3
- transparent
- intensity
+ set-opacity
+ set-intensity
+ ;; Vectors
+ (rename-out [-Pos Pos]
+             [-Dir Dir])
+ pos?
+ dir?
+ origin x+ y+ z+ x- y- z-
+ pos pos->flvector flvector->pos pos-coordinates
+ dir dir->flvector flvector->dir dir-components
+ dir+
+ dir-
+ dir-negate
+ dir-scale
+ dir-dist^2
+ dir-dist
+ dir-normalize
+ dir-dot
+ dir-cross
+ pos+
+ pos-
+ pos-between
+ pos-dist
+ pos-dist^2
  ;; Affine transforms
  Affine
  affine?
  identity-affine
- values->affine
- rows->affine
  cols->affine
- affine-values
- affine-rows
- affine-cols
+ affine->cols
  affine-compose
  affine-inverse
  affine-consistent?
- point-at
  )
 
 ;; ===================================================================================================
@@ -65,44 +77,22 @@
   (make-material a d s r))
 
 ;; ===================================================================================================
-;; Vectors
+;; Colors
 
-(define-type Vec (U (Listof Real) (Vectorof Real) FlVector))
+(define-type Color-Vector (U (Listof Real) (Vectorof Real) FlVector))
+(define-type Pict3D-Color (U String Symbol Real Color-Vector (Instance Color%)))
 
-(define origin (flvector 0.0 0.0 0.0))
-(define x+ (flvector +1.0 0.0 0.0))
-(define x- (flvector -1.0 0.0 0.0))
-(define y+ (flvector 0.0 +1.0 0.0))
-(define y- (flvector 0.0 -1.0 0.0))
-(define z+ (flvector 0.0 0.0 +1.0))
-(define z- (flvector 0.0 0.0 -1.0))
-
-(: vec-length (-> Vec Index))
-(define (vec-length xs)
+(: color-vec-length (-> Color-Vector Index))
+(define (color-vec-length xs)
   (cond [(flvector? xs)  (flvector-length xs)]
         [(list? xs)  (length xs)]
         [else  (vector-length xs)]))
 
-(: ->flv (-> Vec Index (U #f FlVector)))
-(define (->flv xs n)
+(: color-vec->flv (-> Color-Vector Index (U #f FlVector)))
+(define (color-vec->flv xs n)
   (cond [(flvector? xs)  (if (= n (flvector-length xs)) xs #f)]
         [(list? xs)  (if (= n (length xs)) (list->flvector xs) #f)]
         [else  (if (= n (vector-length xs)) (vector->flvector xs) #f)]))
-
-(: ->flv3 (-> Symbol Vec FlVector))
-(define (->flv3 name xs)
-  (define v (->flv xs 3))
-  (if v v (raise-argument-error name "length-3 vector" xs)))
-
-(: ->flv4 (-> Symbol Vec FlVector))
-(define (->flv4 name xs)
-  (define v (->flv xs 4))
-  (if v v (raise-argument-error name "length-4 vector" xs)))
-
-;; ===================================================================================================
-;; Colors
-
-(define-type Pict3D-Color (U String Symbol Real Vec (Instance Color%)))
 
 (: color->rgb (-> Symbol (U String Symbol (Instance Color%)) (Vector Byte Byte Byte)))
 (define (color->rgb name orig-col)
@@ -120,9 +110,11 @@
      (define r (fl col))
      (flvector r r r 1.0)]
     [(or (list? col) (vector? col) (flvector? col))
-     (define n (vec-length col))
+     (define n (color-vec-length col))
      (cond
-       [(= n 4)  (->flv4 name col)]
+       [(= n 4)
+        (define v (color-vec->flv col 4))
+        (if v v (raise-argument-error name "length-4 vector" col))]
        [(= n 3)
         (define c (make-flvector 4 1.0))
         (for ([r  (ann col (Sequenceof Real))]
@@ -144,99 +136,208 @@
          (define r (fl col))
          (flvector r r r)]
         [(or (list? col) (vector? col) (flvector? col))
-         (->flv3 name col)]
+         (define v (color-vec->flv col 3))
+         (if v v (raise-argument-error name "length-3 vector" col))]
         [else
          (match-define (vector r g b) (color->rgb name col))
          (flvector (/ (fl r) 255.0)
                    (/ (fl g) 255.0)
                    (/ (fl b) 255.0))]))
 
-(: transparent (-> Pict3D-Color Real FlVector))
-(define (transparent col a)
-  (define v (flvector-copy (->flcolor4 'transparent col)))
+(: set-opacity (-> Pict3D-Color Real FlVector))
+(define (set-opacity col a)
+  (define v (flvector-copy (->flcolor4 'set-opacity col)))
   (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
   v)
 
-(: intensity (-> Pict3D-Color Real FlVector))
-(define (intensity col a)
-  (define v (flvector-copy (->flcolor4 'intensity col)))
+(: set-intensity (-> Pict3D-Color Real FlVector))
+(define (set-intensity col a)
+  (define v (flvector-copy (->flcolor4 'set-intensity col)))
   (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
   v)
 
 ;; ===================================================================================================
+;; Vectors
+
+(define print-vec
+  (λ ([name : Symbol])
+    (make-constructor-style-printer
+     (λ ([v : Vec]) name)
+     (λ ([v : Vec])
+       (define-values (x y z) (vec-values v))
+       (list x y z)))))
+
+(struct Vec ([vector : FlVector]) #:transparent
+  #:property prop:custom-print-quotable 'never)
+  
+(struct Pos Vec () #:transparent
+  #:property prop:custom-write (print-vec 'pos))
+  
+(struct Dir Vec () #:transparent
+  #:property prop:custom-write (print-vec 'dir))
+
+(define-type -Pos Pos)
+(define-type -Dir Dir)
+(define pos? Pos?)
+(define dir? Dir?)
+
+(define origin (Pos (flvector 0.0 0.0 0.0)))
+(define x+ (Dir (flvector +1.0 0.0 0.0)))
+(define y+ (Dir (flvector 0.0 +1.0 0.0)))
+(define z+ (Dir (flvector 0.0 0.0 +1.0)))
+(define x- (Dir (flvector -1.0 0.0 0.0)))
+(define y- (Dir (flvector 0.0 -1.0 0.0)))
+(define z- (Dir (flvector 0.0 0.0 -1.0)))
+
+(: pos (-> Real Real Real Pos))
+(define (pos x y z)
+  (Pos (flvector (fl x) (fl y) (fl z))))
+
+(: pos->flvector (-> Pos FlVector))
+(define pos->flvector Vec-vector)
+
+(: flvector->pos (-> FlVector Pos))
+(define (flvector->pos v)
+  (unless (= 3 (flvector-length v))
+    (raise-argument-error 'flvector->pos "length-3 flvector" v))
+  (Pos v))
+
+(: dir (-> Real Real Real Dir))
+(define (dir dx dy dz)
+  (Dir (flvector (fl dx) (fl dy) (fl dz))))
+
+(: dir->flvector (-> Dir FlVector))
+(define dir->flvector Vec-vector)
+
+(: flvector->dir (-> FlVector Dir))
+(define (flvector->dir v)
+  (unless (= 3 (flvector-length v))
+    (raise-argument-error 'flvector->dir "length-3 flvector" v))
+  (Dir v))
+
+(define-syntax-rule (vec-values stx)
+  (let ([v  (Vec-vector stx)])
+    (values (unsafe-flvector-ref v 0)
+            (unsafe-flvector-ref v 1)
+            (unsafe-flvector-ref v 2))))
+
+(: pos-coordinates (-> Pos (Values Flonum Flonum Flonum)))
+(define (pos-coordinates v) (vec-values v))
+
+(: dir-components (-> Dir (Values Flonum Flonum Flonum)))
+(define (dir-components v) (vec-values v))
+
+(: dir+ (-> Dir Dir Dir))
+(define (dir+ dv1 dv2)
+  (define-values (dx1 dy1 dz1) (vec-values dv1))
+  (define-values (dx2 dy2 dz2) (vec-values dv2))
+  (Dir (flvector (+ dx1 dx2) (+ dy1 dy2) (+ dz1 dz2))))
+
+(: dir- (-> Dir Dir Dir))
+(define (dir- dv1 dv2)
+  (define-values (dx1 dy1 dz1) (vec-values dv1))
+  (define-values (dx2 dy2 dz2) (vec-values dv2))
+  (Dir (flvector (- dx1 dx2) (- dy1 dy2) (- dz1 dz2))))
+
+(: dir-negate (-> Dir Dir))
+(define (dir-negate dv)
+  (define-values (dx dy dz) (vec-values dv))
+  (Dir (flvector (- dx) (- dy) (- dz))))
+
+(: dir-scale (-> Dir Real Dir))
+(define (dir-scale dv s)
+  (define-values (dx dy dz) (vec-values dv))
+  (let ([s  (fl s)])
+    (Dir (flvector (* dx s) (* dy s) (* dz s)))))
+
+(: dir-dist^2 (-> Dir Flonum))
+(define (dir-dist^2 dv)
+  (define-values (dx dy dz) (vec-values dv))
+  (+ (* dx dx) (* dy dy) (* dz dz)))
+
+(: dir-dist (-> Dir Flonum))
+(define (dir-dist dv)
+  (flsqrt (dir-dist^2 dv)))
+
+(: dir-normalize (-> Dir (U #f Dir)))
+(define (dir-normalize dv)
+  (define-values (dx dy dz) (vec-values dv))
+  (define m (flsqrt (+ (* dx dx) (* dy dy) (* dz dz))))
+  (let ([dx  (/ dx m)]
+        [dy  (/ dy m)]
+        [dz  (/ dz m)])
+    (if (and (< -inf.0 dx +inf.0)
+             (< -inf.0 dy +inf.0)
+             (< -inf.0 dz +inf.0))
+        (Dir (flvector dx dy dz))
+        #f)))
+
+(: dir-dot (-> Dir Dir Flonum))
+(define (dir-dot dv1 dv2)
+  (flv3dot (dir->flvector dv1) (dir->flvector dv2)))
+
+(: dir-cross (-> Dir Dir Dir))
+(define (dir-cross dv1 dv2)
+  (Dir (flv3cross (dir->flvector dv1) (dir->flvector dv2))))
+
+(: pos+ (-> Pos Dir Pos))
+(define (pos+ v dv)
+  (define-values (x y z) (vec-values v))
+  (define-values (dx dy dz) (vec-values dv))
+  (Pos (flvector (+ x dx) (+ y dy) (+ z dz))))
+
+(: pos- (-> Pos Pos Dir))
+(define (pos- v1 v2)
+  (define-values (x1 y1 z1) (vec-values v1))
+  (define-values (x2 y2 z2) (vec-values v2))
+  (Dir (flvector (- x1 x2) (- y1 y2) (- z1 z2))))
+
+(: pos-between (-> Pos Pos Real Pos))
+(define (pos-between v1 v2 a)
+  (let* ([a  (fl a)]
+         [1-a  (- 1.0 a)])
+    (define-values (x1 y1 z1) (vec-values v1))
+    (define-values (x2 y2 z2) (vec-values v2))
+    (Pos (flvector (+ (* x1 1-a) (* x2 a))
+                   (+ (* y1 1-a) (* y2 a))
+                   (+ (* z1 1-a) (* z2 a))))))
+
+(: pos-dist^2 (-> Pos Pos Flonum))
+(define (pos-dist^2 v1 v2)
+  (dir-dist^2 (pos- v2 v1)))
+
+(: pos-dist (-> Pos Pos Flonum))
+(define (pos-dist v1 v2)
+  (dir-dist (pos- v2 v1)))
+
+;; ===================================================================================================
 ;; Affine transforms
 
-(: values->affine (-> FlVector Affine))
-(define (values->affine m)
-  (affine (flvector->flaffine3 m)))
+(define print-affine
+  (make-constructor-style-printer
+   (λ ([t : Affine]) 'cols->affine)
+   (λ ([t : Affine])
+     (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+       (flvector-values (fltransform3-forward (->flaffine3 (affine-transform t))) 12))
+     (list (dir m00 m10 m20)
+           (dir m01 m11 m21)
+           (dir m02 m12 m22)
+           (pos m03 m13 m23)))))
 
-(: rows->affine (-> Vec Vec Vec Affine))
-(define (rows->affine r0 r1 r2)
-  (affine (rows->flaffine3 (->flv4 'rows->affine r0)
-                           (->flv4 'rows->affine r1)
-                           (->flv4 'rows->affine r2))))
+(current-affine-custom-write print-affine)
 
-(: cols->affine (-> Vec Vec Vec Vec Affine))
+(: cols->affine (-> Dir Dir Dir Pos Affine))
 (define (cols->affine x y z p)
-  (affine (cols->flaffine3 (->flv3 'cols->affine x)
-                           (->flv3 'cols->affine y)
-                           (->flv3 'cols->affine z)
-                           (->flv3 'cols->affine p))))
+  (affine (cols->flaffine3 (dir->flvector x)
+                           (dir->flvector y)
+                           (dir->flvector z)
+                           (pos->flvector p))))
 
-(: affine-values (-> Affine FlVector))
-(define (affine-values t)
-  (fltransform3-forward (->flaffine3 (affine-transform t))))
-
-(: affine-rows (-> Affine (Values FlVector FlVector FlVector)))
-(define (affine-rows t)
+(: affine->cols (-> Affine (Values Dir Dir Dir Pos)))
+(define (affine->cols t)
   (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-    (flvector-values (affine-values t) 12))
-  (values (flvector m00 m01 m02 m03)
-          (flvector m10 m11 m12 m13)
-          (flvector m20 m21 m22 m23)))
-
-(: affine-cols (-> Affine (Values FlVector FlVector FlVector FlVector)))
-(define (affine-cols t)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-    (flvector-values (affine-values t) 12))
-  (values (flvector m00 m10 m20)
-          (flvector m01 m11 m21)
-          (flvector m02 m12 m22)
-          (flvector m03 m13 m23)))
-
-(: point-at
-   (->* [] [#:from Vec #:to (U Vec #f) #:dir (U Vec #f) #:angle Real #:up Vec #:normalize? Any]
-        Affine))
-(define (point-at #:from [origin origin]
-                  #:to [dest #f]
-                  #:dir [z-axis #f]
-                  #:angle [angle 0.0]
-                  #:up [up z+]
-                  #:normalize? [normalize? #t])
-  (cond
-    [(and dest z-axis)
-     (error 'point-at "expected exactly one of #:to or #:dir; got #:to ~e and #:dir ~e" dest z-axis)]
-    [(not (or dest z-axis))
-     (error 'point-at "expected exactly one of #:to or #:dir; got neither")]
-    [else
-     (let* ([origin  (->flv3 'point-at origin)]
-            [dest  (if dest (->flv3 'point-at dest) #f)]
-            [z-axis  (cond [dest  (flv3- dest origin)]
-                           [else  (->flv3 'point-at (assert z-axis values))])]
-            [z-axis  (if normalize? (flv3normalize z-axis) z-axis)]
-            [z-axis : FlVector  (if z-axis z-axis z+)]
-            [angle  (degrees->radians (fl angle))]
-            [up  (flv3normalize (->flv3 'point-at up))]
-            [up  (if up up z+)])
-       (define x-axis (flv3normalize (flv3cross z-axis up)))
-       (define t
-         (cond
-           [x-axis
-            (define y-axis (assert (flv3normalize (flv3cross z-axis x-axis)) values))
-            (cols->flaffine3 x-axis y-axis z-axis origin)]
-           [(>= (flvector-ref z-axis 2) 0.0)
-            (translate-flt3 origin)]
-           [else
-            (flt3compose (translate-flt3 origin)
-                         (scale-flt3 (flvector -1.0 1.0 -1.0)))]))
-       (affine (flt3compose t (rotate-z-flt3 angle))))]))
+    (flvector-values (fltransform3-forward (->flaffine3 (affine-transform t))) 12))
+  (values (flvector->dir (flvector m00 m10 m20))
+          (flvector->dir (flvector m01 m11 m21))
+          (flvector->dir (flvector m02 m12 m22))
+          (flvector->pos (flvector m03 m13 m23))))

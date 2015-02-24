@@ -21,7 +21,7 @@ added to the scene.
 ")
 (example
  (pict3d->bitmap
-  (sphere '(0 0 0) 1/2)
+  (sphere origin 1/2)
   256 256))
 (press-enter)
 
@@ -32,8 +32,8 @@ sphere better, let's add a 'point light' just above it and toward the camera.
 ")
 (example
  (pict3d->bitmap
-  (combine (sphere '(0 0 0) 1/2)
-           (light '(1/2 1/2 1)))
+  (combine (sphere origin 1/2)
+           (light (pos 1/2 1/2 1)))
   256 256))
 (press-enter)
 
@@ -45,8 +45,8 @@ The 'light' function accepts optional arguments for color and intensity.
 ")
 (example
  (pict3d->bitmap
-  (combine (sphere '(0 0 0) 1/2)
-           (light '(1/2 1/2 1) "violet" 10))
+  (combine (sphere origin 1/2)
+           (light (pos 1/2 1/2 1) "violet" 10))
   256 256))
 (press-enter)
 
@@ -61,11 +61,11 @@ to illuminate a larger scene on its own.
                 [y  (in-range -5 5 1)]
                 [z  (in-range -5 5 1)]
                 #:when (even? (+ x y z)))
-      (sphere (list x y z) 1/4))))
+      (sphere (pos x y z) 1/4))))
  
  (pict3d->bitmap
   (combine spheres
-           (light '(0 0 0) "violet" 50))
+           (light origin "violet" 50))
   256 256))
 (press-enter)
 
@@ -76,10 +76,10 @@ global one.
 (example
  (define lights
    (combine*
-    (for*/list ([_  (in-range 100)])
-      (define v (list (- (* 10 (random)) 5)
-                      (- (* 10 (random)) 5)
-                      (- (* 10 (random)) 5)))
+    (for*/list ([_  (in-range 50)])
+      (define v (pos (- (* 10 (random)) 5)
+                     (- (* 10 (random)) 5)
+                     (- (* 10 (random)) 5)))
       (light v "violet" 1))))
  
  (pict3d->bitmap (combine spheres lights) 256 256))
@@ -106,7 +106,7 @@ vector and optional color and intensity arguments.
 (example
  (pict3d->bitmap
   (combine spheres
-           (sunlight '(0.5 -0.5 -1) "chocolate" 2))
+           (sunlight (dir 0.5 -0.5 -1) "chocolate" 2))
   256 256))
 (display "
 Remember that if you want downward directional light, the z component of the

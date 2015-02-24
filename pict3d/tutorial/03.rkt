@@ -28,9 +28,9 @@ spheres are white.
 ")
 (example
  (combine
-  (with-material (material #:ambient  1.0) (sphere '(1 0 0) 1/2))
-  (with-material (material #:diffuse  1.0) (sphere '(0 1 0) 1/2))
-  (with-material (material #:specular 1.0) (sphere '(0 0 1) 1/2))))
+  (with-material (material #:ambient  1.0) (sphere (pos 1 0 0) 1/2))
+  (with-material (material #:diffuse  1.0) (sphere (pos 0 1 0) 1/2))
+  (with-material (material #:specular 1.0) (sphere (pos 0 0 1) 1/2))))
 (display "
 The x-axis sphere has only ambient reflectance. It reflects an imaginary white
 light in all directions with the same intensity.
@@ -53,11 +53,11 @@ Generally, the less rough the sphere, the shinier it looks.
 (example
  (combine
   (with-material (material #:specular 1.0 #:roughness 0.1)
-    (sphere '(1 0 0) 1/2))
+    (sphere (pos 1 0 0) 1/2))
   (with-material (material #:specular 1.0 #:roughness 0.2)
-    (sphere '(0 1 0) 1/2))
+    (sphere (pos 0 1 0) 1/2))
   (with-material (material #:specular 1.0 #:roughness 0.4)
-    (sphere '(0 0 1) 1/2))))
+    (sphere (pos 0 0 1) 1/2))))
 (press-enter)
 
 (display "
@@ -68,9 +68,9 @@ The combination of these parameters creates distinctive-looking materials.
  (define rubber default-material)
  (define plastic (material #:ambient 0.1 #:diffuse 0.6 #:specular 0.3 #:roughness 0.2))
  (combine
-  (with-material metal   (sphere '(1 0 0) 1/2))
-  (with-material rubber  (sphere '(0 1 0) 1/2))
-  (with-material plastic (sphere '(0 0 1) 1/2))))
+  (with-material metal   (sphere (pos 1 0 0) 1/2))
+  (with-material rubber  (sphere (pos 0 1 0) 1/2))
+  (with-material plastic (sphere (pos 0 0 1) 1/2))))
 
 (header "End 03: Materials")
 (press-enter)

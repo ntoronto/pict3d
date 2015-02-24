@@ -13,13 +13,13 @@
    (freeze
     (combine*
      (for/list ([_  (in-range 2000)])
-       (define mn (flvector (- (* 2 (random)) 1)
-                            (- (* 2 (random)) 1)
-                            (- (* 2 (random)) 1)))
+       (define mn (pos (- (* 2 (random)) 1)
+                       (- (* 2 (random)) 1)
+                       (- (* 2 (random)) 1)))
        (define mx
-         (flv3+ mn (flvector (- (* 0.2 (random)) 0.1)
-                             (- (* 0.2 (random)) 0.1)
-                             (- (* 0.2 (random)) 0.1))))
+         (pos+ mn (dir (- (* 0.2 (random)) 0.1)
+                       (- (* 0.2 (random)) 0.1)
+                       (- (* 0.2 (random)) 0.1))))
        
        (define r (random))
        (cond [(< r 0.5)
@@ -30,21 +30,22 @@
                 (rectangle mn mx))]))))
    30))
 
-(: random-sphere-point (-> FlVector))
+(: random-sphere-point (-> Dir))
 (define (random-sphere-point)
-  (assert (flv3normalize (flnormal-sample 0.0 1.0 3)) values))
+  (assert (dir-normalize (flvector->dir (flnormal-sample 0.0 1.0 3))) values))
 
 (define n 200)
-(define vs (build-list n (λ (_) (flv3* (random-sphere-point) 2.0))))
-(define dvs (map (λ ([v : FlVector])
-                   (define v1 (flv3* (random-sphere-point) (+ 0.25 (* 0.25 (random)))))
-                   (flv3- v1 v))
-                 vs))
+(define vs (build-list n (λ (_) (pos+ origin (dir-scale (random-sphere-point) 2.0)))))
+(define dvs
+  (map (λ ([v : Pos])
+         (define v1 (pos+ origin (dir-scale (random-sphere-point) (+ 0.25 (* 0.25 (random))))))
+         (pos- v1 v))
+       vs))
 (define ps
   (time
-   (for/list : (Listof (U #f FlVector)) ([v  (in-list vs)]
-                                         [dv  (in-list dvs)])
-     (trace shapes #:from v #:dir dv))))
+   (for/list : (Listof (U #f Pos)) ([v  (in-list vs)]
+                                    [dv  (in-list dvs)])
+     (trace shapes v dv))))
 
 (define traces
   (freeze
@@ -55,12 +56,12 @@
       (if p
           (combine
            (transform (with-color '(0 1 0 0.75)
-                        (cylinder '(-0.002 -0.002 0) '(0.002 0.002 1) #:segments 8))
-                      (point-at #:from v #:to p #:normalize? #f))
+                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
+                      (point-at v p #:normalize? #f))
            (with-emitted '(0 1 0 3.0)
              (sphere p 0.01)))
           (transform (with-color '(1 0 0 0.75)
-                        (cylinder '(-0.002 -0.002 0) '(0.002 0.002 1) #:segments 8))
-                      (point-at #:from v #:dir (flv3* dv 1.5) #:normalize? #f)))))))
+                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
+                      (point-at v (dir-scale dv 1.5) #:normalize? #f)))))))
 
 (combine shapes traces)

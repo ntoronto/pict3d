@@ -13,21 +13,21 @@
 (define shapes
   (combine
    (with-color "crimson"
-     (sphere '(1/2 0 0) 1/2))
+     (sphere (pos 1/2 0 0) 1/2))
    (with-color "chartreuse"
-     (sphere '(0 1/2 0) 1/2))
+     (sphere (pos 0 1/2 0) 1/2))
    (with-color "dodgerblue"
-     (sphere '(0 0 1/2) 1/2))))
+     (sphere (pos 0 0 1/2) 1/2))))
 
 (define pict
   (combine
-   (scale (combine shapes (basis 'camera (point-at #:from '(1/2 1 2) #:dir '(-1/2 -1 -1.25))))
+   (scale (combine shapes (basis 'camera (point-at (pos 1/2 1 2) (dir -1/2 -1 -1.25))))
           (flexpt 2.0 -10.0))
-   (scale (move shapes '(-1.25 -1.25 -1.25))
+   (scale (move shapes (dir -1.25 -1.25 -1.25))
           (flexpt 2.0 21.0))))
 
 (pict3d->bitmap
  (combine pict
-          (sunlight (flvector -0.25 -0.5 -1.0) "white" 1)
-          (sunlight (flvector 0.25 0.5 1.0) "white" 0.5))
+          (sunlight (dir -0.25 -0.5 -1.0) "white" 1)
+          (sunlight (dir 0.25 0.5 1.0) "white" 0.5))
  512 512)

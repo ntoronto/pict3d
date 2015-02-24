@@ -9,10 +9,12 @@
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../engine/utils.rkt"
+         "../engine/types.rkt"
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
+         "pict3d-combinators.rkt"
          )
 
 (provide (contract-out
@@ -32,7 +34,7 @@
   (define-values (bms cpu real gc)
     (time-apply
      (λ ()
-       (define view (pict3d-view-transform pict))
+       (define view (affine-transform (pict3d-view-transform pict)))
        ;; Compute a projection matrix
        (define znear (current-pict3d-z-near))
        (define zfar (current-pict3d-z-far))

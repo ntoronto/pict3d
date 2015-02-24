@@ -18,8 +18,8 @@ because the red light's blue color channel is 0.
 (example
  (pict3d->bitmap
   (combine (with-color "blue"
-             (sphere '(0 0 0) 1/2))
-           (light '(1/2 1/2 1) "red"))
+             (sphere origin 1/2))
+           (light (pos 1/2 1/2 1) "red"))
   256 256))
 (press-enter)
 
@@ -35,10 +35,10 @@ updated to \"blue\" using 'set-color', is actually blue:
 (example
  (combine (with-color "blue"
             (with-color "turquoise"
-              (sphere '(1 0 0) 1/2)))
+              (sphere (pos 1 0 0) 1/2)))
           (set-color
            (with-color "turquoise"
-             (sphere '(0 1 0) 1/2))
+             (sphere (pos 0 1 0) 1/2))
            "blue")))
 (press-enter)
 
@@ -50,9 +50,9 @@ watch the Cary Grant movie version of it.)
 ")
 (example
  (pict3d->bitmap
-  (combine (sphere '(0 0 0) 1/2)
-           (light '(1 -1/2 1) "azure" 2)
-           (light '(-1/2 1 1) "oldlace" 2))
+  (combine (sphere origin 1/2)
+           (light (pos 1 -1/2 1) "azure" 2)
+           (light (pos -1/2 1 1) "oldlace" 2))
   256 256))
 (press-enter)
 
@@ -64,10 +64,10 @@ low-intensity lights.
 ")
 (example
  (pict3d->bitmap
-  (combine (sphere '(0 0 0) 1/2)
-           (with-emitted (intensity "oldlace" 3)
-             (sphere '(1/2 1 1) 0.01))
-           (light '(1/2 1 1) "oldlace" 1))
+  (combine (sphere origin 1/2)
+           (with-emitted (set-intensity "oldlace" 3)
+             (sphere (pos 1/2 1 1) 0.01))
+           (light (pos 1/2 1 1) "oldlace" 1))
   256 256))
 (display "
 An emitted color has four components: red, green, blue, and intensity. It's

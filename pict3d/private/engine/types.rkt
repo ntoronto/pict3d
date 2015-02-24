@@ -8,6 +8,7 @@
          "../ffi.rkt")
 
 (provide
+ current-affine-custom-write
  (struct-out material)
  affine-data-size
  (rename-out [-Affine Affine])
@@ -20,13 +21,6 @@
  affine-data
  affine-consistent?
  )
-
-(require/typed
- unstable/custom-write
- [make-constructor-style-printer
-  (All (A) (-> (-> A (U Symbol String))
-               (-> A (Sequenceof Any))
-               (-> A Output-Port (U #t #f 0 1) Void)))])
 
 ;; ===================================================================================================
 ;; Materials
@@ -42,27 +36,25 @@
 
 (define affine-data-size (* 12 4))
 
-(define print-affine
-  (make-constructor-style-printer
-   (λ ([t : Affine]) 'rows->affine)
-   (λ ([t : Affine])
-     (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-       (flvector-values (fltransform3-forward (->flaffine3 (Affine-transform t))) 12))
-     (list `(,m00 ,m01 ,m02 ,m03)
-           `(,m10 ,m11 ,m12 ,m13)
-           `(,m20 ,m21 ,m22 ,m23)))))
+(: default-affine-custom-write (-> Affine Output-Port (U #t #f 0 1) Any))
+(define (default-affine-custom-write p port mode)
+  (write-string "#<Affine>" port))
+
+(: current-affine-custom-write (Parameterof (-> Affine Output-Port (U #t #f 0 1) Any)))
+(define current-affine-custom-write (make-parameter default-affine-custom-write))
 
 (: convert-affine (-> Affine (-> Any Any) Any))
 (define (convert-affine t _)
   (define port (open-output-string))
-  (print-affine t port 0)
+  ((current-affine-custom-write) t port 0)
   (get-output-string port)
   (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
     (flvector-values (fltransform3-forward (->flaffine3 (Affine-transform t))) 12))
-  `(rows->affine
-    (list ,m00 ,m01 ,m02 ,m03)
-    (list ,m10 ,m11 ,m12 ,m13)
-    (list ,m20 ,m21 ,m22 ,m23)))
+  `(cols->affine
+    (dir ,m00 ,m10 ,m20)
+    (dir ,m01 ,m11 ,m21)
+    (dir ,m02 ,m12 ,m22)
+    (pos ,m03 ,m13 ,m23)))
 
 (: affine-equal? (-> Affine Affine (-> Any Any Boolean) Boolean))
 (define (affine-equal? t1 t2 _)
@@ -76,7 +68,8 @@
 (struct Affine ([transform : FlAffine3-]
                 [lazy-data : (Lazy-Box F32Vector)])
   #:property prop:custom-print-quotable 'never
-  #:property prop:custom-write print-affine
+  #:property prop:custom-write
+  (λ (t port mode) ((current-affine-custom-write) t port mode))
   #:property prop:print-converter convert-affine
   #:property prop:equal+hash (list affine-equal? affine-hash affine-hash))
 
