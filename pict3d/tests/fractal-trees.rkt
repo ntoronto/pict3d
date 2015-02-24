@@ -15,13 +15,13 @@
      (weld p 'top branch 'base))
    'top))
 
-(define t (build-tree 9))
+(define t (build-tree 11))
 (define frozen-t (freeze t))
 t
 frozen-t
 
 (define s
-  (for*/fold ([s  empty-pict3d]) ([x  (in-range -3 4)]
-                                  [y  (in-range -3 4)])
+  (for*/fold ([s  empty-pict3d]) ([x  (in-range -2 3)]
+                                  [y  (in-range -2 3)])
     (combine s (move frozen-t (dir (* x 5) (* y 5) 0)))))
 s

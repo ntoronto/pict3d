@@ -13,6 +13,7 @@
          "../../shader-lib.rkt"
          "../../draw-pass.rkt"
          "../types.rkt"
+         "../flags.rkt"
          "../shader-lib.rkt")
 
 (provide make-sphere-shape-passes)
@@ -410,7 +411,7 @@ code
 
 (: make-sphere-shape-passes (-> sphere-shape passes))
 (define (make-sphere-shape-passes a)
-  (match-define (sphere-shape _ t c e m inside?) a)
+  (match-define (sphere-shape _ fs t c e m inside?) a)
   
   (define affine-ptr (f32vector->cpointer (affine-data t)))
   (define roughness (flonum->byte (material-roughness m)))
@@ -444,9 +445,7 @@ code
       (bytes-set! draw-data (unsafe-fx+ i 5) 0)
       (unsafe-fx+ i 5)))
   
-  (define transparent? (< (flvector-ref c 3) 1.0))
-  
-  (if transparent?
+  (if (flags-subset? transparent-flag fs)
       (passes
        #()
        #()

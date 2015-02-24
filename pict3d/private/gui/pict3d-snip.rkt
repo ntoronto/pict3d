@@ -79,12 +79,12 @@
    bytes-length))
 
 (define-values (standard-over-light standard-under-light)
-  (let ([direction  (flvector -0.25 -0.5 -1.0)]
-        [color  (flvector 1.0 1.0 1.0)]
-        [intensity  1.0])
+  (let ([dv  (flvector -0.25 -0.5 -1.0)]
+        [e1  (flvector 1.0 1.0 1.0 1.0)]
+        [e2  (flvector 1.0 1.0 1.0 0.5)])
     (values
-     (shape->scene (make-directional-light-shape color intensity direction))
-     (shape->scene (make-directional-light-shape color (* intensity 0.5) (flv3neg direction))))))
+     (shape->scene (make-directional-light-shape e1 dv))
+     (shape->scene (make-directional-light-shape e2 (flv3neg dv))))))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread snip ch)

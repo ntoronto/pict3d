@@ -15,10 +15,12 @@
          "../shader-lib.rkt"
          "../draw-pass.rkt"
          "types.rkt"
+         "flags.rkt"
          "shader-lib.rkt")
 
 (provide make-directional-light-shape
          make-directional-light-shape-passes
+         set-directional-light-shape-emitted
          directional-light-shape-rect
          directional-light-shape-easy-transform
          )
@@ -26,16 +28,34 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-directional-light-shape (-> FlVector Flonum FlVector directional-light-shape))
-(define (make-directional-light-shape color intensity direction)
-  (cond [(not (= 3 (flvector-length color)))
+(: make-directional-light-shape (-> FlVector FlVector directional-light-shape))
+(define (make-directional-light-shape e dv)
+  (cond [(not (= 4 (flvector-length e)))
+         (raise-argument-error 'make-directional-light-shape "length-4 flvector"
+                               0 e dv)]
+        [(not (= 3 (flvector-length dv)))
          (raise-argument-error 'make-directional-light-shape "length-3 flvector"
-                               0 color intensity direction)]
-        [(not (= 3 (flvector-length direction)))
-         (raise-argument-error 'make-directional-light-shape "length-3 flvector"
-                               2 color intensity direction)]
+                               1 e dv)]
         [else
-         (directional-light-shape (lazy-passes) color intensity direction)]))
+         (define fs (flags-join light-flag transparent-flag (color-emitting-flag e)))
+         (directional-light-shape (lazy-passes) fs e dv)]))
+
+;; ===================================================================================================
+;; Set attributes
+
+(: set-directional-light-shape-emitted (-> directional-light-shape FlVector
+                                           directional-light-shape))
+(define (set-directional-light-shape-emitted a e)
+  (cond [(not (= 4 (flvector-length e)))
+         (raise-argument-error 'set-directional-light-shape-emitted "length-4 flvector"
+                               1 a e)]
+        [else
+         (match-define (directional-light-shape _ fs old-e dv) a)
+         (cond [(equal? old-e e)  a]
+               [else
+                (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                                           (color-emitting-flag e)))
+                (directional-light-shape (lazy-passes) new-fs e dv)])]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -125,20 +145,25 @@ code
 
 (: make-directional-light-shape-passes (-> directional-light-shape passes))
 (define (make-directional-light-shape-passes a)
-  (match-define (directional-light-shape _ color intensity direction) a)
+  (match-define (directional-light-shape _ fs e dv) a)
   
-  (define uniforms
-    (list (cons "light_dir" (uniform-float direction 3))
-          (cons "light_color" (uniform-float color 3))
-          (cons "light_intensity" (uniform-float intensity 1))))
-  
-  (passes
-   (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
-                         (vertices 4 data vertex-ids)))
-   #()
-   #()
-   #()
-   #()))
+  (cond
+    [(flags-subset? emitting-flag fs)
+     (define color (flvector-copy e 0 3))
+     (define intensity (flvector-ref e 3))
+     (define uniforms
+       (list (cons "light_dir" (uniform-float dv 3))
+             (cons "light_color" (uniform-float color))
+             (cons "light_intensity" (uniform-float intensity))))
+     
+     (passes
+      (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
+                            (vertices 4 data vertex-ids)))
+      #()
+      #()
+      #()
+      #())]
+    [else  empty-passes]))
 
 ;; ===================================================================================================
 ;; Bounding box

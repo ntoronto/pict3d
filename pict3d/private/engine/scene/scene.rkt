@@ -15,12 +15,10 @@ This module also contains code for `frozen-scene-shape` that would normally go i
 moving this code to another module would cause a cycle, and the only way to break it is to
 parameterize scenes on shapes and shape operations instead of having them baked in. That used to be
 how the code was organized, but it made the predicate for the scene type O(n). As it is now, with no
-parametric polymorphism and no higher-order types, Typed Racket should generate an O(1) flat contract
-for `Scene`.
+parametric polymorphism and no higher-order types, Typed Racket generates an O(1) flat contract.
 |#
 
 (require racket/unsafe/ops
-         racket/match
          racket/promise
          racket/flonum
          racket/vector
@@ -38,6 +36,7 @@ for `Scene`.
          "../types.rkt"
          "../utils.rkt"
          "tags.rkt"
+         "flags.rkt"
          "types.rkt"
          "shape.rkt")
 
@@ -63,7 +62,8 @@ for `Scene`.
                 (delay (flrect3-join (maybe-force b1) (maybe-force b2)))))
   (define c (fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
-  (node-scene b c ms s1 s2))
+  (define fs (flags-join (scene-flags s1) (scene-flags s2)))
+  (node-scene b c ms fs s1 s2))
 
 (: make-node-scene (-> Scene Scene Scene))
 (define (make-node-scene s1 s2)
@@ -80,7 +80,7 @@ for `Scene`.
                     (flrect3-transform b0 t)
                     (delay (flrect3-transform (force b0) t)))
                 (delay (nonempty-scene-trans-rect t0 s0))))
-  (trans-scene b (scene-count s0) (scene-tags s0) t0 s0))
+  (trans-scene b (scene-count s0) (scene-tags s0) (scene-flags s0) t0 s0))
 
 (: make-nonempty-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-trans-scene t s)
@@ -107,11 +107,12 @@ for `Scene`.
 (: make-group-scene (-> Tag Scene Nonempty-Scene))
 (define (make-group-scene n s)
   (cond [(empty-scene? s)
-         (group-scene zero-flrect3 0 (singleton-tags n) n s)]
+         (group-scene zero-flrect3 0 (singleton-tags n) empty-flags n s)]
         [else
          (group-scene (nonempty-scene-lazy-rect s)
                       (scene-count s)
                       (tags-add (scene-tags s) n)
+                      (scene-flags s)
                       n s)]))
 
 ;; ===================================================================================================
@@ -158,22 +159,44 @@ for `Scene`.
         [else  (maybe-force (nonempty-scene-lazy-rect s))]))
 
 ;; ===================================================================================================
+;; Shape flags
+
+(: scene-flags (-> Scene Flags))
+(define (scene-flags s)
+  (cond [(empty-scene? s)  empty-flags]
+        [(leaf-scene? s)   (shape-flags (leaf-scene-shape s))]
+        [else  (container-scene-child-flags s)]))
+
+(: shape-flags (-> Shape Flags))
+(define (shape-flags a)
+  (cond [(solid-shape? a)  (solid-shape-flags a)]
+        [(light-shape? a)  (light-shape-flags a)]
+        [(frozen-scene-shape? a)  (frozen-scene-shape-flags a)]))
+
+;; ===================================================================================================
 ;; Scene union with rebalancing
 
 (: node-scene-insert (-> node-scene Nonempty-Scene Nonempty-Scene))
 (define (node-scene-insert s1 s2)
-  (match-define (node-scene r1 c1 ms1 s11 s12) s1)
+  (define r1 (nonempty-scene-lazy-rect s1))
+  (define c1 (container-scene-count s1))
+  (define ms1 (container-scene-child-tags s1))
+  (define fs1 (container-scene-child-flags s1))
+  (define s11 (node-scene-neg s1))
+  (define s12 (node-scene-pos s1))
   (define r2 (scene-rect s2))
   (cond [(flrect3-contains-rect? (scene-rect s11) r2)
          (node-scene r1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
+                     (flags-join fs1 (scene-flags s2))
                      (nonempty-scene-union s11 s2)
                      s12)]
         [(flrect3-contains-rect? (scene-rect s12) r2)
          (node-scene r1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
+                     (flags-join fs1 (scene-flags s2))
                      s11
                      (nonempty-scene-union s12 s2))]
         [else
@@ -240,23 +263,24 @@ for `Scene`.
   (define r (flrect3-join (scene-rect s1) (scene-rect s2)))
   (define c (unsafe-fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
+  (define fs (flags-join (scene-flags s1) (scene-flags s2)))
   (define-values (i x) (flrect3-longest-axis/center r))
   (define-values (s11 s12) (scene-rebalance-split s1 i x))
   (define-values (s21 s22) (scene-rebalance-split s2 i x))
   (cond [(empty-scene? s11)
          (if (or (empty-scene? s21) (empty-scene? s22))
-             (node-scene r c ms s1 s2)
-             (node-scene r c ms s21 (nonempty-scene-union/rebalance s1 s22)))]
+             (node-scene r c ms fs s1 s2)
+             (node-scene r c ms fs s21 (nonempty-scene-union/rebalance s1 s22)))]
         [(empty-scene? s12)
          (if (or (empty-scene? s21) (empty-scene? s22))
-             (node-scene r c ms s1 s2)
-             (node-scene r c ms (nonempty-scene-union/rebalance s1 s21) s22))]
+             (node-scene r c ms fs s1 s2)
+             (node-scene r c ms fs (nonempty-scene-union/rebalance s1 s21) s22))]
         [(empty-scene? s21)
-         (node-scene r c ms s11 (nonempty-scene-union/rebalance s12 s2))]
+         (node-scene r c ms fs s11 (nonempty-scene-union/rebalance s12 s2))]
         [(empty-scene? s22)
-         (node-scene r c ms (nonempty-scene-union/rebalance s11 s2) s12)]
+         (node-scene r c ms fs (nonempty-scene-union/rebalance s11 s2) s12)]
         [else
-         (node-scene r c ms
+         (node-scene r c ms fs
                      (nonempty-scene-union/rebalance s11 s21)
                      (nonempty-scene-union/rebalance s12 s22))]))
 
@@ -330,7 +354,7 @@ for `Scene`.
      (cond
        [(empty-scene? s)  as]
        [(leaf-scene? s)  as]
-       [(not (tags-contain? (container-scene-tags s) n))  as]
+       [(not (tags-contain? (container-scene-child-tags s) n))  as]
        [(node-scene? s)
         (define s1 (node-scene-neg s))
         (define s2 (node-scene-pos s))
@@ -352,7 +376,7 @@ for `Scene`.
      (cond
        [(empty-scene? s)  as]
        [(leaf-scene? s)  as]
-       [(not (tags-contain? (container-scene-tags s) n))  as]
+       [(not (tags-contain? (container-scene-child-tags s) n))  as]
        [(node-scene? s)
         (define s1 (node-scene-neg s))
         (define s2 (node-scene-pos s))
@@ -396,7 +420,7 @@ for `Scene`.
     (cond
       [(empty-scene? s)  s]
       [(leaf-scene? s)  s]
-      [(not (tags-contain? (container-scene-tags s) n))  s]
+      [(not (tags-contain? (container-scene-child-tags s) n))  s]
       [(node-scene? s)
        (define s1 (node-scene-neg s))
        (define s2 (node-scene-pos s))
@@ -411,7 +435,8 @@ for `Scene`.
        (cond [(eq? new-s0 s0)  s]
              [else  (make-trans-scene t0 new-s0)])]
       [(group-scene? s)
-       (match-define (group-scene b c ms n0 s0) s)
+       (define n0 (group-scene-tag s))
+       (define s0 (group-scene-scene s))
        (cond [(equal? n0 n)  (f s)]
              [else
               (define new-s0 (loop s0))
@@ -422,7 +447,8 @@ for `Scene`.
 (define (scene-replace-in-group s n f)
   (scene-replace-group
    s n (λ (s)
-         (match-define (group-scene b c ms n0 s0) s)
+         (define n0 (group-scene-tag s))
+         (define s0 (group-scene-scene s))
          (define new-s0 (f s0))
          (cond [(eq? new-s0 s0)  s]
                [else  (make-group-scene n0 new-s0)]))))
@@ -671,7 +697,7 @@ for `Scene`.
   (cond
     [(empty-scene? s)  s]
     [(leaf-scene? s)
-     (match-define (leaf-scene b a) s)
+     (define a (leaf-scene-shape s))
      (scene-union* (map shape->scene (shape-transform a t)))]
     [(node-scene? s)
      (define s1 (node-scene-neg s))
@@ -772,7 +798,12 @@ for `Scene`.
        [(triangle-shape? a)   (set-triangle-shape-emitted a e)]
        [(rectangle-shape? a)  (set-rectangle-shape-emitted a e)]
        [(sphere-shape? a)     (set-sphere-shape-emitted a e)])]
-    [(frozen-scene-shape? a)  (set-frozen-scene-shape-emitted a e)]
+    [(light-shape? a)
+     (cond
+       [(directional-light-shape? a)  (set-directional-light-shape-emitted a e)]
+       [(point-light-shape? a)        (set-point-light-shape-emitted a e)])]
+    [(frozen-scene-shape? a)
+     (set-frozen-scene-shape-emitted a e)]
     [else  a]))
 
 (: shape-set-material (-> Shape material Shape))
@@ -846,6 +877,13 @@ for `Scene`.
 (: frozen-scene-shape-rect (-> frozen-scene-shape Nonempty-FlRect3))
 (define (frozen-scene-shape-rect a)
   (scene-rect (frozen-scene-shape-scene a)))
+
+;; ===================================================================================================
+;; Flags
+
+(: frozen-scene-shape-flags (-> frozen-scene-shape Flags))
+(define (frozen-scene-shape-flags a)
+  (scene-flags (frozen-scene-shape-scene a)))
 
 ;; ===================================================================================================
 ;; Transform

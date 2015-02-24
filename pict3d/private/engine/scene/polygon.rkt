@@ -19,6 +19,7 @@
          "../shader-lib.rkt"
          "../draw-pass.rkt"
          "types.rkt"
+         "flags.rkt"
          "shader-lib.rkt")
 
 (provide make-triangle-shape
@@ -84,7 +85,8 @@
                                "material, or length-3 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
-         (triangle-shape (lazy-passes) vs ns cs es ms back?)]))
+         (define fs (flags-join geometry-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
+         (triangle-shape (lazy-passes) fs vs ns cs es ms back?)]))
 
 (: take-triangle (All (A) (-> (Vectorof A) Index Index Index (Vectorof A))))
 (define (take-triangle vs i1 i2 i3)
@@ -121,7 +123,9 @@
                                "material, or length-4 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
+         (define fs (flags-join geometry-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
          (list (triangle-shape (lazy-passes)
+                               fs
                                (take-triangle vs 0 1 2)
                                (if (vector? ns) (take-triangle ns 0 1 2) ns)
                                (if (vector? cs) (take-triangle cs 0 1 2) cs)
@@ -129,6 +133,7 @@
                                (if (vector? ms) (take-triangle ms 0 1 2) ms)
                                back?)
                (triangle-shape (lazy-passes)
+                               fs
                                (take-triangle vs 2 3 0)
                                (if (vector? ns) (take-triangle ns 2 3 0) ns)
                                (if (vector? cs) (take-triangle cs 2 3 0) cs)
@@ -143,7 +148,8 @@
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
         [else
-         (rectangle-shape (lazy-passes) b c e m back?)]))
+         (define fs (flags-join geometry-flag (color-opacity-flag c) (color-emitting-flag e)))
+         (rectangle-shape (lazy-passes) fs b c e m back?)]))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -155,9 +161,12 @@
                                "length-4 flvector, or length-3 vector of length-4 flvectors"
                                1 a cs)]
         [else
-         (match-define (triangle-shape _ vs ns old-cs es ms back?) a)
+         (match-define (triangle-shape _ fs vs ns old-cs es ms back?) a)
          (cond [(equal? old-cs cs)  a]
-               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                                           (colors-opacity-flag cs)))
+                (triangle-shape (lazy-passes) new-fs vs ns cs es ms back?)])]))
 
 (: set-triangle-shape-emitted (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
 (define (set-triangle-shape-emitted a es)
@@ -166,9 +175,12 @@
                                "length-4 flvector, or length-3 vector of length-4 flvectors"
                                1 a es)]
         [else
-         (match-define (triangle-shape _ vs ns cs old-es ms back?) a)
+         (match-define (triangle-shape _ fs vs ns cs old-es ms back?) a)
          (cond [(equal? old-es es)  a]
-               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                                           (colors-emitting-flag es)))
+                (triangle-shape (lazy-passes) new-fs vs ns cs es ms back?)])]))
 
 (: set-triangle-shape-material (-> triangle-shape (U material (Vectorof material)) triangle-shape))
 (define (set-triangle-shape-material a ms)
@@ -177,33 +189,39 @@
                                "material, or length-3 vector of materials"
                                1 a ms)]
         [else
-         (match-define (triangle-shape _ vs ns cs es old-ms back?) a)
+         (match-define (triangle-shape _ fs vs ns cs es old-ms back?) a)
          (cond [(equal? old-ms ms)  a]
-               [else  (triangle-shape (lazy-passes) vs ns cs es ms back?)])]))
+               [else  (triangle-shape (lazy-passes) fs vs ns cs es ms back?)])]))
 
 (: set-rectangle-shape-color (-> rectangle-shape FlVector rectangle-shape))
 (define (set-rectangle-shape-color a c)
   (cond [(not (= (flvector-length c) 4))
          (raise-argument-error 'set-rectangle-shape-color "length-4 flvector" 1 a c)]
         [else
-         (match-define (rectangle-shape _ b old-c e m inside?) a)
+         (match-define (rectangle-shape _ fs b old-c e m inside?) a)
          (cond [(equal? old-c c)  a]
-               [else  (rectangle-shape (lazy-passes) b c e m inside?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                                           (color-opacity-flag c)))
+                (rectangle-shape (lazy-passes) new-fs b c e m inside?)])]))
 
 (: set-rectangle-shape-emitted (-> rectangle-shape FlVector rectangle-shape))
 (define (set-rectangle-shape-emitted a e)
   (cond [(not (= (flvector-length e) 4))
          (raise-argument-error 'set-rectangle-shape-emitted "length-4 flvector" 1 a e)]
         [else
-         (match-define (rectangle-shape _ b c old-e m inside?) a)
+         (match-define (rectangle-shape _ fs b c old-e m inside?) a)
          (cond [(equal? old-e e)  a]
-               [else  (rectangle-shape (lazy-passes) b c e m inside?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                                           (color-emitting-flag e)))
+                (rectangle-shape (lazy-passes) new-fs b c e m inside?)])]))
 
 (: set-rectangle-shape-material (-> rectangle-shape material rectangle-shape))
 (define (set-rectangle-shape-material a m)
-  (match-define (rectangle-shape _ b c e old-m inside?) a)
+  (match-define (rectangle-shape _ fs b c e old-m inside?) a)
   (cond [(equal? old-m m)  a]
-        [else  (rectangle-shape (lazy-passes) b c e m inside?)]))
+        [else  (rectangle-shape (lazy-passes) fs b c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -398,7 +416,7 @@ code
 
 (: make-triangle-shape-passes (-> triangle-shape passes))
 (define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ vs ns orig-cs orig-es ms back?) a)
+  (match-define (triangle-shape _ fs vs ns orig-cs orig-es ms back?) a)
   (define-values (start stop step)
     (if back?
         (values 2 -1 -1)
@@ -451,14 +469,7 @@ code
                       (unsafe-fx+ i 12))])
       i))
   
-  (: transparent? Boolean)
-  (define transparent?
-    (if (vector? cs)
-        (for/or ([c  (in-vector cs)])
-          (< (flvector-ref c 3) 1.0))
-        (< (flvector-ref cs 3) 1.0)))
-  
-  (if transparent?
+  (if (flags-subset? transparent-flag fs)
       (passes
        #()
        #()
@@ -493,14 +504,12 @@ code
 (define (triangle-shape-rect a)
   (assert (flv3rect (triangle-shape-vertices a)) nonempty-flrect3?))
 
-;; rectangle-shape-rect is already an accessor
-
 ;; ===================================================================================================
 ;; Transform
 
 (: triangle-shape-easy-transform (-> triangle-shape Affine triangle-shape))
 (define (triangle-shape-easy-transform a affine-t)
-  (match-define (triangle-shape passes vs ns cs es ms back?) a)
+  (match-define (triangle-shape passes fs vs ns cs es ms back?) a)
   (define t (affine-transform affine-t))
   (define consistent? (flt3consistent? t))
   (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
@@ -509,6 +518,7 @@ code
                                (flt3apply/nrm t n)
                                (flv3neg (flt3apply/nrm t n)))))
   (triangle-shape (lazy-passes)
+                  fs
                   (vector-map transform-pos vs)
                   (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
                   cs es ms
@@ -532,7 +542,7 @@ code
 
 (: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
 (define (rectangle-shape->triangle-shapes a)
-  (match-define (rectangle-shape _ b c e m inside?) a)
+  (match-define (rectangle-shape _ fs b c e m inside?) a)
   (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
   (define v1 (flvector xmin ymin zmin))
   (define v2 (flvector xmax ymin zmin))

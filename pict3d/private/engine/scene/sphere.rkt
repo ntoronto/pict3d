@@ -9,7 +9,8 @@
          "../../gl.rkt"
          "../types.rkt"
          "../draw-pass.rkt"
-         "types.rkt")
+         "types.rkt"
+         "flags.rkt")
 
 (provide make-sphere-shape
          set-sphere-shape-color
@@ -31,7 +32,8 @@
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 t c e m inside?)]
         [else
-         (sphere-shape (lazy-passes) t c e m inside?)]))
+         (define fs (flags-join geometry-flag (color-opacity-flag c) (color-emitting-flag e)))
+         (sphere-shape (lazy-passes) fs t c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -41,24 +43,30 @@
   (cond [(not (= (flvector-length c) 4))
          (raise-argument-error 'set-sphere-shape-color "length-4 flvector" 1 a c)]
         [else
-         (match-define (sphere-shape _ t old-c e m inside?) a)
+         (match-define (sphere-shape _ fs t old-c e m inside?) a)
          (cond [(equal? old-c c)  a]
-               [else  (sphere-shape (lazy-passes) t c e m inside?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                                           (color-opacity-flag c)))
+                (sphere-shape (lazy-passes) new-fs t c e m inside?)])]))
 
 (: set-sphere-shape-emitted (-> sphere-shape FlVector sphere-shape))
 (define (set-sphere-shape-emitted a e)
   (cond [(not (= (flvector-length e) 4))
          (raise-argument-error 'set-sphere-shape-emitted "length-4 flvector" 1 a e)]
         [else
-         (match-define (sphere-shape _ t c old-e m inside?) a)
+         (match-define (sphere-shape _ fs t c old-e m inside?) a)
          (cond [(equal? old-e e)  a]
-               [else  (sphere-shape (lazy-passes) t c e m inside?)])]))
+               [else
+                (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                                           (color-emitting-flag e)))
+                (sphere-shape (lazy-passes) new-fs t c e m inside?)])]))
 
 (: set-sphere-shape-material (-> sphere-shape material sphere-shape))
 (define (set-sphere-shape-material a m)
-  (match-define (sphere-shape _ t c e old-m inside?) a)
+  (match-define (sphere-shape _ fs t c e old-m inside?) a)
   (cond [(equal? old-m m)  a]
-        [else  (sphere-shape (lazy-passes) t c e m inside?)]))
+        [else  (sphere-shape (lazy-passes) fs t c e m inside?)]))
 
 ;; ===================================================================================================
 ;; Drawing passes
@@ -88,8 +96,8 @@
 
 (: sphere-shape-easy-transform (-> sphere-shape Affine sphere-shape))
 (define (sphere-shape-easy-transform a t)
-  (match-define (sphere-shape passes t0 c e m inside?) a)
-  (sphere-shape (lazy-passes) (affine-compose t t0) c e m inside?))
+  (match-define (sphere-shape passes fs t0 c e m inside?) a)
+  (sphere-shape (lazy-passes) fs (affine-compose t t0) c e m inside?))
 
 ;; ===================================================================================================
 ;; Ray intersection

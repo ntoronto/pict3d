@@ -246,11 +246,7 @@ vec3 frag_coord_to_position(vec4 frag_coord, sampler2D depth, mat4 unproj, int w
 }
 
 vec3 attenuate_invsqr(vec3 light_color, float dist) {
-  return max(vec3(0.0), (light_color/(dist*dist) - 0.05) / 0.95);
-}
-
-vec3 attenuate_linear(vec3 light_color, float radius, float dist) {
-  return light_color * max(0.0, (radius - dist) / radius);
+  return max(vec3(0.0), light_color/(dist*dist));
 }
 
 // Ward model for anisotropic, but without the anisotropy (so that it's consistent with the

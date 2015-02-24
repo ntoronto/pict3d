@@ -289,36 +289,25 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
 
-(: sunlight (-> Dir Emitted Pict3D))
-(define (sunlight direction e)
-  (let ([direction  (flv3normalize (dir->flvector direction))])
-    (cond [direction
-           (define rgbi (emitted->flvector e))
-           (define color (flvector-copy rgbi 0 3))
-           (define intensity (flvector-ref rgbi 3))
-           (pict3d (shape->scene (make-directional-light-shape color intensity direction)))]
-          [else
-           empty-pict3d])))
+(: sunlight (->* [Dir] [Emitted] Pict3D))
+(define (sunlight dv [e  (emitted 1.0 1.0 1.0 1.0)])
+  (let ([dv  (flv3normalize (dir->flvector dv))])
+    (if dv
+        (pict3d (shape->scene (make-directional-light-shape (emitted->flvector e) dv)))
+        empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
 
-(: default-light-radius (-> Flonum Flonum))
-(define (default-light-radius intensity)
-  (flsqrt (* 20.0 intensity)))
-
-(: light (->* [Pos] [Emitted Real] Pict3D))
-(define (light position
-               [e  (emitted 1.0 1.0 1.0 1.0)]
-               [radius  #f])
-  (let* ([position  (pos->flvector position)]
+(: light (->* [Pos] [Emitted #:min-radius Real #:max-radius Real] Pict3D))
+(define (light v [e  (emitted 1.0 1.0 1.0 1.0)] #:min-radius [r0 0.0] #:max-radius [r1 0.95])
+  (let* ([v  (pos->flvector v)]
          [e  (emitted->flvector e)]
-         [color  (flvector-copy e 0 3)]
-         [intensity  (flvector-ref e 3)]
-         [radius  (if radius (fl radius) (default-light-radius intensity))])
-    (pict3d
-     (shape->scene
-      (make-point-light-shape color intensity position radius)))))
+         [r0  (max 0.0 (min 1.0 (fl r0)))]
+         [r1  (max 0.0 (min 1.0 (fl r1)))])
+    (if (< r0 r1)
+        (pict3d (shape->scene (make-point-light-shape e v r0 r1)))
+        empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Efficiency

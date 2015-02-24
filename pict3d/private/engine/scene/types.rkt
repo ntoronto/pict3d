@@ -8,7 +8,8 @@
          "../../gl.rkt"
          "../draw-pass.rkt"
          "../types.rkt"
-         "tags.rkt")
+         "tags.rkt"
+         "flags.rkt")
 
 (provide (all-defined-out))
 
@@ -20,13 +21,13 @@
 (: lazy-passes (-> (HashTable GL-Context passes)))
 (define lazy-passes make-weak-hasheq)
 
-(struct solid-shape shape () #:transparent)
+(struct solid-shape shape ([flags : Flags]) #:transparent)
 
 (struct triangle-shape solid-shape
   ([vertices : (Vectorof FlVector)]
    [normals : (U FlVector (Vectorof FlVector))]
    [colors : (U FlVector (Vectorof FlVector))]
-   [emitted-colors : (U FlVector (Vectorof FlVector))]
+   [emitteds : (U FlVector (Vectorof FlVector))]
    [materials : (U material (Vectorof material))]
    [back? : Boolean])
   #:transparent)
@@ -34,7 +35,7 @@
 (struct rectangle-shape solid-shape
   ([rect : Nonempty-FlRect3]
    [color : FlVector]
-   [emitted-color : FlVector]
+   [emitted : FlVector]
    [material : material]
    [inside? : Boolean])
   #:transparent)
@@ -42,14 +43,18 @@
 (struct sphere-shape solid-shape
   ([affine : Affine]
    [color : FlVector]
-   [emitted-color : FlVector]
+   [emitted : FlVector]
    [material : material]
    [inside? : Boolean])
   #:transparent)
 
-(struct light-shape shape ([color : FlVector] [intensity : Flonum]) #:transparent)
+(struct light-shape shape ([flags : Flags] [emitted : FlVector]) #:transparent)
 (struct directional-light-shape light-shape ([direction : FlVector]) #:transparent)
-(struct point-light-shape light-shape ([position : FlVector] [radius : Flonum]) #:transparent)
+(struct point-light-shape light-shape
+  ([position : FlVector]
+   [min-radius : Flonum]
+   [max-radius : Flonum])
+  #:transparent)
 
 (struct frozen-scene-shape shape
   ([scene : Nonempty-Scene])
@@ -75,7 +80,8 @@
 
 (struct container-scene nonempty-scene
   ([count : Nonnegative-Fixnum]
-   [tags : Tags])
+   [child-tags : Tags]
+   [child-flags : Flags])
   #:transparent)
 
 (struct leaf-scene nonempty-scene
@@ -118,4 +124,4 @@
 (define (scene-tags s)
   (cond [(empty-scene? s)  empty-tags]
         [(leaf-scene? s)  empty-tags]
-        [else  (container-scene-tags s)]))
+        [else  (container-scene-child-tags s)]))
