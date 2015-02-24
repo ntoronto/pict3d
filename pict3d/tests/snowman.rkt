@@ -5,7 +5,7 @@
 
 (current-material (make-material 0.25 0.25 0.5 0.4))
 
-(define coal-color '(0.5 0.5 0.5))
+(define coal-color (rgba 0.5 0.5 0.5))
 (define coal-material (make-material 0.0 0.2 0.8 0.1))
 
 (define torso
@@ -46,7 +46,7 @@
         0.01))))))
 
 (define nose
-  (with-color "orange"
+  (with-color (rgba "orange")
     (with-material (make-material 0.2 0.8 0.0 0.1)
       (cone (pos -0.04 -0.05 0.0) (pos 0.04 0.05 0.25) #:segments 12 #:smooth? #t))))
 
@@ -67,17 +67,17 @@
          (move-x
           (combine
            ;; Creepy red eye
-           (with-color '(1 0.25 0.0 0.75)
+           (with-color (rgba 1 0.25 0.0 0.75)
              (sphere cr 0.05))
-           (with-emitted '(1 0.25 0.0 10.0)
+           (with-emitted (emitted 1 0.25 0.0 10.0)
              (sphere cr 0.035))
-           (light cr '(1 0.25 0.0) 0.02)
+           (light cr (emitted 1 0.25 0.0 0.02))
            ;; Creepy green eye
-           (with-color '(0 1 0.25 0.75)
+           (with-color (rgba 0 1 0.25 0.75)
              (sphere cl 0.04))
-           (with-emitted '(0 1 0.25 10.0)
+           (with-emitted (emitted 0 1 0.25 10.0)
              (sphere cl 0.025))
-           (light cl '(0 1 0.25) 0.02))
+           (light cl (emitted 0 1 0.25 0.02)))
           0.01))
        ;; Mouth
        (with-color coal-color
@@ -91,7 +91,7 @@
 
 (define hat
   (freeze
-   (with-color '(1 1 1)
+   (with-color (rgba "white")
      (with-material (make-material 0.01 0.01 0.98 0.1)
        (combine
         (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4) #:segments 16)
@@ -107,7 +107,7 @@
   (combine
    (move-z (scale (basis 'top (point-at origin (dir 0.25 0 1) #:angle 30)) 0.5) 0.35)
    (move-z (scale (basis 'top (point-at origin (dir -0.1 0 1) #:angle 14)) 0.4) 0.3)
-   (with-color "orange"
+   (with-color (rgba "orange")
      (with-material (make-material 0.1 0.4 0.5 0.2)
        (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 32 #:smooth? #t)))))
 
@@ -134,6 +134,6 @@
  (λ (t)
    (combine
     (basis 'camera (point-at (pos 0.6 -1 1.25) (pos 0 0 1)))
-    (sunlight (dir 0 0 -1) "azure" 1)
-    (light (pos -0.5 -4.0 2.0) "gold" 5)
+    (sunlight (dir 0 0 -1) (emitted "azure" 1))
+    (light (pos -0.5 -4.0 2.0) (emitted "gold" 5))
     (snowman t))))

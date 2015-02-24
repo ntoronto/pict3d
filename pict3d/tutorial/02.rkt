@@ -17,29 +17,29 @@ because the red light's blue color channel is 0.
 ")
 (example
  (pict3d->bitmap
-  (combine (with-color "blue"
+  (combine (with-color (rgba "blue")
              (sphere origin 1/2))
-           (light (pos 1/2 1/2 1) "red"))
+           (light (pos 1/2 1/2 1) (emitted "red")))
   256 256))
 (press-enter)
 
 (display "
-A Pict3D is created using the current color, which by default is \"white\". To
-change the current color in the dynamic extent of an expression, use
-'with-color', as above, or use (parameterize ([current-color ...]) ...).
+A Pict3D is created using the current color, which by default is
+(rgba \"white\"). To change the current color in the dynamic extent of an
+expression, use 'with-color', as above, or set the parameter 'current-color'.
 
 But 'with-color' won't update the color of an already-created Pict3D. For that,
 use 'set-color'. In the following, only the sphere on the right, whose color is
-updated to \"blue\" using 'set-color', is actually blue:
+updated to (rgba \"blue\") using 'set-color', is actually blue:
 ")
 (example
- (combine (with-color "blue"
-            (with-color "turquoise"
+ (combine (with-color (rgba "blue")
+            (with-color (rgba "turquoise")
               (sphere (pos 1 0 0) 1/2)))
           (set-color
-           (with-color "turquoise"
+           (with-color (rgba "turquoise")
              (sphere (pos 0 1 0) 1/2))
-           "blue")))
+           (rgba "blue"))))
 (press-enter)
 
 (display "
@@ -51,29 +51,25 @@ watch the Cary Grant movie version of it.)
 (example
  (pict3d->bitmap
   (combine (sphere origin 1/2)
-           (light (pos 1 -1/2 1) "azure" 2)
-           (light (pos -1/2 1 1) "oldlace" 2))
+           (light (pos 1 -1/2 1) (emitted "azure" 2))
+           (light (pos -1/2 1 1) (emitted "oldlace" 2)))
   256 256))
 (press-enter)
 
 (display "
-A Pict3D object can also *emit* light as well as reflect light. This emitted
-light only self-illuminates; i.e. it doesn't illuminate any objects around it.
-It's therefore often useful to combine light-emitting objects with one or more
+A Pict3D object can emit light as well as reflect light. This emitted light only
+self-illuminates; i.e. it doesn't illuminate any objects around it. It's
+therefore often useful to combine light-emitting objects with one or more
 low-intensity lights.
 ")
 (example
  (pict3d->bitmap
   (combine (sphere origin 1/2)
-           (with-emitted (set-intensity "oldlace" 3)
+           (with-emitted (emitted "oldlace" 4)
              (sphere (pos 1/2 1 1) 0.01))
-           (light (pos 1/2 1 1) "oldlace" 1))
+           (light (pos 1/2 1 1) (emitted "oldlace" 1)))
   256 256))
 (display "
-An emitted color has four components: red, green, blue, and intensity. It's
-often convenient to increase the intensity of a named color using 'intensity',
-as above.
-
 Just as 'with-color' has a corresponding function 'set-color' to update an
 existing Pict3D, 'with-emitted' has a corresponding function 'set-emitted'.
 ")

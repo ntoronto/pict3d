@@ -9,11 +9,14 @@
 (current-material (make-material 0.05 0.70 0.25 0.1))
 
 (define (random-color)
-  (build-list 3 (λ (_) (+ (* (random) 0.5) 0.5))))
+  (list (+ (* (random) 0.5) 0.5)
+        (+ (* (random) 0.5) 0.5)
+        (+ (* (random) 0.5) 0.5)))
 
-(define (normalize-color rgb)
-  (define mx (apply max rgb))
-  (map (λ (r) (/ r mx)) rgb))
+(define (normalize-color c)
+  (match-define (list r g b) c)
+  (define mx (max r g b))
+  (list (/ r mx) (/ g mx) (/ b mx)))
 
 (define (random-position)
   (pos (* (- (random) 0.5) 50)
@@ -25,7 +28,7 @@
    (combine
     (combine*
      (for/list ([_  (in-range 70000)])
-       (with-color (append (random-color) (list (if (< (random) 0.5) 0.75 1.0)))
+       (with-color (rgba (random-color) (if (< (random) 0.5) 0.75 1.0))
          (sphere (random-position)
                  (* 0.25 (+ (random) 0.1))))))
     (combine*
@@ -34,10 +37,10 @@
               [pos  (random-position)]
               [int  (+ 0.25 (* (random) 0.25))])
          (combine
-          (with-color "black"
-            (with-emitted (append rgb (list (* int 32)))
+          (with-color (rgba "black")
+            (with-emitted (emitted rgb (* int 32))
               (sphere pos #i1/16)))
-          (light pos rgb int))))))))
+          (light pos (emitted rgb int)))))))))
 
 (define frozen-spheres (freeze spheres))
 
@@ -65,10 +68,10 @@
         (combine
          (basis 'camera camera)
          frozen-spheres
-         (with-color "black"
-           (with-emitted '(1 1 1 4)
+         (with-color (rgba "black")
+           (with-emitted (emitted 1 1 1 4)
              (sphere (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-         (light (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) "silver" 20)))
+         (light (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) (emitted "silver" 20))))
       
       (send canvas set-pict3d pict)
       ;; Rate-limit to 60 FPS

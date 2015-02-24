@@ -41,12 +41,13 @@ sphere better, let's add a 'point light' just above it and toward the camera.
 A point light is also a Pict3D, but it's invisible. You can't tell it's there
 unless it illuminates another object.
 
-The 'light' function accepts optional arguments for color and intensity.
+The 'light' function accepts an optional argument for an emitted color, which
+is a color that includes an extra intensity.
 ")
 (example
  (pict3d->bitmap
   (combine (sphere origin 1/2)
-           (light (pos 1/2 1/2 1) "violet" 10))
+           (light (pos 1/2 1/2 1) (emitted "violet" 10)))
   256 256))
 (press-enter)
 
@@ -65,7 +66,7 @@ to illuminate a larger scene on its own.
  
  (pict3d->bitmap
   (combine spheres
-           (light origin "violet" 50))
+           (light origin (emitted "violet" 50)))
   256 256))
 (press-enter)
 
@@ -80,7 +81,7 @@ global one.
       (define v (pos (- (* 10 (random)) 5)
                      (- (* 10 (random)) 5)
                      (- (* 10 (random)) 5)))
-      (light v "violet" 1))))
+      (light v (emitted "violet" 1)))))
  
  (pict3d->bitmap (combine spheres lights) 256 256))
 (press-enter)
@@ -106,7 +107,7 @@ vector and optional color and intensity arguments.
 (example
  (pict3d->bitmap
   (combine spheres
-           (sunlight (dir 0.5 -0.5 -1) "chocolate" 2))
+           (sunlight (dir 0.5 -0.5 -1) (emitted "chocolate" 2)))
   256 256))
 (display "
 Remember that if you want downward directional light, the z component of the

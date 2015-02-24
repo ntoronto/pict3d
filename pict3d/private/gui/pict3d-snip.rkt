@@ -18,7 +18,7 @@
          "../engine/utils.rkt"
          "../engine/draw-pass.rkt"
          "../engine/draw-passes.rkt"
-         "../engine/types.rkt"
+         (only-in "../engine/types.rkt" affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "pict3d-struct.rkt"
@@ -26,6 +26,7 @@
          "parameters.rkt"
          "utils.rkt"
          "axes-scene.rkt"
+         "user-types.rkt"
          )
 
 ;(provide snip-class)
@@ -52,8 +53,7 @@
                      [z-far   Flonum]
                      [fov-degrees  Flonum]
                      [background  FlVector]
-                     [ambient-color  FlVector]
-                     [ambient-intensity  Flonum])
+                     [ambient  FlVector])
          [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum
                                        FlVector FlVector Flonum))]
          [get-scene  (-> Scene)]
@@ -102,7 +102,7 @@
       (time-apply
        (λ ()
          (define-values
-           (legacy? width height znear zfar fov-degrees background ambient-color ambient-intensity)
+           (legacy? width height znear zfar fov-degrees background ambient)
            (send snip get-init-params))
          ;; Compute a projection matrix
          (define fov-radians (degrees->radians (fl fov-degrees)))
@@ -122,7 +122,9 @@
                     standard-under-light
                     (map (λ (t) (make-trans-scene t basis-scene))
                          (scene-all-group-transforms s))))
-           (draw-scenes scenes width height view proj background ambient-color ambient-intensity)
+           (draw-scenes scenes width height view proj
+                        (rgba->flvector background)
+                        (emitted->flvector ambient))
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
            (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
@@ -390,8 +392,7 @@
                 z-far
                 fov-degrees
                 background
-                ambient-color
-                ambient-intensity)
+                ambient)
     
     (super-make-object)
     
@@ -403,7 +404,7 @@
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
       (make-object pict3d% scene legacy?
-        width height z-near z-far fov-degrees background ambient-color ambient-intensity))
+        width height z-near z-far fov-degrees background ambient))
     
     (define/override (write f)
       (error 'write "pict3d does not support cut, copy and paste yet"))
@@ -422,7 +423,7 @@
     
     (define/public (get-init-params)
       (values legacy?
-              width height z-near z-far fov-degrees background ambient-color ambient-intensity))
+              width height z-near z-far fov-degrees background ambient))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -502,8 +503,7 @@
     (current-pict3d-z-far)
     (current-pict3d-fov-degrees)
     (current-pict3d-background)
-    (current-pict3d-ambient-color)
-    (current-pict3d-ambient-intensity)))
+    (current-pict3d-ambient)))
 
 (define (pict3d-custom-write scene out mode)
   (define print-it

@@ -103,7 +103,7 @@
    num-planetoid-picts
    (λ ([n : Index])
      (printf "building planetoid ~v~n" (+ n 1))
-     (with-color (list (- 0.8 (* (random) 0.16))
+     (with-color (rgba (- 0.8 (* (random) 0.16))
                        (- 0.9 (* (random) 0.18))
                        (- 1.0 (* (random) 0.20)))
        (freeze
@@ -111,10 +111,10 @@
          (with-material (make-material 0.01 0.29 0.70 0.1)
            (make-planetoid-pict))
          (with-material (make-material 0.01 0.19 0.80 0.3)
-           (with-color '(1 0.25 0.5)
+           (with-color (rgba 1 0.25 0.5)
              (sphere (pos 0 0 0) 1.125)))
          (with-material (make-material 0.1 0.8 0.1 0.5)
-           (with-color '(1/4 1/2 1 0.075)
+           (with-color (rgba 1/4 1/2 1 0.075)
              (sphere (pos 0 0 0) 1.35)))))))))
 
 (struct planetoid ([pict : Pict3D]
@@ -141,10 +141,10 @@
 
 (define sun
   (combine
-   (with-color "black"
-     (with-emitted '(1 0.8 0.6 4)
+   (with-color (rgba "black")
+     (with-emitted (emitted 1 0.8 0.6 4)
        (sphere (pos 0 0 0) 1)))
-   (light (pos 0 0 0) '(2.0 1.6 1.2) 50)))
+   (light (pos 0 0 0) (emitted 2.0 1.6 1.2 50))))
 
 (define pict
   (combine
@@ -191,12 +191,12 @@
 (define body
   (let* ([body  (combine
                  (rectangle (pos -1/4 -1/8 -1) (pos 1/4 1/8 2))
-                 (with-color '(1/4 1/2 1 1/2)
-                   (with-emitted '(1/4 1/2 1 8)
+                 (with-color (rgba 1/4 1/2 1 1/2)
+                   (with-emitted (emitted 1/4 1/2 1 8)
                      (rectangle (pos -1/8 -1/16 -1.125) (pos 1/8 1/16 2.25))))
                  (scale
-                  (with-color '(1/4 1/2 1 1/2)
-                    (with-emitted '(1/4 1/2 1 8)
+                  (with-color (rgba 1/4 1/2 1 1/2)
+                    (with-emitted (emitted 1/4 1/2 1 8)
                       (sphere (pos 0 0 0) 1/4)))
                   (dir 1 1 2)))]
          [body  (combine body (basis 'right-wing (point-at (pos 3/16 0 0) (dir 1 1/3 0))))]
@@ -210,33 +210,33 @@
      ;; Attachment thingies
      (combine
       (rectangle (pos -2 -1/16 -1/8) (pos -1 1/16 1/8))
-      (with-color '(1 3/4 1/4 1/2)
-        (with-emitted '(1 3/4 1/4 4)
+      (with-color (rgba 1 3/4 1/4 1/2)
+        (with-emitted (emitted 1 3/4 1/4 4)
           (rectangle (pos (+ -2 1/32) (+ -1/16 1/32) (- -1/8 1/32))
                      (pos (- -1 1/32) (-  1/16 1/32) (+  1/8 1/16)))))
       (combine*
        (for/list ([x  (in-range 1/32 1 1/16)])
          (combine
-          (light (pos (- -1 x) 0 (- -1/8 1/64)) '(1 3/4 1/4) #i1/256)
-          (light (pos (- -1 x) 0 (+  1/8 1/32)) '(1 3/4 1/4) #i1/256)))))
+          (light (pos (- -1 x) 0 (- -1/8 1/64)) (emitted 1 3/4 1/4 #i1/256))
+          (light (pos (- -1 x) 0 (+  1/8 1/32)) (emitted 1 3/4 1/4 #i1/256))))))
      ;; Lasers
      (combine
       (rectangle (pos -1/16 -1/16 -1/2) (pos 1/16 1/16 2))
-      (with-color '(1 3/4 1/4 1/2)
-        (with-emitted '(1 12/16 1/16 16)
+      (with-color (rgba 1 3/4 1/4 1/2)
+        (with-emitted (emitted 1 12/16 1/16 16)
           (rectangle (pos -1/32 -1/32 2) (pos 1/32 1/32 2.5))))
-      (light (pos 0 0 2.25) '(1 3/4 1/4) 1))
+      (light (pos 0 0 2.25) (emitted 1 3/4 1/4 1)))
      (rotate-y (scale (rotate-y
                        (combine
                         (rectangle (pos -1 -1/8 -1) (pos 0 1/8 1/2))
-                        (with-color '(1/4 1/2 1 1/2)
-                          (with-emitted '(1/4 1/2 1 8)
+                        (with-color (rgba 1/4 1/2 1 1/2)
+                          (with-emitted (emitted 1/4 1/2 1 8)
                             (move (scale (sphere (pos 0 0 0) 1)
                                          (dir 1/2 1/4 3/4))
                                   (dir -1/2 0 -1/4))))
                         ;; Engines
-                        (with-color '(1 1/2 1/2 1/2)
-                          (with-emitted '(1 1/16 1/16 8)
+                        (with-color (rgba 1 1/2 1/2 1/2)
+                          (with-emitted (emitted 1 1/16 1/16 8)
                             (rectangle (pos (+ -1 1/8) (+ -1/8 1/16) (- -1 1/16))
                                        (pos (-  0 1/8) (-  1/8 1/16) (+ 1/2 1/16))))))
                        30)

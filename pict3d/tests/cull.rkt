@@ -23,7 +23,7 @@
      (sphere v #i1/16))))
 
 (define blue-spheres
-  (with-color '(1/4 1/2 1 3/4)
+  (with-color (rgba 1/4 1/2 1 3/4)
     (combine*
      (for/list ([v  (in-list sphere-vs)])
        (sphere v #i1/16)))))
@@ -63,8 +63,8 @@
 (define t (flt3compose proj (affine-transform view)))
 
 (define t-frustum
-  (with-color '(0.75 0 0 0.75)
-    (with-emitted '(0.5 0 0)
+  (with-color (rgba 0.75 0 0 0.75)
+    (with-emitted (emitted 0.5 0 0)
       (frustum t))))
 
 (combine
@@ -84,8 +84,8 @@
   spheres
   (flrect3 (flvector 0.0 0.0 0.0)
            (flvector 1.0 1.0 1.0)))
- (with-color '(0.75 0 0 0.5)
-   (with-emitted '(0.25 0 0)
+ (with-color (rgba 0.75 0 0 0.5)
+   (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))
  blue-spheres)
 
@@ -94,7 +94,7 @@
   wacky-spheres
   (flrect3 (flvector 0.0 0.0 0.0)
            (flvector 1.0 1.0 1.0)))
- (with-color '(0.75 0 0 0.5)
-   (with-emitted '(0.25 0 0)
+ (with-color (rgba 0.75 0 0 0.5)
+   (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))
  wacky-blue-spheres)

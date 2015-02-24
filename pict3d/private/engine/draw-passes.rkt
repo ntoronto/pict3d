@@ -378,12 +378,9 @@ code
 
 (: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural Natural
                         FlAffine3- FlTransform3
-                        FlVector FlVector Flonum
+                        FlVector FlVector
                         Void))
-(define (draw-draw-passes passes num
-                          width height
-                          view* proj*
-                          background ambient-color ambient-intensity)
+(define (draw-draw-passes passes num width height view* proj* background ambient)
   ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
   (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
   
@@ -392,9 +389,10 @@ code
   (define view (->flprojective3 view*))
   (define proj (->flprojective3 proj*))
   ;; Gamma-correct the ambient color and multiply by its intensity
-  (define ambient (flvector (* (flexpt (flvector-ref ambient-color 0) 2.2) ambient-intensity)
-                            (* (flexpt (flvector-ref ambient-color 1) 2.2) ambient-intensity)
-                            (* (flexpt (flvector-ref ambient-color 2) 2.2) ambient-intensity)))
+  (define intensity (flvector-ref ambient 3))
+  (define ambient-rgb (flvector (* (flexpt (flvector-ref ambient 0) 2.2) intensity)
+                                (* (flexpt (flvector-ref ambient 1) 2.2) intensity)
+                                (* (flexpt (flvector-ref ambient 2) 2.2) intensity)))
   
   (define znear (flprojective3-z-near proj))
   (define zfar  (flprojective3-z-far  proj))
@@ -437,7 +435,7 @@ code
            (cons 'log2_znear_zfar (uniform-float (fllog2 (/ znear zfar))))
            (cons 'width (uniform-int width))
            (cons 'height (uniform-int height))
-           (cons 'ambient (uniform-float ambient)))))
+           (cons 'ambient (uniform-float ambient-rgb)))))
   
   ;; ----------------------------------------------------------------------------------------------
   ;; Pass 1 (pre-light): Compute nearest opaque geometry depth, normals and specular powers

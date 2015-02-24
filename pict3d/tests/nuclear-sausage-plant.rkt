@@ -5,7 +5,6 @@
          pict3d/universe
          plot/utils)
 
-(current-color '(1 1 1 1))
 (current-material (make-material 0.0 0.1 0.9 0.1))
 
 (define (make-segment n)
@@ -22,9 +21,9 @@
                                      #:angle 0)))))
 
 (define (segment-chain n)
-  (cond [(= n 0)  (set-emitted (make-segment n) (list 0 1 0 0.25))]
+  (cond [(= n 0)  (set-emitted (make-segment n) (emitted "green" 0.25))]
         [else  (pin (segment-chain (- n 1)) (make-list n 'top)
-                    (set-emitted (make-segment n) (list 0 1 0 0.25))
+                    (set-emitted (make-segment n) (emitted "green" 0.25))
                     'bottom)]))
 
 (define chain (segment-chain 18))
@@ -47,6 +46,6 @@
  (λ (s)
    (match-define (list p t) s)
    (combine (basis 'camera (point-at (pos 0 2 4) (dir 0 -1/2 -1)))
-            (sunlight (dir -1 0 -1) "yellow" 2)
+            (sunlight (dir -1 0 -1) (emitted "yellow" 2))
             p))
  )

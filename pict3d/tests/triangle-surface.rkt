@@ -9,7 +9,7 @@
 
 (current-pict3d-width 512)
 (current-pict3d-height 384)
-(current-color "azure")
+(current-color (rgba "azure"))
 (current-material (make-material 0.01 0.29 0.7 0.2))
 
 ;(: xyz-fun (-> Flonum Flonum FlVector))
@@ -58,13 +58,13 @@
   (time
    (append
     
-    (list (light (pos 0 0 2) '(1.0 1.0 0.95) 5))
+    (list (light (pos 0 0 2) (emitted 1.0 1.0 0.95 5)))
     
     (for*/list ([xi  (in-range 0 grid-size 8)]
                 [yi  (in-range 0 grid-size 8)])
       (define x0 (* 0.5 (- xi (* 0.5 grid-size))))
       (define y0 (* 0.5 (- yi (* 0.5 grid-size))))
-      (light (pos x0 y0 2) '(1 1 0.95) 2)))))
+      (light (pos x0 y0 2) (emitted 1 1 0.95 2))))))
 
 (define rects
   (time
@@ -76,7 +76,7 @@
      (define y1 (+ y0 0.5))
      (define z (flvector-ref (pos->flvector (xyz-fun (* 0.5 (+ x0 x1)) (* 0.5 (+ y0 y1)))) 2))
      (define transparent? (= 0 (modulo (+ xi yi) 4)))
-     (with-color (if transparent? '(0.2 0.3 1.0 0.5) '(0.2 1.0 0.3 1.0))
+     (with-color (if transparent? (rgba 0.2 0.3 1.0 0.5) (rgba 0.2 1.0 0.3 1.0))
        (with-material (if transparent? (make-material 0.1 0.2 0.7 0.1) default-material)
          (rectangle (pos x0 y0 (* 0.5 z))
                     (pos x1 y1 (+ (* 0.5 z) 1.0))))))))

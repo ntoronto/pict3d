@@ -23,10 +23,10 @@
        
        (define r (random))
        (cond [(< r 0.5)
-              (with-color '(1 0.5 0)
+              (with-color (rgba 1 0.5 0)
                 (ellipsoid mn mx))]
              [else
-              (with-color '(0 0.5 1.0)
+              (with-color (rgba 0 0.5 1.0)
                 (rectangle mn mx))]))))
    30))
 
@@ -55,12 +55,12 @@
                [p  (in-list ps)])
       (if p
           (combine
-           (transform (with-color '(0 1 0 0.75)
+           (transform (with-color (rgba 0 1 0 0.75)
                         (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
                       (point-at v p #:normalize? #f))
-           (with-emitted '(0 1 0 3.0)
+           (with-emitted (emitted "green" 3.0)
              (sphere p 0.01)))
-          (transform (with-color '(1 0 0 0.75)
+          (transform (with-color (rgba "red" 0.75)
                         (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
                       (point-at v (dir-scale dv 1.5) #:normalize? #f)))))))
 

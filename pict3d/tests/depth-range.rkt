@@ -12,11 +12,11 @@
 
 (define shapes
   (combine
-   (with-color "crimson"
+   (with-color (rgba "crimson")
      (sphere (pos 1/2 0 0) 1/2))
-   (with-color "chartreuse"
+   (with-color (rgba "chartreuse")
      (sphere (pos 0 1/2 0) 1/2))
-   (with-color "dodgerblue"
+   (with-color (rgba "dodgerblue")
      (sphere (pos 0 0 1/2) 1/2))))
 
 (define pict
@@ -28,6 +28,6 @@
 
 (pict3d->bitmap
  (combine pict
-          (sunlight (dir -0.25 -0.5 -1.0) "white" 1)
-          (sunlight (dir 0.25 0.5 1.0) "white" 0.5))
+          (sunlight (dir -0.25 -0.5 -1.0) (emitted "white" 1))
+          (sunlight (dir 0.25 0.5 1.0) (emitted "white" 0.5)))
  512 512)

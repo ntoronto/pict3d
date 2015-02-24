@@ -9,12 +9,13 @@
          typed/opengl
          "../math/flt3.rkt"
          "../engine/scene.rkt"
-         "../engine/types.rkt"
+         (only-in "../engine/types.rkt" affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "user-types.rkt"
          )
 
 (provide pict3d-canvas%)
@@ -30,8 +31,7 @@
    z-far
    fov-degrees
    background
-   ambient-color
-   ambient-intensity
+   ambient
    ack-channel)
   #:transparent)
 
@@ -43,8 +43,7 @@
                         [z-far : Positive-Flonum]
                         [fov-degrees : Positive-Flonum]
                         [background : FlVector]
-                        [ambient-color : FlVector]
-                        [ambient-intensity : Flonum]
+                        [ambient : FlVector]
                         [ack-channel : (U #f (Channelof Boolean))]
                         ) #:transparent)
 
@@ -54,7 +53,7 @@
      (λ ()
        (match-define (render-command pict width height
                                      znear zfar fov-degrees
-                                     background ambient-color ambient-intensity
+                                     background ambient
                                      ack-channel)
          cmd)
        ;; Get the view matrix
@@ -67,9 +66,9 @@
        (call-with-gl-context
         (λ ()
           ;; Draw the scene and swap buffers
-          (draw-scene (pict3d-scene pict) width height
-                      view proj
-                      background ambient-color ambient-intensity)
+          (draw-scene (pict3d-scene pict) width height view proj
+                      (rgba->flvector background)
+                      (emitted->flvector ambient))
           (gl-swap-buffers))
         (send canvas get-managed-gl-context))
        
@@ -163,19 +162,18 @@
     (define z-far (current-pict3d-z-far))
     (define fov-degrees (current-pict3d-fov-degrees))
     (define background (current-pict3d-background))
-    (define ambient-color (current-pict3d-ambient-color))
-    (define ambient-intensity (current-pict3d-ambient-intensity))
+    (define ambient (current-pict3d-ambient))
     
     (define (do-render new-pict width height
                        z-near z-far fov-degrees
-                       background ambient-color ambient-intensity
+                       background ambient
                        async?)
       (define ack-channel (if async? #f (make-channel)))
       (async-channel-put
        render-queue
        (render-command new-pict width height
                        z-near z-far fov-degrees
-                       background ambient-color ambient-intensity
+                       background ambient
                        ack-channel))
       (when ack-channel
         (channel-get ack-channel)))
@@ -187,11 +185,10 @@
       (set! z-far (current-pict3d-z-far))
       (set! fov-degrees (current-pict3d-fov-degrees))
       (set! background (current-pict3d-background))
-      (set! ambient-color (current-pict3d-ambient-color))
-      (set! ambient-intensity (current-pict3d-ambient-intensity))
+      (set! ambient (current-pict3d-ambient))
       (do-render new-pict width height
                  z-near z-far fov-degrees
-                 background ambient-color ambient-intensity
+                 background ambient
                  async-updates?))
     
     (define/public (get-pict3d) pict)
@@ -235,7 +232,7 @@
       (define-values (width height) (get-gl-window-size))
       (do-render pict width height
                  z-near z-far fov-degrees
-                 background ambient-color ambient-intensity
+                 background ambient
                  #t)
       (super on-paint))
     ))

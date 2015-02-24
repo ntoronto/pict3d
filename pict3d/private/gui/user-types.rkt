@@ -25,11 +25,12 @@
  material
  make-material
  ;; Colors
- Pict3D-Color
- ->flcolor4
- ->flcolor3
- set-opacity
- set-intensity
+ (rename-out [-RGBA RGBA]
+             [-Emitted Emitted])
+ rgba?
+ emitted?
+ rgba rgba->flvector flvector->rgba rgba-components
+ emitted emitted->flvector flvector->emitted emitted-components
  ;; Vectors
  (rename-out [-Pos Pos]
              [-Dir Dir])
@@ -80,7 +81,6 @@
 ;; Colors
 
 (define-type Color-Vector (U (Listof Real) (Vectorof Real) FlVector))
-(define-type Pict3D-Color (U String Symbol Real Color-Vector (Instance Color%)))
 
 (: color-vec-length (-> Color-Vector Index))
 (define (color-vec-length xs)
@@ -90,71 +90,126 @@
 
 (: color-vec->flv (-> Color-Vector Index (U #f FlVector)))
 (define (color-vec->flv xs n)
-  (cond [(flvector? xs)  (if (= n (flvector-length xs)) xs #f)]
+  (cond [(flvector? xs)  (if (= n (flvector-length xs)) (flvector-copy xs) #f)]
         [(list? xs)  (if (= n (length xs)) (list->flvector xs) #f)]
         [else  (if (= n (vector-length xs)) (vector->flvector xs) #f)]))
 
-(: color->rgb (-> Symbol (U String Symbol (Instance Color%)) (Vector Byte Byte Byte)))
+(: color->rgb (-> Symbol (U String (Instance Color%)) (Vector Byte Byte Byte)))
 (define (color->rgb name orig-col)
   (let* ([col  orig-col]
-         [col  (if (symbol? col) (symbol->string col) col)]
          [col  (if (string? col) (send the-color-database find-color col) col)])
     (if col
         (vector (send col red) (send col green) (send col blue))
         (raise-argument-error name "known color" orig-col))))
 
-(: ->flcolor4 (-> Symbol Pict3D-Color FlVector))
-(define (->flcolor4 name col)
+;; ---------------------------------------------------------------------------------------------------
+
+(define print-col
+  (λ ([name : Symbol])
+    (make-constructor-style-printer
+     (λ ([v : Col]) name)
+     (λ ([v : Col])
+       (define-values (r g b w) (col-values v))
+       (list r g b w)))))
+
+(struct Col ([vector : FlVector]) #:transparent
+  #:property prop:custom-print-quotable 'never)
+  
+(struct RGBA Col () #:transparent
+  #:property prop:custom-write (print-col 'rgba))
+  
+(struct Emitted Col () #:transparent
+  #:property prop:custom-write (print-col 'emitted))
+
+(define-type -RGBA RGBA)
+(define-type -Emitted Emitted)
+(define rgba? RGBA?)
+(define emitted? Emitted?)
+
+(define-syntax-rule (col-values stx)
+  (let ([v  (Col-vector stx)])
+    (values (unsafe-flvector-ref v 0)
+            (unsafe-flvector-ref v 1)
+            (unsafe-flvector-ref v 2)
+            (unsafe-flvector-ref v 3))))
+
+(define-type User-Color (U String Real Color-Vector (Instance Color%)))
+
+(: ->flcolor4 (->* [Symbol User-Color] [Real] FlVector))
+(define (->flcolor4 name col [w 1.0])
   (cond
     [(real? col)
      (define r (fl col))
-     (flvector r r r 1.0)]
+     (flvector r r r (fl w))]
     [(or (list? col) (vector? col) (flvector? col))
      (define n (color-vec-length col))
      (cond
        [(= n 4)
-        (define v (color-vec->flv col 4))
-        (if v v (raise-argument-error name "length-4 vector" col))]
+        (define v (assert (color-vec->flv col 4) values))
+        (flvector-set! v 3 (* (fl w) (flvector-ref v 3)))
+        v]
        [(= n 3)
-        (define c (make-flvector 4 1.0))
+        (define c (make-flvector 4 (fl w)))
         (for ([r  (ann col (Sequenceof Real))]
-              [i  (in-range 4)])
+              [i  (in-range 3)])
           (flvector-set! c i (fl r)))
         c]
        [else
-        (raise-argument-error name "string, symbol or length-3 or length-4 vector" col)])]
+        (raise-argument-error 'name "length-3 or length-4 vector" col)])]
     [else
-     (match-define (vector r g b) (color->rgb name col))
+     (match-define (vector r g b) (color->rgb 'name col))
      (flvector (/ (fl r) 255.0)
                (/ (fl g) 255.0)
                (/ (fl b) 255.0)
-               1.0)]))
+               (fl w))]))
 
-(: ->flcolor3 (-> Symbol Pict3D-Color FlVector))
-(define (->flcolor3 name col)
-  (cond [(real? col)
-         (define r (fl col))
-         (flvector r r r)]
-        [(or (list? col) (vector? col) (flvector? col))
-         (define v (color-vec->flv col 3))
-         (if v v (raise-argument-error name "length-3 vector" col))]
-        [else
-         (match-define (vector r g b) (color->rgb name col))
-         (flvector (/ (fl r) 255.0)
-                   (/ (fl g) 255.0)
-                   (/ (fl b) 255.0))]))
+(: rgba (case-> (-> (U RGBA User-Color) RGBA)
+                (-> (U RGBA User-Color) Real RGBA)
+                (-> Real Real Real RGBA)
+                (-> Real Real Real Real RGBA)))
+(define rgba
+  (case-lambda
+    [(col)  (rgba col 1.0)]
+    [(col alpha)  (let ([col  (if (rgba? col) (rgba->flvector col) col)])
+                    (RGBA (->flcolor4 'rgba col alpha)))]
+    [(r g b)  (RGBA (flvector (fl r) (fl g) (fl b) 1.0))]
+    [(r g b a)  (RGBA (flvector (fl r) (fl g) (fl b) (fl a)))]))
 
-(: set-opacity (-> Pict3D-Color Real FlVector))
-(define (set-opacity col a)
-  (define v (flvector-copy (->flcolor4 'set-opacity col)))
-  (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
-  v)
+(: emitted (case-> (-> (U Emitted User-Color) Emitted)
+                   (-> (U Emitted User-Color) Real Emitted)
+                   (-> Real Real Real Emitted)
+                   (-> Real Real Real Real Emitted)))
+(define emitted
+  (case-lambda
+    [(col)  (emitted col 1.0)]
+    [(col intensity)  (let ([col  (if (emitted? col) (emitted->flvector col) col)])
+                        (Emitted (->flcolor4 'emitted col intensity)))]
+    [(r g b)  (Emitted (flvector (fl r) (fl g) (fl b) 1.0))]
+    [(r g b i)  (Emitted (flvector (fl r) (fl g) (fl b) (fl i)))]))
 
-(: set-intensity (-> Pict3D-Color Real FlVector))
-(define (set-intensity col a)
-  (define v (flvector-copy (->flcolor4 'set-intensity col)))
-  (flvector-set! v 3 (* (fl a) (flvector-ref v 3)))
-  v)
+(: rgba->flvector (-> RGBA FlVector))
+(define rgba->flvector Col-vector)
+
+(: flvector->rgba (-> FlVector RGBA))
+(define (flvector->rgba v)
+  (unless (= 4 (flvector-length v))
+    (raise-argument-error 'flvector->rgba "length-4 flvector" v))
+  (RGBA v))
+
+(: emitted->flvector (-> Emitted FlVector))
+(define emitted->flvector Col-vector)
+
+(: flvector->emitted (-> FlVector Emitted))
+(define (flvector->emitted v)
+  (unless (= 4 (flvector-length v))
+    (raise-argument-error 'flvector->emitted "length-4 flvector" v))
+  (Emitted v))
+
+(: rgba-components (-> RGBA (Values Flonum Flonum Flonum Flonum)))
+(define (rgba-components v) (col-values v))
+
+(: emitted-components (-> Emitted (Values Flonum Flonum Flonum Flonum)))
+(define (emitted-components v) (col-values v))
 
 ;; ===================================================================================================
 ;; Vectors
@@ -189,6 +244,12 @@
 (define y- (Dir (flvector 0.0 -1.0 0.0)))
 (define z- (Dir (flvector 0.0 0.0 -1.0)))
 
+(define-syntax-rule (vec-values stx)
+  (let ([v  (Vec-vector stx)])
+    (values (unsafe-flvector-ref v 0)
+            (unsafe-flvector-ref v 1)
+            (unsafe-flvector-ref v 2))))
+
 (: pos (-> Real Real Real Pos))
 (define (pos x y z)
   (Pos (flvector (fl x) (fl y) (fl z))))
@@ -214,12 +275,6 @@
   (unless (= 3 (flvector-length v))
     (raise-argument-error 'flvector->dir "length-3 flvector" v))
   (Dir v))
-
-(define-syntax-rule (vec-values stx)
-  (let ([v  (Vec-vector stx)])
-    (values (unsafe-flvector-ref v 0)
-            (unsafe-flvector-ref v 1)
-            (unsafe-flvector-ref v 2))))
 
 (: pos-coordinates (-> Pos (Values Flonum Flonum Flonum)))
 (define (pos-coordinates v) (vec-values v))

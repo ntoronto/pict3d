@@ -90,29 +90,27 @@
 ;; ===================================================================================================
 ;; Parameters
 
-(define default-color (flvector 1.0 1.0 1.0 1.0))
-(define default-emitted (flvector 0.0 0.0 0.0 0.0))
+(define default-color (rgba 1.0 1.0 1.0 1.0))
+(define default-emitted (emitted 0.0 0.0 0.0 0.0))
 (define default-material (make-material 0.05 0.6 0.35 0.3))
 
-(: current-color (Parameterof Pict3D-Color FlVector))
-(define current-color
-  (make-parameter default-color (λ ([col : Pict3D-Color]) (->flcolor4 'current-color col))))
+(: current-color (Parameterof RGBA))
+(define current-color (make-parameter default-color))
 
-(: current-emitted (Parameterof Pict3D-Color FlVector))
-(define current-emitted
-  (make-parameter default-emitted (λ ([col : Pict3D-Color]) (->flcolor4 'current-emitted col))))
+(: current-emitted (Parameterof Emitted))
+(define current-emitted (make-parameter default-emitted))
 
 (: current-material (Parameterof Material))
 (define current-material (make-parameter default-material))
 
-(: set-color (-> Pict3D Pict3D-Color Pict3D))
+(: set-color (-> Pict3D RGBA Pict3D))
 (define (set-color p c)
-  (let ([c  (->flcolor4 'set-color c)])
+  (let ([c  (rgba->flvector c)])
     (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-color a c))))))
 
-(: set-emitted (-> Pict3D Pict3D-Color Pict3D))
+(: set-emitted (-> Pict3D Emitted Pict3D))
 (define (set-emitted p e)
-  (let ([e  (->flcolor4 'set-emitted e)])
+  (let ([e  (emitted->flvector e)])
     (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-emitted a e))))))
 
 (: set-material (-> Pict3D Material Pict3D))
@@ -220,8 +218,8 @@
          (pict3d
           (shape->scene
            (make-triangle-shape vs norm
-                                (current-color)
-                                (current-emitted)
+                                (rgba->flvector (current-color))
+                                (emitted->flvector (current-emitted))
                                 (current-material)
                                 (and back? #t))))]
         [else  empty-pict3d]))
@@ -238,8 +236,8 @@
                  (map
                   shape->scene
                   (make-quad-shapes vs norm
-                                    (current-color)
-                                    (current-emitted)
+                                    (rgba->flvector (current-color))
+                                    (emitted->flvector (current-emitted))
                                     (current-material)
                                     (and back? #t)))))]
         [else  empty-pict3d]))
@@ -253,8 +251,8 @@
    (shape->scene
     (make-rectangle-shape (assert (flv3rect (vector (pos->flvector v1) (pos->flvector v2)))
                                   nonempty-flrect3?)
-                          (current-color)
-                          (current-emitted)
+                          (rgba->flvector (current-color))
+                          (emitted->flvector (current-emitted))
                           (current-material)
                           (and inside? #t)))))
 
@@ -269,8 +267,8 @@
   (pict3d
    (shape->scene
     (make-sphere-shape (affine t)
-                       (current-color)
-                       (current-emitted)
+                       (rgba->flvector (current-color))
+                       (emitted->flvector (current-emitted))
                        (current-material)
                        (and inside? #t)))))
 
@@ -283,22 +281,24 @@
     (pict3d
      (shape->scene
       (make-sphere-shape (affine t)
-                         (current-color)
-                         (current-emitted)
+                         (rgba->flvector (current-color))
+                         (emitted->flvector (current-emitted))
                          (current-material)
                          (and inside? #t))))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
 
-(: sunlight (-> Dir Pict3D-Color Real Pict3D))
-(define (sunlight direction color intensity)
-  (let ([direction  (flv3normalize (dir->flvector direction))]
-        [color      (->flcolor3 'sunlight color)]
-        [intensity  (fl intensity)])
-    (if direction
-        (pict3d (shape->scene (make-directional-light-shape color intensity direction)))
-        empty-pict3d)))
+(: sunlight (-> Dir Emitted Pict3D))
+(define (sunlight direction e)
+  (let ([direction  (flv3normalize (dir->flvector direction))])
+    (cond [direction
+           (define rgbi (emitted->flvector e))
+           (define color (flvector-copy rgbi 0 3))
+           (define intensity (flvector-ref rgbi 3))
+           (pict3d (shape->scene (make-directional-light-shape color intensity direction)))]
+          [else
+           empty-pict3d])))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
@@ -307,14 +307,14 @@
 (define (default-light-radius intensity)
   (flsqrt (* 20.0 intensity)))
 
-(: light (->* [Pos] [Pict3D-Color Real Real] Pict3D))
+(: light (->* [Pos] [Emitted Real] Pict3D))
 (define (light position
-               [color  (flvector 1.0 1.0 1.0)]
-               [intensity  1.0]
+               [e  (emitted 1.0 1.0 1.0 1.0)]
                [radius  #f])
   (let* ([position  (pos->flvector position)]
-         [color  (->flcolor3 'light color)]
-         [intensity  (fl intensity)]
+         [e  (emitted->flvector e)]
+         [color  (flvector-copy e 0 3)]
+         [intensity  (flvector-ref e 3)]
          [radius  (if radius (fl radius) (default-light-radius intensity))])
     (pict3d
      (shape->scene
@@ -533,8 +533,8 @@
 
 (: standard-cylinder-scene (-> Boolean Natural Scene))
 (define (standard-cylinder-scene inside? n)
-  (define c (current-color))
-  (define e (current-emitted))
+  (define c (rgba->flvector (current-color)))
+  (define e (emitted->flvector (current-emitted)))
   (define m (current-material))
   (scene-union*
    (for/list ([i  (in-range n)])
@@ -596,8 +596,8 @@
 
 (: standard-cone-scene (-> Boolean Natural Boolean Scene))
 (define (standard-cone-scene inside? n smooth?)
-  (define c (current-color))
-  (define e (current-emitted))
+  (define c (rgba->flvector (current-color)))
+  (define e (emitted->flvector (current-emitted)))
   (define m (current-material))
   (define nx (/ 1.0 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))
   (define ny (/ 0.5 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))

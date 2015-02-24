@@ -9,12 +9,13 @@
          "../math/flt3.rkt"
          "../engine/scene.rkt"
          "../engine/utils.rkt"
-         "../engine/types.rkt"
+         (only-in "../engine/types.rkt" affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "user-types.rkt"
          )
 
 (provide (contract-out
@@ -48,9 +49,8 @@
          ;; Draw the scene
          (draw-scene (pict3d-scene pict) width height
                      view proj
-                     (current-pict3d-background)
-                     (current-pict3d-ambient-color)
-                     (current-pict3d-ambient-intensity))
+                     (rgba->flvector (current-pict3d-background))
+                     (emitted->flvector (current-pict3d-ambient)))
          ;; Get the resulting pixels and set them into the bitmap
          (define bs (get-the-bytes (* 4 width height)))
          (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)

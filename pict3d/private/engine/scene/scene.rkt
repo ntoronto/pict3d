@@ -716,8 +716,8 @@ for `Scene`.
      (build-vector n (λ (_) (draw-passes empty-passes identity-affine))))
    vector-length))
 
-(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
-(define (draw-scene s width height view proj background ambient-color ambient-intensity)
+(: draw-scene (-> Scene Natural Natural FlAffine3- FlTransform3 FlVector FlVector Void))
+(define (draw-scene s width height view proj background ambient)
   (define t (flt3compose proj view))
   (define planes (flprojective3-frustum-planes (->flprojective3 t)))
   (define bs (get-scene-draw-passes (scene-count s)))
@@ -729,13 +729,10 @@ for `Scene`.
                        (set-draw-passes-passes! b (shape-passes a))
                        (set-draw-passes-affine! b t))
                      0))
-  (draw-draw-passes bs end width height
-                    view proj
-                    background ambient-color ambient-intensity))
+  (draw-draw-passes bs end width height view proj background ambient))
 
-(: draw-scenes
-   (-> (Listof Scene) Natural Natural FlAffine3- FlTransform3 FlVector FlVector Flonum Void))
-(define (draw-scenes ss width height view proj background ambient-color ambient-intensity)
+(: draw-scenes (-> (Listof Scene) Natural Natural FlAffine3- FlTransform3 FlVector FlVector Void))
+(define (draw-scenes ss width height view proj background ambient)
   (define t (flt3compose proj view))
   (define planes (flprojective3-frustum-planes (->flprojective3 t)))
   (define num
@@ -751,9 +748,7 @@ for `Scene`.
                          (set-draw-passes-passes! b (shape-passes a))
                          (set-draw-passes-affine! b t))
                        end)))
-  (draw-draw-passes bs end width height
-                    view proj
-                    background ambient-color ambient-intensity))
+  (draw-draw-passes bs end width height view proj background ambient))
 
 ;; ===================================================================================================
 ;; Set shape attributes
