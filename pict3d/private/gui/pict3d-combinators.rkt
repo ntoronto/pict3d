@@ -207,40 +207,55 @@
 ;; ===================================================================================================
 ;; Basic shapes
 
+(: interpret-normals (-> Symbol (U #f Dir (Listof Dir)) (Vectorof FlVector)
+                         (U #f FlVector (Vectorof FlVector))))
+(define (interpret-normals name ns vs)
+  (cond [(dir? ns)  (flv3normalize (dir->flvector ns))]
+        [(list? ns)
+         (define m (vector-length vs))
+         (unless (= m (length ns))
+           (error name "expected length-~a list of normals; given ~e" m ns))
+         (let/ec return : (U #f (Vectorof FlVector))
+           (for/vector #:length m ([n  (in-list ns)]) : FlVector
+             (let ([n  (flv3normalize (dir->flvector n))])
+               (if n n (return #f)))))]
+        [else
+         (flv3polygon-normal vs)]))
+
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (->* [Pos Pos Pos] [#:back? Any] Pict3D))
-(define (triangle v1 v2 v3 #:back? [back? #f])
+(: triangle (->* [Pos Pos Pos] [#:normals (U #f Dir (Listof Dir)) #:back? Any] Pict3D))
+(define (triangle v1 v2 v3 #:normals [ns #f] #:back? [back? #f])
   (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3)))
-  (define norm (flv3polygon-normal vs))
-  (cond [norm
-         (pict3d
-          (shape->scene
-           (make-triangle-shape vs norm
-                                (rgba->flvector (current-color))
-                                (emitted->flvector (current-emitted))
-                                (current-material)
-                                (and back? #t))))]
-        [else  empty-pict3d]))
+  (let ([ns  (interpret-normals 'triangle ns vs)])
+    (cond [ns
+           (pict3d
+            (shape->scene
+             (make-triangle-shape vs ns
+                                  (rgba->flvector (current-color))
+                                  (emitted->flvector (current-emitted))
+                                  (current-material)
+                                  (and back? #t))))]
+          [else  empty-pict3d])))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
-(: quad (->* [Pos Pos Pos Pos] [#:back? Any] Pict3D))
-(define (quad v1 v2 v3 v4 #:back? [back? #f])
+(: quad (->* [Pos Pos Pos Pos] [#:normals (U #f Dir (Listof Dir)) #:back? Any] Pict3D))
+(define (quad v1 v2 v3 v4 #:normals [ns #f] #:back? [back? #f])
   (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3) (pos->flvector v4)))
-  (define norm (flv3polygon-normal vs))
-  (cond [norm  (pict3d
+  (let ([ns  (interpret-normals 'quad ns vs)])
+    (cond [ns  (pict3d
                 (scene-union*
                  (map
                   shape->scene
-                  (make-quad-shapes vs norm
+                  (make-quad-shapes vs ns
                                     (rgba->flvector (current-color))
                                     (emitted->flvector (current-emitted))
                                     (current-material)
                                     (and back? #t)))))]
-        [else  empty-pict3d]))
+          [else  empty-pict3d])))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
