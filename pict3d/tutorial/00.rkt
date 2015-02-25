@@ -4,7 +4,7 @@
          "utils.rkt")
 
 (disclaimer)
-(header "00: Basics, illustrated with spheres")
+(header "00: Basics")
 
 (display "
 A 3-dimensional scene, or Pict3D, displays in DrRacket's REPL as an interactive
@@ -27,7 +27,7 @@ When you're ready for the next example, click in the following box and press
 Enter.
 ")
 
-(press-enter)
+(press-enter "============================= OH YES I AM SO READY =============================~n")
 
 (display "
 Pict3D objecs can be combined in many different ways to create new Pict3Ds.
@@ -36,26 +36,31 @@ or more Pict3Ds.
 ")
 (example
  (combine (sphere origin 1/2)
-          (sphere (pos 1/2 0 0) 1/3)))
+          (rectangle origin (pos 3/4 3/4 1/8))))
+(display "
+Here, we've combined the sphere with a 3D 'rectangle', or box, which is
+specified by two 'position vectors' representing opposite corners.
+")
 (press-enter)
 
 (display "
 One way to make squashed spheres is to use 'ellipsoid', which accepts two
-position vectors. These vectors are regarded as opposite corners of a box that
-the ellipsoid will fill.
+position vectors: the opposite corners of an imaginary rectangle that the
+ellipsoid would fill.
 ")
 (example
- (combine (ellipsoid (pos 0 0 0) (pos 1 1/2 1/4))
-          (ellipsoid (pos 0 0 1/4) (pos 1 1/2 1/2))))
+ (combine (sphere origin 1/2)
+          (ellipsoid origin (pos 3/4 3/4 1/8))))
 (press-enter)
 
 (display "
-Like 'append*', 'combine*' combines a list:
+The 'combine' combinator can also combine lists of Pict3Ds, or lists of lists,
+and so on.
 ")
 (example
- (combine*
+ (combine
   (for/list ([z  (in-range 0 2 0.5)]
              [r  (in-range 1 0 -0.25)])
     (sphere (pos 0 0 z) r))))
 (header "End 00: Basics")
-(press-enter)
+(press-enter "")

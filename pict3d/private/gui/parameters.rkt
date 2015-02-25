@@ -46,3 +46,9 @@
 
 (: current-pict3d-ambient (Parameterof Emitted))
 (define current-pict3d-ambient (make-parameter default-pict3d-ambient))
+
+(: current-pict3d-add-sunlight? (Parameterof Boolean))
+(define current-pict3d-add-sunlight? (make-parameter #t))
+
+(: current-pict3d-add-indicators? (Parameterof Boolean))
+(define current-pict3d-add-indicators? (make-parameter #t))

@@ -1,6 +1,6 @@
 #lang typed/racket/base
 
-(require racket/list
+(require (except-in racket/list flatten)
          racket/set
          racket/match
          typed/racket/class
@@ -20,6 +20,8 @@
          )
 
 (provide
+ ;; Types
+ Pict3Ds
  ;; Parameters
  default-color
  default-emitted
@@ -74,7 +76,6 @@
  center
  ;; Combining scenes
  combine
- combine*
  pin
  weld
  ;; Testing
@@ -489,16 +490,18 @@
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)
 
-(: combine* (-> (Listof Pict3D) Pict3D))
-(define (combine* ps)
+(define-type Pict3Ds (U Pict3D (Listof Pict3Ds)))
+
+(require/typed
+ racket/list
+ [flatten  (-> (Listof Pict3Ds) (Listof Pict3D))])
+
+(: combine (-> Pict3Ds * Pict3D))
+(define (combine . ps)
   (cond [(empty? ps)  empty-pict3d]
-        [else  (pict3d (scene-union* (map pict3d-scene ps)))]))
+        [else  (pict3d (scene-union* (map pict3d-scene (flatten ps))))]))
 
-(: combine (-> Pict3D * Pict3D))
-(define (combine . ps) (combine* ps))
-
-(: pin (->* [Pict3D (U Tag (Listof+1 Tag)) Pict3D] [(U Tag (Listof+1 Tag))]
-            Pict3D))
+(: pin (->* [Pict3D (U Tag (Listof+1 Tag)) Pict3D] [(U Tag (Listof+1 Tag))] Pict3D))
 (define (pin p1 n1 p2 [n2 #f])
   (let ([p2  (if n2 (ungroup (set-origin p2 n2) n2) p2)])
     (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))

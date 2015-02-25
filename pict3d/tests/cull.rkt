@@ -18,13 +18,13 @@
          (* (- (random) 0.5) 2))))
 
 (define spheres
-  (combine*
+  (combine
    (for/list ([v  (in-list sphere-vs)])
      (sphere v #i1/16))))
 
 (define blue-spheres
   (with-color (rgba 1/4 1/2 1 3/4)
-    (combine*
+    (combine
      (for/list ([v  (in-list sphere-vs)])
        (sphere v #i1/16)))))
 

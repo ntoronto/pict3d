@@ -11,8 +11,8 @@
 (define shapes
   (rotate-x
    (freeze
-    (combine*
-     (for/list ([_  (in-range 2000)])
+    (combine
+     (for/list : (Listof Pict3D) ([_  (in-range 2000)])
        (define mn (pos (- (* 2 (random)) 1)
                        (- (* 2 (random)) 1)
                        (- (* 2 (random)) 1)))
@@ -49,10 +49,10 @@
 
 (define traces
   (freeze
-   (combine*
-    (for/list ([v  (in-list vs)]
-               [dv  (in-list dvs)]
-               [p  (in-list ps)])
+   (combine
+    (for/list : (Listof Pict3D) ([v  (in-list vs)]
+                                 [dv  (in-list dvs)]
+                                 [p  (in-list ps)])
       (if p
           (combine
            (transform (with-color (rgba 0 1 0 0.75)

@@ -22,7 +22,7 @@
         (move-x
          (with-color coal-color
            (with-material coal-material
-             (combine*
+             (combine
               (for/list ([ang  (in-list '(-1 1 -1.5 1))]
                          [alt  (in-list '(-15 0 15 30))])
                 (sphere (surface torso (angles-dir ang alt)) 0.035)))))
@@ -40,7 +40,7 @@
         (move-x
          (with-color coal-color
            (with-material coal-material
-             (combine*
+             (combine
               (for/list ([ang  (in-list '(-1 1 -1.5))]
                          [alt  (in-list '(40 30 20))])
                 (sphere (surface base (angles-dir ang alt)) 0.035)))))
@@ -77,7 +77,7 @@
       (move-x
        (with-color coal-color
          (with-material coal-material
-           (combine*
+           (combine
             (for/list ([ang  (in-range -45 46 15)])
               (sphere (surface head (angles-dir ang -20)) 0.025)))))
        0.01))

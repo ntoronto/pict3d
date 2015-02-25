@@ -94,9 +94,7 @@
                     (pos x1 y1 (+ (* 0.5 z) 1.0))))))))
 
 (define pict
-  (combine (combine* lights)
-           (combine* ts)
-           (combine* rects)
+  (combine lights ts rects
            (basis 'camera (point-at (pos 10 10 10) origin))))
 #;
 (profile

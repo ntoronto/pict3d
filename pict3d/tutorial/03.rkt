@@ -19,12 +19,15 @@ A material is (currently) comprised of four quantities, all in the range [0,1]:
 
 For realistic-looking materials, the first three should sum to 1. Roughness
 affects only specular reflectance.
+")
+(press-enter)
 
-The best way to communicate what these quantities mean is by shared experience,
-so here's an interactive scene. Click on it, and fly around to take a look at
-the objects at different angles. Remember that interactive scenes have two
-white directional lights added: one underneath, and one above. All three of the
-spheres are white.
+(display "
+The best way to communicate what these four quantities mean is by shared
+experience, so here's an interactive scene. Click on it, and fly around to take
+a look at the objects at different angles. Remember that interactive scenes have
+two white directional lights added: one underneath, and one above. All three of
+the spheres are white.
 ")
 (example
  (combine
@@ -73,4 +76,4 @@ The combination of these parameters creates distinctive-looking materials.
   (with-material plastic (sphere (pos 0 0 1) 1/2))))
 
 (header "End 03: Materials")
-(press-enter)
+(press-enter "")

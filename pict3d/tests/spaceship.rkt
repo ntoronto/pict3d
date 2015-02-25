@@ -92,7 +92,7 @@
          ;[vss  (append* (map (retesselate f) vss))]
          ;[vss  (append* (map (retesselate f) vss))]
          )
-    (combine*
+    (combine
      (map (λ ([vs : (List Pos Pos Pos)]) (apply triangle vs)) vss))))
 
 (define num-planetoid-picts 20)
@@ -150,8 +150,8 @@
   (combine
    sun
    (basis 'camera (point-at (pos 0 -40 0) (dir 0 1 0)))
-   (combine*
-    (for/list ([p  (in-list planetoids)])
+   (combine
+    (for/list : (Listof Pict3D) ([p  (in-list planetoids)])
       (match-define (planetoid pict pos axis speed) p)
       (move (rotate pict axis (* speed (* 2 pi (random))))
             (pos- pos origin))))))
@@ -176,8 +176,8 @@
           (combine
            sun
            (basis 'camera (point-at (pos 0 -40 0) (dir 0 1 0)))
-           (combine*
-            (for/list ([p  (in-list planetoids)])
+           (combine
+            (for/list : (Listof Pict3D) ([p  (in-list planetoids)])
               (match-define (planetoid pict pos axis speed) p)
               (rotate (move (rotate pict axis (* speed angle)) (pos- pos origin))
                       (dir 0 0 1)
@@ -214,8 +214,8 @@
         (with-emitted (emitted 1 3/4 1/4 4)
           (rectangle (pos (+ -2 1/32) (+ -1/16 1/32) (- -1/8 1/32))
                      (pos (- -1 1/32) (-  1/16 1/32) (+  1/8 1/16)))))
-      (combine*
-       (for/list ([x  (in-range 1/32 1 1/16)])
+      (combine
+       (for/list : (Listof Pict3D) ([x  (in-range 1/32 1 1/16)])
          (combine
           (light (pos (- -1 x) 0 (- -1/8 1/64)) (emitted 1 3/4 1/4 #i1/256))
           (light (pos (- -1 x) 0 (+  1/8 1/32)) (emitted 1 3/4 1/4 #i1/256))))))

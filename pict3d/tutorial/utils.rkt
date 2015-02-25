@@ -46,5 +46,8 @@ worrying about losing performance.
          (newline)
          e ...))]))
 
-(define (press-enter)
-  (void (read-line)))
+(define default-enter-msg (string-append (make-string 80 #\=) "\n"))
+
+(define (press-enter [msg default-enter-msg])
+  (void (read-line))
+  (printf msg))

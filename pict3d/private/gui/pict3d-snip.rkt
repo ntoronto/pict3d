@@ -40,32 +40,7 @@
 (define move-accel 25.0)
 (define friction-accel -10.0)
 
-;; ===================================================================================================
-;; Types
-#;
-(define-type Pict3D%
-  (Class #:implements Snip%
-         (init-field [scene  Scene]
-                     [legacy?  Boolean]
-                     [width   Positive-Index]
-                     [height  Positive-Index]
-                     [z-near  Flonum]
-                     [z-far   Flonum]
-                     [fov-degrees  Flonum]
-                     [background  FlVector]
-                     [ambient  FlVector])
-         [get-init-params  (-> (Values Positive-Index Positive-Index Flonum Flonum Flonum
-                                       FlVector FlVector Flonum))]
-         [get-scene  (-> Scene)]
-         [set-argb-pixels  (-> Bytes Void)]
-         ))
-#;
-(define-type Pict3D-GUI%
-  (Class (init-field [pict (Instance Pict3D%)])
-         [is-capturing?  (-> Boolean)]
-         [own-caret  (-> Any Void)]
-         [on-event  (-> (Instance Mouse-Event%) Void)]
-         [on-char   (-> (Instance Key-Event%) Void)]))
+(define icon-timeout 2000)
 
 ;; ===================================================================================================
 ;; Rendering threads
@@ -87,7 +62,7 @@
      (shape->scene (make-directional-light-shape e2 (flv3neg dv))))))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
-(define (make-snip-render-thread snip ch)
+(define (make-snip-render-thread gui ch)
   (define (render-thread-loop)
     ;; Wait for a view matrix
     (define view
@@ -102,8 +77,9 @@
       (time-apply
        (λ ()
          (define-values
-           (legacy? width height znear zfar fov-degrees background ambient)
-           (send snip get-init-params))
+           (legacy? width height znear zfar fov-degrees background ambient
+                    add-sunlight? add-indicators?)
+           (send gui get-render-params))
          ;; Compute a projection matrix
          (define fov-radians (degrees->radians (fl fov-degrees)))
          (define proj
@@ -114,21 +90,25 @@
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy?)
            ;; Draw the scene, an origin, and a couple of lights
-           (define s (send snip get-scene))
+           (define s (send gui get-scene))
            (define scenes
-             (list* s
-                    axes-scene
-                    standard-over-light
-                    standard-under-light
-                    (map (λ (t) (make-trans-scene t basis-scene))
-                         (scene-all-group-transforms s))))
+             (append (list s)
+                     (if add-sunlight?
+                         (list standard-over-light
+                               standard-under-light)
+                         empty)
+                     (if add-indicators?
+                         (cons axes-scene
+                               (map (λ (t) (make-trans-scene t basis-scene))
+                                    (scene-all-group-transforms s)))
+                         empty)))
            (draw-scenes scenes width height view proj
                         (rgba->flvector background)
                         (emitted->flvector ambient))
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
            (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-           (send snip set-argb-pixels bs)))
+           (send gui set-argb-pixels bs)))
        empty))
     
     (log-pict3d-debug "<snip> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"
@@ -142,6 +122,44 @@
 ;; ===================================================================================================
 ;; The snip's GUI
 
+(define (draw-sunlight-icon dc x y color)
+  (define-values (orig-x orig-y) (send dc get-origin))
+  (send dc set-origin (+ orig-x x) (+ orig-y y))
+  (send dc set-smoothing 'smoothed)
+  (send dc set-pen "black" 0.5 'solid)
+  (send dc set-brush color 'solid)
+  (send dc draw-ellipse 5.5 5.5 13 13)
+  (for ([ang  (in-range -180 180 (/ 360 10))])
+    (define c (cos (degrees->radians ang)))
+    (define s (sin (degrees->radians ang)))
+    (send dc set-pen "black" 3 'solid)
+    (send dc draw-line (+ 12 (* c 8)) (+ 12 (* s 8)) (+ 12 (* c 10)) (+ 12 (* s 10)))
+    (send dc set-pen color 2 'solid)
+    (send dc draw-line (+ 12 (* c 8)) (+ 12 (* s 8)) (+ 12 (* c 10)) (+ 12 (* s 10))))
+  (send dc set-origin orig-x orig-y))
+
+(define (draw-axes-icon dc x y white red green blue)
+  (define-values (orig-x orig-y) (send dc get-origin))
+  (send dc set-origin (+ orig-x x 2) (+ orig-y y 2))
+  (send dc set-smoothing 'smoothed)
+  (send dc set-pen "black" 0.5 'solid)
+  (send dc set-brush white 'solid)
+  (send dc draw-ellipse 9 9 6 6)
+  (for ([ang  (in-list '(150 30 -90))]
+        [color  (in-list (list red green blue))])
+    (define c (cos (degrees->radians ang)))
+    (define s (sin (degrees->radians ang)))
+    (send dc set-pen "black" 5 'solid)
+    (send dc draw-line (+ 12 (* c 5)) (+ 12 (* s 5)) (+ 12 (* c 10)) (+ 12 (* s 10)))
+    (send dc set-pen color 4 'solid)
+    (send dc draw-line (+ 12 (* c 5)) (+ 12 (* s 5)) (+ 12 (* c 10)) (+ 12 (* s 10))))
+  (send dc set-origin orig-x orig-y))
+
+(define gray (make-object color% 128 128 128))
+(define red (make-object color% 255 128 128))
+(define green (make-object color% 128 255 128))
+(define blue (make-object color% 128 128 255))
+
 ;(: pict3d-gui% Pict3D-GUI%)
 (define pict3d-gui%
   (class object%
@@ -149,11 +167,17 @@
     
     (super-new)
     
+    (define/public (get-render-params)
+      (send pict get-init-params))
+    
+    (define/public (get-scene) (send pict get-scene))
+    (define/public (set-argb-pixels bs) (send pict set-argb-pixels bs))
+    
     ;(: render-queue (Async-Channel FlAffine3-))
     (define render-queue (make-async-channel))
     
     ;(: render-thread Thread)
-    (define render-thread (make-snip-render-thread pict render-queue))
+    (define render-thread (make-snip-render-thread this render-queue))
     
     ;(: camera (Instance Camera%))
     (define camera
@@ -207,11 +231,39 @@
                               physics-delay
                               physics-timeout))))
     
+    (define display-icons? #f)
+    (define icon-timer #f)
+    
+    ;(: start-icon-timer (-> Void))
+    (define (display-icons)
+      (set! display-icons? #t)
+      (send pict refresh)
+      (define icon-timer-val icon-timer)
+      (if icon-timer-val
+          (send icon-timer-val start icon-timeout #t)
+          (set! icon-timer (make-object timer%
+                             (λ ()
+                               (set! display-icons? #f)
+                               (set! icon-timer #f)
+                               (send pict refresh))
+                             icon-timeout
+                             #t))))
+    
     (define/public (own-caret own-it?)
       (unless own-it?
         (set! capturing? #f)
         (hash-clear!* key-hash)
-        (stop-frame-timer)))
+        (stop-frame-timer))
+      (send pict refresh))
+    
+    (define/public (draw dc x y)
+      (when (and (not capturing?) display-icons?)
+        (if (send pict get-add-sunlight?)
+            (draw-sunlight-icon dc (+ x 2) (+ y 2) "white")
+            (draw-sunlight-icon dc (+ x 2) (+ y 2) gray))
+        (if (send pict get-add-indicators?)
+            (draw-axes-icon dc (+ x 2 24) (+ y 2) "white" red green blue)
+            (draw-axes-icon dc (+ x 2 24) (+ y 2) gray gray gray gray))))
     
     ;(: last-mouse-x Integer)
     ;(: last-mouse-y Integer)
@@ -228,26 +280,36 @@
     (define yaw-vel 0.0)
     (define pitch-vel 0.0)
     
-    (define/public (on-event e)
+    (define/public (on-event dc sx sy e)
       (define admin (send pict get-admin))
       (define editor (and admin (send admin get-editor)))
       (case (send e get-event-type)
         [(left-down)
-         ;; Center the mouse pointer (generates another mouse event)
-         (define-values (x y) (snip-center-pointer pict))
-         (cond [capturing?
-                ;; If capturing, stop capturing
-                (cond [editor  (send editor set-caret-owner #f)]
-                      [else    (set! capturing? #f)
-                               (stop-frame-timer)])]
-               [(and x y)
-                ;; If not capturing and it worked, start capturing
-                (set! center-mouse-x x)
-                (set! center-mouse-y y)
-                (set! last-mouse-x x)
-                (set! last-mouse-y y)
-                (set! capturing? #t)
-                (start-frame-timer)])]
+         (cond
+           [(and (<= 2 sx (+ 2 24)) (<= 2 sy (+ 2 24)))
+            (send pict toggle-add-sunlight?)
+            (set! last-view-matrix #f)
+            (maybe-redraw)]
+           [(and (<= (+ 2 24) sx (+ 2 24 24)) (<= 2 sy (+ 2 24)))
+            (send pict toggle-add-indicators?)
+            (set! last-view-matrix #f)
+            (maybe-redraw)]
+           [else
+            ;; Center the mouse pointer (generates another mouse event)
+            (define-values (x y) (snip-center-pointer pict))
+            (cond [capturing?
+                   ;; If capturing, stop capturing
+                   (cond [editor  (send editor set-caret-owner #f)]
+                         [else    (set! capturing? #f)
+                                  (stop-frame-timer)])]
+                  [(and x y)
+                   ;; If not capturing and it worked, start capturing
+                   (set! center-mouse-x x)
+                   (set! center-mouse-y y)
+                   (set! last-mouse-x x)
+                   (set! last-mouse-y y)
+                   (set! capturing? #t)
+                   (start-frame-timer)])])]
         [(right-down middle-down)  (when editor
                                      (send editor set-caret-owner #f)
                                      (send editor on-local-event e))]
@@ -255,36 +317,48 @@
         [(right-up middle-up)  (when editor
                                  (send editor on-local-event e))]
         [(motion)
-         (when capturing?
-           (define x (send e get-x))
-           (define y (send e get-y))
-           (cond
-             [(and (= x center-mouse-x) (= y center-mouse-y))
-              ;; This event is almost certainly generated by centering the pointer, so don't
-              ;; update the angle velocities
-              (set! last-mouse-x x)
-              (set! last-mouse-y y)]
-             [else
-              ;; Update the angle velocities using mouse position differences
-              (define dx (- x last-mouse-x))
-              (define dy (- y last-mouse-y))
-              (set! last-mouse-x x)
-              (set! last-mouse-y y)
-              (unless (and (= dx 0) (= dy 0))
-                (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
-                (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
-                ;; Center the mouse pointer (generates another mouse event)
-                (define-values (x y) (snip-center-pointer pict))
-                (cond [(and x y)
-                       ;; Keep track of these so we can tell the next time through whether the
-                       ;; mouse event was generated by centering
-                       (set! center-mouse-x x)
-                       (set! center-mouse-y y)
-                       (start-frame-timer)]
-                      ;; Both of these cases below stop mouse capture
-                      [editor  (send editor set-caret-owner #f)]
-                      [else    (set! capturing? #f)
-                               (stop-frame-timer)]))]))]))
+         (cond
+           [capturing?
+            (define x (send e get-x))
+            (define y (send e get-y))
+            (cond
+              [(and (= x center-mouse-x) (= y center-mouse-y))
+               ;; This event is almost certainly generated by centering the pointer, so don't
+               ;; update the angle velocities
+               (set! last-mouse-x x)
+               (set! last-mouse-y y)]
+              [else
+               ;; Update the angle velocities using mouse position differences
+               (define dx (- x last-mouse-x))
+               (define dy (- y last-mouse-y))
+               (set! last-mouse-x x)
+               (set! last-mouse-y y)
+               (unless (and (= dx 0) (= dy 0))
+                 (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
+                 (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
+                 ;; Center the mouse pointer (generates another mouse event)
+                 (define-values (x y) (snip-center-pointer pict))
+                 (cond [(and x y)
+                        ;; Keep track of these so we can tell the next time through whether the
+                        ;; mouse event was generated by centering
+                        (set! center-mouse-x x)
+                        (set! center-mouse-y y)
+                        (start-frame-timer)]
+                       ;; Both of these cases below stop mouse capture
+                       [editor  (send editor set-caret-owner #f)]
+                       [else    (set! capturing? #f)
+                                (stop-frame-timer)]))])]
+           [else
+            (display-icons)])]))
+    
+    (define/public (adjust-cursor dc sx sy e)
+      (cond
+        [capturing?  blank-cursor]
+        [else
+         (display-icons)
+         (if (and (<= 2 sx (+ 2 24 24)) (<= 2 sy (+ 2 24)))
+             arrow-cursor
+             cross-cursor)]))
     
     ;(: key-hash (HashTable (U Char Symbol) #t))
     (define key-hash (make-hasheq empty))
@@ -360,6 +434,8 @@
 ;; The snip
 
 (define blank-cursor (make-object cursor% 'blank))
+(define cross-cursor (make-object cursor% 'cross))
+(define arrow-cursor (make-object cursor% 'arrow))
 
 (define black-pen (make-object pen% "black" 1 'solid))
 (define white-pen (make-object pen% "white" 1 'solid))
@@ -392,19 +468,26 @@
                 z-far
                 fov-degrees
                 background
-                ambient)
+                ambient
+                add-sunlight?
+                add-indicators?)
     
     (super-make-object)
     
     ;(send this set-snipclass snip-class)
     ;(send (get-the-snip-class-list) add snip-class)
     
+    (define/public (get-add-sunlight?) add-sunlight?)
+    (define/public (get-add-indicators?) add-indicators?)
+    (define/public (toggle-add-sunlight?) (set! add-sunlight? (not add-sunlight?)))
+    (define/public (toggle-add-indicators?) (set! add-indicators? (not add-indicators?)))
+    
     (define/public (get-scene) scene)
     
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
       (make-object pict3d% scene legacy?
-        width height z-near z-far fov-degrees background ambient))
+        width height z-near z-far fov-degrees background ambient add-sunlight? add-indicators?))
     
     (define/override (write f)
       (error 'write "pict3d does not support cut, copy and paste yet"))
@@ -422,8 +505,13 @@
             the-bitmap-val)))
     
     (define/public (get-init-params)
-      (values legacy?
-              width height z-near z-far fov-degrees background ambient))
+      (values legacy? width height z-near z-far fov-degrees background ambient
+              add-sunlight? add-indicators?))
+    
+    (define/public (refresh)
+      (define admin (send this get-admin))
+      (when admin
+        (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -432,9 +520,7 @@
                               (format "bytes of length at least ~a" len)
                               (bytes-length bs)))
       (send (get-the-bitmap) set-argb-pixels 0 0 width height bs #f #t)
-      (define admin (send this get-admin))
-      (when admin
-        (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
+      (refresh))
     
     ;(: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
@@ -449,21 +535,9 @@
       (send dc set-pen white-pen)
       (send dc draw-rectangle (+ x 1.5) (+ y 1.5) (+ width 2) (+ height 2))
       (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
-      #;
-      (super draw dc x y left top right bottom dx dy draw-caret))
+      (when gui (send gui draw dc x y)))
     
-    ;; Can't use this because of an error in TR
     (define/override (get-extent dc x y [w #f] [h #f] [descent #f] [space #f] [lspace #f] [rspace #f])
-      (when (box? w) (set-box! w (+ width 4)))
-      (when (box? h) (set-box! h (+ height 4)))
-      (when (box? descent) (set-box! descent 0))
-      (when (box? space) (set-box! space 0))
-      (when (box? lspace) (set-box! lspace 0))
-      (when (box? rspace) (set-box! rspace 0)))
-    
-    #;; This works around it
-    (define/override (get-extent dc x y . #{args : (Listof (U #f (Boxof Nonnegative-Real)))})
-      (match-define (list w h descent space lspace rspace) args)
       (when (box? w) (set-box! w (+ width 4)))
       (when (box? h) (set-box! h (+ height 4)))
       (when (box? descent) (set-box! descent 0))
@@ -478,7 +552,7 @@
     
     (define/override (on-event dc x y editorx editory e)
       (let ([gui-val  gui])
-        (and gui-val (send gui-val on-event e)))
+        (and gui-val (send gui-val on-event dc (- (send e get-x) x) (- (send e get-y) y) e)))
       (super on-event dc x y editorx editory e))
     
     (define/override (on-char dc x y editorx editory e)
@@ -486,11 +560,16 @@
         (and gui-val (send gui-val on-char e)))
       (super on-char dc x y editorx editory e))
     
-    (define/override (adjust-cursor dc x y editorx editory evt)
-      (if (let ([gui-val gui])
-            (and gui-val (send gui-val is-capturing?)))
-          blank-cursor
-          #f))
+    (define/override (adjust-cursor dc x y editorx editory e)
+      (let ([gui-val  gui])
+        (cond
+          [gui-val
+           (define sx (- (send e get-x) x))
+           (define sy (- (send e get-y) y))
+           (cond [(and (<= 0 sx (+ width 3)) (<= 0 sy (+ height 3)))
+                  (send gui-val adjust-cursor dc sx sy e)]
+                 [else  #f])]
+          [else  #f])))
     ))
 
 (define (scene->pict3d scene)
@@ -503,7 +582,9 @@
     (current-pict3d-z-far)
     (current-pict3d-fov-degrees)
     (current-pict3d-background)
-    (current-pict3d-ambient)))
+    (current-pict3d-ambient)
+    (current-pict3d-add-sunlight?)
+    (current-pict3d-add-indicators?)))
 
 (define (pict3d-custom-write scene out mode)
   (define print-it
