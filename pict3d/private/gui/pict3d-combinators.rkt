@@ -685,10 +685,11 @@
 (: surface (-> Pict3D Dir (U #f Pos)))
 (define (surface p dv)
   (define-values (v1 v2) (bounding-rectangle p))
+  (define m (dir-dist dv))
   (cond
-    [(and v1 v2)
+    [(and v1 v2 (> m 0.0))
      (define v (pos-between v1 v2 0.5))
      (define r (dir-dist (pos- v2 v1)))
-     (define v0 (pos+ v (dir-scale dv r)))
+     (define v0 (pos+ v (dir-scale dv (/ r m))))
      (trace p v0 v)]
     [else  #f]))
