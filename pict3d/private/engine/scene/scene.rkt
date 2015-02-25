@@ -46,24 +46,47 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (let ([x e])
     (if (promise? x) (force x) x)))
 
+(: value-if-forced (-> Lazy-FlRect3 Lazy-FlRect3))
+(define (value-if-forced b)
+  (if (and (promise? b) (promise-forced? b)) (force b) b))
+
+(: lazy-flrect3-join (-> Lazy-FlRect3 Lazy-FlRect3 Lazy-FlRect3))
+(define (lazy-flrect3-join b1 b2)
+  (let ([b1  (value-if-forced b1)]
+        [b2  (value-if-forced b2)])
+    (if (and (flrect3? b1) (flrect3? b2))
+        (flrect3-join b1 b2)
+        (delay (flrect3-join (maybe-force b1) (maybe-force b2))))))
+
+(: lazy-flrect3-trans (-> (U 'visible 'invisible) Lazy-FlRect3 Affine Nonempty-Scene Lazy-FlRect3))
+(define (lazy-flrect3-trans kind b0 t0 s0)
+  (let ([b0  (value-if-forced b0)])
+    (define t (affine-transform t0))
+    (if (flt3axial? t 1e-14)
+        (if (flrect3? b0)
+            (flrect3-transform b0 t)
+            (delay (flrect3-transform (force b0) t)))
+        (delay (nonempty-scene-trans-rect kind t0 s0)))))
+
 ;; ===================================================================================================
 ;; Scene constructors
 
 (: shape->scene (-> Shape Nonempty-Scene))
 (define (shape->scene a)
-  (leaf-scene (shape-rect a) a))
+  (leaf-scene (shape-visible-rect a)
+              (shape-invisible-rect a)
+              a))
 
 (: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-node-scene s1 s2)
-  (define b1 (nonempty-scene-lazy-rect s1))
-  (define b2 (nonempty-scene-lazy-rect s2))
-  (define b (if (and (nonempty-flrect3? b1) (nonempty-flrect3? b2))
-                (flrect3-join b1 b2)
-                (delay (flrect3-join (maybe-force b1) (maybe-force b2)))))
+  (define bv (lazy-flrect3-join (nonempty-scene-lazy-visible-rect s1)
+                                (nonempty-scene-lazy-visible-rect s2)))
+  (define bi (lazy-flrect3-join (nonempty-scene-lazy-invisible-rect s1)
+                                (nonempty-scene-lazy-invisible-rect s2)))
   (define c (fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
   (define fs (flags-join (scene-flags s1) (scene-flags s2)))
-  (node-scene b c ms fs s1 s2))
+  (node-scene bv bi c ms fs s1 s2))
 
 (: make-node-scene (-> Scene Scene Scene))
 (define (make-node-scene s1 s2)
@@ -73,14 +96,11 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: make-simple-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
 (define (make-simple-trans-scene t0 s0)
-  (define b0 (nonempty-scene-lazy-rect s0))
-  (define t (affine-transform t0))
-  (define b (if (flt3axial? t 1e-14)
-                (if (nonempty-flrect3? b0)
-                    (flrect3-transform b0 t)
-                    (delay (flrect3-transform (force b0) t)))
-                (delay (nonempty-scene-trans-rect t0 s0))))
-  (trans-scene b (scene-count s0) (scene-tags s0) (scene-flags s0) t0 s0))
+  (define bv0 (nonempty-scene-lazy-visible-rect s0))
+  (define bi0 (nonempty-scene-lazy-invisible-rect s0))
+  (define bv (lazy-flrect3-trans 'visible bv0 t0 s0))
+  (define bi (lazy-flrect3-trans 'invisible bi0 t0 s0))
+  (trans-scene bv bi (scene-count s0) (scene-tags s0) (scene-flags s0) t0 s0))
 
 (: make-nonempty-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
 (define (make-nonempty-trans-scene t s)
@@ -107,9 +127,10 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (: make-group-scene (-> Tag Scene Nonempty-Scene))
 (define (make-group-scene n s)
   (cond [(empty-scene? s)
-         (group-scene zero-flrect3 0 (singleton-tags n) empty-flags n s)]
+         (group-scene zero-flrect3 zero-flrect3 0 (singleton-tags n) empty-flags n s)]
         [else
-         (group-scene (nonempty-scene-lazy-rect s)
+         (group-scene (nonempty-scene-lazy-visible-rect s)
+                      (nonempty-scene-lazy-invisible-rect s)
                       (scene-count s)
                       (tags-add (scene-tags s) n)
                       (scene-flags s)
@@ -118,45 +139,73 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Shape bounding box
 
-(: shape-rect (-> Shape Nonempty-FlRect3))
-(define (shape-rect a)
+(: shape-visible-rect (-> Shape FlRect3))
+(define (shape-visible-rect a)
   (cond
     [(solid-shape? a)
      (cond
        [(triangle-shape? a)   (triangle-shape-rect a)]
        [(rectangle-shape? a)  (rectangle-shape-rect a)]
        [(sphere-shape? a)     (sphere-shape-rect a)])]
+    [(light-shape? a)  empty-flrect3]
+    [(frozen-scene-shape? a)
+     (frozen-scene-shape-visible-rect a)]))
+
+(: shape-invisible-rect (-> Shape FlRect3))
+(define (shape-invisible-rect a)
+  (cond
+    [(solid-shape? a)  empty-flrect3]
     [(light-shape? a)
      (cond
        [(directional-light-shape? a)  directional-light-shape-rect]
        [(point-light-shape? a)        (point-light-shape-rect a)])]
     [(frozen-scene-shape? a)
-     (frozen-scene-shape-rect a)]))
+     (frozen-scene-shape-invisible-rect a)]))
 
-(: nonempty-scene-trans-rect (-> Affine Nonempty-Scene Nonempty-FlRect3))
-(define (nonempty-scene-trans-rect t s)
-  (cond
-    [(leaf-scene? s)  (flrect3-transform (maybe-force (nonempty-scene-lazy-rect s))
-                                         (affine-transform t))]
-    [(node-scene? s)
-     (define s1 (node-scene-neg s))
-     (define s2 (node-scene-pos s))
-     (flrect3-join (nonempty-scene-trans-rect t s1)
-                   (nonempty-scene-trans-rect t s2))]
-    [(trans-scene? s)
-     (define t0 (trans-scene-affine s))
-     (define s0 (trans-scene-scene s))
-     (nonempty-scene-trans-rect (affine-compose t t0) s0)]
-    [(group-scene? s)
-     (define s0 (group-scene-scene s))
-     (cond [(empty-scene? s0)  (flrect3-transform zero-flrect3 (affine-transform t))]
-           [else  (nonempty-scene-trans-rect t s0)])]))
+(: nonempty-scene-trans-rect (-> (U 'visible 'invisible) Affine Nonempty-Scene FlRect3))
+(define (nonempty-scene-trans-rect kind t s)
+  (: nonempty-scene-lazy-rect (-> Nonempty-Scene Lazy-FlRect3))
+  (define (nonempty-scene-lazy-rect s)
+    (if (eq? kind 'visible)
+        (nonempty-scene-lazy-visible-rect s)
+        (nonempty-scene-lazy-invisible-rect s)))
+  
+  (let loop ([t t] [s s])
+    (cond
+      [(leaf-scene? s)
+       (define b (maybe-force (nonempty-scene-lazy-rect s)))
+       (if (empty-flrect3? b)
+           empty-flrect3
+           (flrect3-transform b (affine-transform t)))]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
+       (flrect3-join (loop t s1)
+                     (loop t s2))]
+      [(trans-scene? s)
+       (define t0 (trans-scene-affine s))
+       (define s0 (trans-scene-scene s))
+       (loop (affine-compose t t0) s0)]
+      [(group-scene? s)
+       (define s0 (group-scene-scene s))
+       (cond [(empty-scene? s0)  (flrect3-transform zero-flrect3 (affine-transform t))]
+             [else  (loop t s0)])])))
 
-(: scene-rect (case-> (-> Nonempty-Scene Nonempty-FlRect3)
-                      (-> Scene FlRect3)))
+(: scene-rect (-> Scene FlRect3))
 (define (scene-rect s)
   (cond [(empty-scene? s)  empty-flrect3]
-        [else  (maybe-force (nonempty-scene-lazy-rect s))]))
+        [else  (flrect3-join (scene-visible-rect s)
+                             (scene-invisible-rect s))]))
+
+(: scene-visible-rect (-> Scene FlRect3))
+(define (scene-visible-rect s)
+  (cond [(empty-scene? s)  empty-flrect3]
+        [else  (maybe-force (nonempty-scene-lazy-visible-rect s))]))
+
+(: scene-invisible-rect (-> Scene FlRect3))
+(define (scene-invisible-rect s)
+  (cond [(empty-scene? s)  empty-flrect3]
+        [else  (maybe-force (nonempty-scene-lazy-invisible-rect s))]))
 
 ;; ===================================================================================================
 ;; Shape flags
@@ -178,22 +227,26 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: node-scene-insert (-> node-scene Nonempty-Scene Nonempty-Scene))
 (define (node-scene-insert s1 s2)
-  (define r1 (nonempty-scene-lazy-rect s1))
+  (define bv1 (nonempty-scene-lazy-visible-rect s1))
+  (define bi1 (nonempty-scene-lazy-invisible-rect s1))
   (define c1 (container-scene-count s1))
   (define ms1 (container-scene-child-tags s1))
   (define fs1 (container-scene-child-flags s1))
   (define s11 (node-scene-neg s1))
   (define s12 (node-scene-pos s1))
-  (define r2 (scene-rect s2))
-  (cond [(flrect3-contains-rect? (scene-rect s11) r2)
-         (node-scene r1
+  (define bv2 (scene-visible-rect s2))
+  (define bi2 (scene-invisible-rect s2))
+  (cond [(and (flrect3-contains-rect? (scene-visible-rect s11) bv2)
+              (flrect3-contains-rect? (scene-invisible-rect s11) bi2))
+         (node-scene bv1 bi1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
                      (flags-join fs1 (scene-flags s2))
                      (nonempty-scene-union s11 s2)
                      s12)]
-        [(flrect3-contains-rect? (scene-rect s12) r2)
-         (node-scene r1
+        [(and (flrect3-contains-rect? (scene-visible-rect s12) bv2)
+              (flrect3-contains-rect? (scene-invisible-rect s12) bi2))
+         (node-scene bv1 bi1
                      (unsafe-fx+ c1 (scene-count s2))
                      (tags-union ms1 (scene-tags s2))
                      (flags-join fs1 (scene-flags s2))
@@ -204,11 +257,17 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: nonempty-scene-union (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union s1 s2)
-  (define r1 (scene-rect s1))
-  (define r2 (scene-rect s2))
-  (cond [(and (node-scene? s1) (flrect3-contains-rect? r1 r2))
+  (define bv1 (scene-visible-rect s1))
+  (define bi1 (scene-invisible-rect s1))
+  (define bv2 (scene-visible-rect s2))
+  (define bi2 (scene-invisible-rect s2))
+  (cond [(and (node-scene? s1)
+              (flrect3-contains-rect? bv1 bv2)
+              (flrect3-contains-rect? bi1 bi2))
          (node-scene-insert s1 s2)]
-        [(and (node-scene? s2) (flrect3-contains-rect? r2 r1))
+        [(and (node-scene? s2)
+              (flrect3-contains-rect? bv2 bv1)
+              (flrect3-contains-rect? bi2 bi1))
          (node-scene-insert s2 s1)]
         [else
          (nonempty-scene-union/rebalance s1 s2)]))
@@ -260,29 +319,35 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: nonempty-scene-union/rebalance (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 (define (nonempty-scene-union/rebalance s1 s2)
-  (define r (flrect3-join (scene-rect s1) (scene-rect s2)))
+  (define bv (flrect3-join (scene-visible-rect s1) (scene-visible-rect s2)))
+  (define bi (flrect3-join (scene-invisible-rect s1) (scene-invisible-rect s2)))
+  (define b (flrect3-join bv bi))
   (define c (unsafe-fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
   (define fs (flags-join (scene-flags s1) (scene-flags s2)))
-  (define-values (i x) (flrect3-longest-axis/center r))
-  (define-values (s11 s12) (scene-rebalance-split s1 i x))
-  (define-values (s21 s22) (scene-rebalance-split s2 i x))
-  (cond [(empty-scene? s11)
-         (if (or (empty-scene? s21) (empty-scene? s22))
-             (node-scene r c ms fs s1 s2)
-             (node-scene r c ms fs s21 (nonempty-scene-union/rebalance s1 s22)))]
-        [(empty-scene? s12)
-         (if (or (empty-scene? s21) (empty-scene? s22))
-             (node-scene r c ms fs s1 s2)
-             (node-scene r c ms fs (nonempty-scene-union/rebalance s1 s21) s22))]
-        [(empty-scene? s21)
-         (node-scene r c ms fs s11 (nonempty-scene-union/rebalance s12 s2))]
-        [(empty-scene? s22)
-         (node-scene r c ms fs (nonempty-scene-union/rebalance s11 s2) s12)]
-        [else
-         (node-scene r c ms fs
-                     (nonempty-scene-union/rebalance s11 s21)
-                     (nonempty-scene-union/rebalance s12 s22))]))
+  (cond
+    [(empty-flrect3? b)
+     (node-scene bv bi c ms fs s1 s2)]
+    [else
+     (define-values (i x) (flrect3-longest-axis/center b))
+     (define-values (s11 s12) (scene-rebalance-split s1 i x))
+     (define-values (s21 s22) (scene-rebalance-split s2 i x))
+     (cond [(empty-scene? s11)
+            (if (or (empty-scene? s21) (empty-scene? s22))
+                (node-scene bv bi c ms fs s1 s2)
+                (node-scene bv bi c ms fs s21 (nonempty-scene-union/rebalance s1 s22)))]
+           [(empty-scene? s12)
+            (if (or (empty-scene? s21) (empty-scene? s22))
+                (node-scene bv bi c ms fs s1 s2)
+                (node-scene bv bi c ms fs (nonempty-scene-union/rebalance s1 s21) s22))]
+           [(empty-scene? s21)
+            (node-scene bv bi c ms fs s11 (nonempty-scene-union/rebalance s12 s2))]
+           [(empty-scene? s22)
+            (node-scene bv bi c ms fs (nonempty-scene-union/rebalance s11 s2) s12)]
+           [else
+            (node-scene bv bi c ms fs
+                        (nonempty-scene-union/rebalance s11 s21)
+                        (nonempty-scene-union/rebalance s12 s22))])]))
 
 ;; ===================================================================================================
 ;; Map and filter
@@ -874,9 +939,13 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Bounding box
 
-(: frozen-scene-shape-rect (-> frozen-scene-shape Nonempty-FlRect3))
-(define (frozen-scene-shape-rect a)
-  (scene-rect (frozen-scene-shape-scene a)))
+(: frozen-scene-shape-visible-rect (-> frozen-scene-shape FlRect3))
+(define (frozen-scene-shape-visible-rect a)
+  (scene-visible-rect (frozen-scene-shape-scene a)))
+
+(: frozen-scene-shape-invisible-rect (-> frozen-scene-shape FlRect3))
+(define (frozen-scene-shape-invisible-rect a)
+  (scene-invisible-rect (frozen-scene-shape-scene a)))
 
 ;; ===================================================================================================
 ;; Flags

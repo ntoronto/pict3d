@@ -70,7 +70,7 @@
   (time
    (append
     
-    (list (light (pos 0 0 2) (emitted 1.0 1.0 0.95 5)))
+    (list (light (pos 0 0 2) (emitted 1.0 1.0 0.95 2)))
     
     (for*/list ([xi  (in-range 0 grid-size 8)]
                 [yi  (in-range 0 grid-size 8)])
@@ -93,15 +93,12 @@
          (rectangle (pos x0 y0 (* 0.5 z))
                     (pos x1 y1 (+ (* 0.5 z) 1.0))))))))
 
-(define surface
-  (time
-   (combine (combine* lights)
-            (combine* ts)
-            (combine* rects))))
-
 (define pict
-  (combine surface (basis 'camera (point-at (pos 20 20 20) origin))))
-
+  (combine (combine* lights)
+           (combine* ts)
+           (combine* rects)
+           (basis 'camera (point-at (pos 10 10 10) origin))))
+#;
 (profile
  (for ([_  (in-range 100)])
    (pict3d->bitmap pict 32 32)))

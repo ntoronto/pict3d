@@ -37,7 +37,7 @@
          (raise-argument-error 'make-directional-light-shape "length-3 flvector"
                                1 e dv)]
         [else
-         (define fs (flags-join light-flag transparent-flag (color-emitting-flag e)))
+         (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
          (directional-light-shape (lazy-passes) fs e dv)]))
 
 ;; ===================================================================================================

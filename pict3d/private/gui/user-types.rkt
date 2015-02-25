@@ -5,6 +5,7 @@
          typed/racket/class
          typed/racket/gui
          math/flonum
+         math/base
          "../engine/scene/tags.rkt"
          (except-in "../engine/types.rkt"
                     material)
@@ -48,6 +49,7 @@
  dir-normalize
  dir-dot
  dir-cross
+ angles-dir
  pos+
  pos-
  pos-between
@@ -334,6 +336,16 @@
 (: dir-cross (-> Dir Dir Dir))
 (define (dir-cross dv1 dv2)
   (Dir (flv3cross (dir->flvector dv1) (dir->flvector dv2))))
+
+(: angles-dir (-> Real Real Dir))
+(define (angles-dir ang alt)
+  (let ([ang  (fl (degrees->radians ang))]
+        [alt  (fl (degrees->radians alt))])
+    (define c0 (flcos ang))
+    (define s0 (flsin ang))
+    (define c1 (flcos alt))
+    (define s1 (flsin alt))
+    (dir (* c0 c1) (* s0 c1) s1)))
 
 (: pos+ (-> Pos Dir Pos))
 (define (pos+ v dv)

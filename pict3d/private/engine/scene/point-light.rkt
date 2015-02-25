@@ -39,7 +39,7 @@
          (raise-argument-error 'make-point-light-shape "length-3 flvector"
                                1 e v r0 r1)]
         [else
-         (define fs (flags-join light-flag transparent-flag (color-emitting-flag e)))
+         (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
          (point-light-shape (lazy-passes) fs e v r0 r1)]))
 
 ;; ===================================================================================================

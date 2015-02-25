@@ -7,6 +7,7 @@
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../gl.rkt"
+         "../../utils.rkt"
          "../types.rkt"
          "../draw-pass.rkt"
          "types.rkt"
@@ -32,7 +33,7 @@
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 t c e m inside?)]
         [else
-         (define fs (flags-join geometry-flag (color-opacity-flag c) (color-emitting-flag e)))
+         (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
          (sphere-shape (lazy-passes) fs t c e m inside?)]))
 
 ;; ===================================================================================================
@@ -83,13 +84,19 @@
 ;; ===================================================================================================
 ;; Bounding box
 
-(define unit-sphere-rect
-  (nonempty-flrect3 (flvector -1.0 -1.0 -1.0)
-                    (flvector +1.0 +1.0 +1.0)))
+(: transformed-sphere-rect (-> Affine Nonempty-FlRect3))
+(define (transformed-sphere-rect t)
+  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+    (flvector-values (fltransform3-forward (->flaffine3 (affine-transform t))) 12))
+  (define dx (flsqrt (+ (* m00 m00) (* m01 m01) (* m02 m02))))
+  (define dy (flsqrt (+ (* m10 m10) (* m11 m11) (* m12 m12))))
+  (define dz (flsqrt (+ (* m20 m20) (* m21 m21) (* m22 m22))))
+  (nonempty-flrect3 (flvector (- m03 dx) (- m13 dy) (- m23 dz))
+                    (flvector (+ m03 dx) (+ m13 dy) (+ m23 dz))))
 
 (: sphere-shape-rect (-> sphere-shape Nonempty-FlRect3))
 (define (sphere-shape-rect a)
-  (flrect3-transform unit-sphere-rect (affine-transform (sphere-shape-affine a))))
+  (transformed-sphere-rect (sphere-shape-affine a)))
 
 ;; ===================================================================================================
 ;; Transform

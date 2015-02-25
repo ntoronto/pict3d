@@ -51,9 +51,9 @@
 
 (require profile)
 
-(values
+(profile
  (let loop ([i 0])
-   (when (and (< i 1000) (send frame is-shown?))
+   (when (send frame is-shown?)
      (time
       (define start-time (fl (current-inexact-milliseconds)))
       (define cx (cos (degrees->radians i)))
@@ -64,14 +64,17 @@
       (define camera
         (point-at (pos (* -6 cx) (* -6 sx) (* 0.5 sx)) origin))
       
+      (define light-pos
+        (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)))
+      
       (define pict
         (combine
          (basis 'camera camera)
          frozen-spheres
          (with-color (rgba "black")
            (with-emitted (emitted 1 1 1 4)
-             (sphere (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) 0.5)))
-         (light (pos (* 2 cx2) (* 2 sx2) (* 2 sx2)) (emitted "silver" 20))))
+             (sphere light-pos 0.5)))
+         (light light-pos (emitted "silver" 20))))
       
       (send canvas set-pict3d pict)
       ;; Rate-limit to 60 FPS

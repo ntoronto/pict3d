@@ -41,7 +41,7 @@
              ))))]))
 
 (define-flags
-  light geometry
+  visible invisible
   opaque transparent
   emitting nonemitting)
 
@@ -98,8 +98,8 @@
 (define (flags-subset? b1 b2)
   (= (flags-meet b1 b2) b1))
 
-(define kind-flags
-  (flags-join light-flag geometry-flag))
+(define visibility-flags
+  (flags-join visible-flag invisible-flag))
 
 (define opacity-flags
   (flags-join opaque-flag transparent-flag))

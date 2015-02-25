@@ -50,10 +50,9 @@
 
 (struct light-shape shape ([flags : Flags] [emitted : FlVector]) #:transparent)
 (struct directional-light-shape light-shape ([direction : FlVector]) #:transparent)
-(struct point-light-shape light-shape
-  ([position : FlVector]
-   [min-radius : Flonum]
-   [max-radius : Flonum])
+(struct point-light-shape light-shape ([position : FlVector]
+                                       [min-radius : Flonum]
+                                       [max-radius : Flonum])
   #:transparent)
 
 (struct frozen-scene-shape shape
@@ -70,12 +69,15 @@
 ;; ===================================================================================================
 ;; Scene types
 
+(define-type Lazy-FlRect3 (U FlRect3 (Promise FlRect3)))
+
 (struct scene () #:transparent)
 
 (struct Empty-Scene scene () #:transparent)
 
 (struct nonempty-scene scene
-  ([lazy-rect : (U Nonempty-FlRect3 (Promise Nonempty-FlRect3))])
+  ([lazy-visible-rect : Lazy-FlRect3]
+   [lazy-invisible-rect : Lazy-FlRect3])
   #:transparent)
 
 (struct container-scene nonempty-scene

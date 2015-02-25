@@ -9,12 +9,13 @@
 (define coal-material (make-material 0.0 0.2 0.8 0.1))
 
 (define torso
-  (let ([torso  (scale (sphere (pos 0 0 0) 1/2) (dir 0.7 0.7 0.6))])
+  (let ([torso  (ellipsoid (pos -0.35 -0.35 0.0) (pos 0.35 0.35 0.60))])
     (move-z
      (combine
-      (basis 'neck (point-at (pos 0 0 0.3) (dir 0 0 1)))
-      (basis 'right-arm (point-at (pos 0 -0.3 0.1) (dir 0.2 -0.3 0.3)))
-      (basis 'left-arm (point-at (pos 0 0.3 0.1) (dir 0.2 0.3 0.3)))
+      (basis 'neck (point-at (surface torso z+) z+))
+      (basis 'right-arm (point-at (surface torso (angles-dir -90 20)) (angles-dir -80 30)
+                                  #:angle 180))
+      (basis 'left-arm (point-at (surface torso (angles-dir 90 10)) (angles-dir 85 45)))
       (freeze
        (combine
         torso
@@ -22,86 +23,87 @@
          (with-color coal-color
            (with-material coal-material
              (combine*
-              (for/list ([y  (in-list '(-0.01 0.0 -0.02 0.01))]
-                         [z  (in-list '(0.2 0.1 0 -0.1))])
-                (sphere (trace torso (pos 1 y z) (dir -1 0 0 ))
-                        0.035)))))
+              (for/list ([ang  (in-list '(-1 1 -1.5 1))]
+                         [alt  (in-list '(-15 0 15 30))])
+                (sphere (surface torso (angles-dir ang alt)) 0.035)))))
          0.01))))
-     0.1)))
+     -0.2)))
 
 (define base
-  (let ([base  (ellipsoid (pos -0.5 -0.5 -0.15) (pos 0.5 0.5 0.7))])
-    (combine
-     (basis 'hips (point-at (pos 0 0 0.7) (dir 0 0 1)))
-     (freeze
-      (combine
-       base
-       (move-x
-        (with-color coal-color
-          (with-material coal-material
-            (combine*
-             (for/list ([y  (in-list '(-0.01 0.0 -0.02))]
-                        [z  (in-list '(0.58 0.5 0.4))])
-               (sphere (trace base (pos 1 y z) (dir -1 0 0)) 0.035)))))
-        0.01))))))
+  (let ([base  (ellipsoid (pos -0.5 -0.5 0) (pos 0.5 0.5 0.85))])
+    (move-z
+     (combine
+      (basis 'hips (point-at (surface base z+) z+))
+      (freeze
+       (combine
+        base
+        (move-x
+         (with-color coal-color
+           (with-material coal-material
+             (combine*
+              (for/list ([ang  (in-list '(-1 1 -1.5))]
+                         [alt  (in-list '(40 30 20))])
+                (sphere (surface base (angles-dir ang alt)) 0.035)))))
+         0.01))))
+     -0.15)))
 
 (define nose
   (with-color (rgba "orange")
     (with-material (make-material 0.2 0.8 0.0 0.1)
-      (cone (pos -0.04 -0.05 0.0) (pos 0.04 0.05 0.25) #:segments 12 #:smooth? #t))))
+      (cone (pos -0.04 -0.05 -0.02) (pos 0.04 0.05 0.23) #:segments 12 #:smooth? #t))))
 
 (define head
-  (let ([head  (sphere (pos 0 0 0.1) 0.25)])
-    (combine
-     (basis 'crown (point-at (pos 0.05 0.02 0.3) (dir 0.3 0.05 1)))
-     (freeze
-      (combine
-       head
-       ;; Nose
-       (move-x (move (rotate-y nose 80)
-                     (pos- (trace head (pos 1 0 0.08) (dir -1 0 0)) origin))
-               -0.01)
-       ;; Eyes
-       (let ([cr  (trace head (pos 1 -0.1 0.14) (dir -1 0 0))]
-             [cl  (trace head (pos 1 0.1 0.16) (dir -1 0 0))])
-         (move-x
-          (combine
-           ;; Creepy red eye
-           (with-color (rgba 1 0.25 0.0 0.75)
-             (sphere cr 0.05))
-           (with-emitted (emitted 1 0.25 0.0 10.0)
-             (sphere cr 0.035))
-           (light cr (emitted 1 0.25 0.0 0.02))
-           ;; Creepy green eye
-           (with-color (rgba 0 1 0.25 0.75)
-             (sphere cl 0.04))
-           (with-emitted (emitted 0 1 0.25 10.0)
-             (sphere cl 0.025))
-           (light cl (emitted 0 1 0.25 0.02)))
-          0.01))
-       ;; Mouth
+  (let ([head  (sphere origin 0.25)])
+    (define eyes
+      (move-x
+       (let ([cr  (surface head (angles-dir -25 12))]
+             [cl  (surface head (angles-dir 25 16))])
+         (combine
+          ;; Creepy red eye
+          (with-color (rgba "red" 0.75)
+            (sphere cr 0.05))
+          (with-emitted (emitted "red" 10.0)
+            (sphere cr 0.035))
+          (light cr (emitted "red" 0.02))
+          ;; Creepy green eye
+          (with-color (rgba "green" 0.75)
+            (sphere cl 0.04))
+          (with-emitted (emitted "green" 10.0)
+            (sphere cl 0.025))
+          (light cl (emitted "green" 0.02))))
+       0.01))
+    
+    (define mouth
+      (move-x
        (with-color coal-color
          (with-material coal-material
            (combine*
-            (for/list ([y  '(-0.13 -0.06 -0.01 0.07 0.12)]
-                       [z  '(0.01 0.005 0.02 0.005 0.004)])
-              (move-x (sphere (trace head (pos 1 y z) (dir -1 0 0))
-                              0.025)
-                      0.01))))))))))
+            (for/list ([ang  (in-range -45 46 15)])
+              (sphere (surface head (angles-dir ang -20)) 0.025)))))
+       0.01))
+    
+    (move-z
+     (combine
+      (basis 'crown (point-at (surface head (angles-dir -10 80)) (angles-dir -10 75)))
+      (basis 'nose (point-at (surface head (angles-dir 0 -3)) (angles-dir 0 10)))
+      (freeze (combine head eyes mouth)))
+     0.1)))
 
 (define hat
   (freeze
-   (with-color (rgba "white")
-     (with-material (make-material 0.01 0.01 0.98 0.1)
-       (combine
-        (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4) #:segments 16)
-        (cylinder (pos -0.3 -0.3 -0.01) (pos 0.3 0.3 0.01) #:segments 16))))))
+   (move-z
+    (with-color (rgba "white")
+      (with-material (make-material 0.01 0.01 0.98 0.1)
+        (combine
+         (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4) #:segments 16)
+         (cylinder (pos -0.3 -0.3 -0.01) (pos 0.3 0.3 0.01) #:segments 16))))
+    -0.05)))
 
 (define snowman-bottom
   (pin base 'hips torso))
 
 (define snowman-top
-  (pin head 'crown hat))
+  (weld (weld head 'crown hat) 'nose nose))
 
 (define arm-segment
   (combine
@@ -109,7 +111,7 @@
    (move-z (scale (basis 'top (point-at origin (dir -0.1 0 1) #:angle 14)) 0.4) 0.3)
    (with-color (rgba "orange")
      (with-material (make-material 0.1 0.4 0.5 0.2)
-       (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 32 #:smooth? #t)))))
+       (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 8 #:smooth? #t)))))
 
 (define arm
   (freeze (weld arm-segment 'top arm-segment)))

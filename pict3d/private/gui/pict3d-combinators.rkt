@@ -68,7 +68,10 @@
  move
  set-origin
  point-at
+ ;; Information
  pict3d-view-transform
+ bounding-rectangle
+ center
  ;; Combining scenes
  combine
  combine*
@@ -85,6 +88,7 @@
  cone
  ;; Collision detection
  trace
+ surface
  )
 
 ;; ===================================================================================================
@@ -454,9 +458,7 @@
 
 (: pict3d-auto-camera (-> Pict3D Affine))
 (define (pict3d-auto-camera p)
-  (let* ([s  (pict3d-scene p)]
-         [s  (scene-filter-shapes s (λ (a) (or (solid-shape? a) (frozen-scene-shape? a))))]
-         [b  (scene-rect s)]
+  (let* ([b  (scene-visible-rect (pict3d-scene p))]
          [c  (if (empty-flrect3? b) origin (flvector->pos (flrect3-center b)))]
          [d  (if (= 0.0 (flrect3-volume b))
                  1.0
@@ -470,6 +472,19 @@
          [t  (if t t (pict3d-auto-camera p))])
     (affine-compose (scale (dir 1.0 -1.0 -1.0))
                     (affine-inverse t))))
+
+(: bounding-rectangle (-> Pict3D (Values (U #f Pos) (U #f Pos))))
+(define (bounding-rectangle p)
+  (define r (scene-visible-rect (pict3d-scene p)))
+  (if (nonempty-flrect3? r)
+      (values (flvector->pos (nonempty-flrect3-min r))
+              (flvector->pos (nonempty-flrect3-max r)))
+      (values #f #f)))
+
+(: center (-> Pict3D (U #f Pos)))
+(define (center p)
+  (define-values (v1 v2) (bounding-rectangle p))
+  (if (and v1 v2) (pos-between v1 v2 0.5) #f))
 
 ;; ===================================================================================================
 ;; Combining scenes (i.e. union)
@@ -666,3 +681,14 @@
            [dv  (dir->flvector to)])
        (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
        (if tmin (flvector->pos (flv3+ v1 (flv3* dv tmin))) #f))]))
+
+(: surface (-> Pict3D Dir (U #f Pos)))
+(define (surface p dv)
+  (define-values (v1 v2) (bounding-rectangle p))
+  (cond
+    [(and v1 v2)
+     (define v (pos-between v1 v2 0.5))
+     (define r (dir-dist (pos- v2 v1)))
+     (define v0 (pos+ v (dir-scale dv r)))
+     (trace p v0 v)]
+    [else  #f]))

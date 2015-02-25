@@ -85,7 +85,7 @@
                                "material, or length-3 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
-         (define fs (flags-join geometry-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
+         (define fs (flags-join visible-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
          (triangle-shape (lazy-passes) fs vs ns cs es ms back?)]))
 
 (: take-triangle (All (A) (-> (Vectorof A) Index Index Index (Vectorof A))))
@@ -123,7 +123,7 @@
                                "material, or length-4 vector of materials"
                                4 vs ns cs es ms back?)]
         [else
-         (define fs (flags-join geometry-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
+         (define fs (flags-join visible-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
          (list (triangle-shape (lazy-passes)
                                fs
                                (take-triangle vs 0 1 2)
@@ -148,7 +148,7 @@
         [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
         [else
-         (define fs (flags-join geometry-flag (color-opacity-flag c) (color-emitting-flag e)))
+         (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
          (rectangle-shape (lazy-passes) fs b c e m back?)]))
 
 ;; ===================================================================================================
