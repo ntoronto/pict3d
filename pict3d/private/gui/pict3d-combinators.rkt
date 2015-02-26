@@ -459,13 +459,22 @@
 
 (: pict3d-auto-camera (-> Pict3D Affine))
 (define (pict3d-auto-camera p)
-  (let* ([b  (scene-visible-rect (pict3d-scene p))]
-         [c  (if (empty-flrect3? b) origin (flvector->pos (flrect3-center b)))]
-         [d  (if (= 0.0 (flrect3-volume b))
-                 1.0
-                 (dir-dist (pos- (flvector->pos (flrect3-max b)) c)))]
-         [d  (/ (* d 1.25) (flsqrt 3.0))])
-    (point-at (pos+ c (dir d d d)) c)))
+  (let* ([b  (scene-visible-rect (pict3d-scene p))])
+    (cond
+      [(empty-flrect3? b)
+       (point-at origin (dir -1 -1 -1))]
+      [else
+       (define mn (flrect3-min b))
+       (define mx (flrect3-max b))
+       (define dv (flv3- mn mx))
+       (define norm (flv3normalize dv))
+       (cond
+         [norm
+          (define-values (dx dy dz) (flv3-values dv))
+          (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
+          (point-at (flvector->pos (flv3fma norm (- r) mx)) (flvector->dir dv))]
+         [else
+          (point-at origin (dir -1 -1 -1))])])))
 
 (: pict3d-view-transform (-> Pict3D Affine))
 (define (pict3d-view-transform p)

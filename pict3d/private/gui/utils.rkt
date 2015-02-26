@@ -92,10 +92,10 @@
 (define camera%
   (class object%
     (init)
-    (init-field position
-                velocity
-                yaw
-                pitch)
+    (init-field [position (flvector 0.0 0.0 0.0)]
+                [velocity (flvector 0.0 0.0 0.0)]
+                [yaw 0.0]
+                [pitch 0.0])
     
     (super-new)
     
@@ -118,12 +118,19 @@
     (define/public (get-view-matrix)
       (flt3compose (get-rotation-matrix) (get-translation-matrix)))
     
+    (define/public (set-view-matrix t)
+      (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+        (flvector->list (fltransform3-inverse t)))
+      (set! position (flvector m03 m13 m23))
+      (set! yaw (+ (atan m12 m02) (/ pi 2)))
+      (set! pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))))
+    
     (define/public (accelerate acc dt)
       (set! position (flv3+ (flv3+ position (flv3* velocity dt))
                             (flv3* acc (* 0.5 dt dt))))
       (set! velocity (flv3+ velocity (flv3* acc dt)))
       (define speed (flv3mag velocity))
-      (when (< speed (flexpt 2.0 -10.0))
+      (when (< speed (flexpt 2.0 -20.0))
         (set! velocity (flvector 0.0 0.0 0.0))))
     
     (define/public (rotate-direction v)

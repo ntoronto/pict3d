@@ -75,6 +75,11 @@ to illuminate a larger scene on its own.
  
  (combine spheres
           (light origin (emitted "violet" 50))))
+(display "
+This scene may not seem very large if you click on it and fly around, because
+it's been automatically scaled down to be easy to navigate. Click '+' three
+times and fly around to get a feel for its actual size.
+")
 (press-enter)
 
 (display "

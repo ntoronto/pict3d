@@ -26,8 +26,10 @@
    (scale (move shapes (dir -1.25 -1.25 -1.25))
           (flexpt 2.0 21.0))))
 
-(pict3d->bitmap
- (combine pict
-          (sunlight (dir -0.25 -0.5 -1.0) (emitted "white" 1))
-          (sunlight (dir 0.25 0.5 1.0) (emitted "white" 0.5)))
- 512 512)
+(current-pict3d-width 512)
+(current-pict3d-height 512)
+(current-pict3d-add-sunlight? #f)
+
+(combine pict
+         (sunlight (dir -0.25 -0.5 -1.0) (emitted "white" 1))
+         (sunlight (dir 0.25 0.5 1.0) (emitted "white" 0.5)))
