@@ -9,12 +9,18 @@
                "typed-racket-more"
                "math-lib"
                "scribble-lib"
+               "gui-lib"
+               "pconvert-lib"
+               "pict-lib" ; why?
+               "profile-lib" ; for tests
                ))
 
 (define build-deps '("draw-doc"
                      "gui-doc"
                      "gui-lib"
-                     "racket-doc"))
+                     "racket-doc"
+                     "plot-lib"  ; why?
+                     ))
 
-(define pkg-desc "3D picts")
+(define pkg-desc "Pict3D: Functional 3D Scenes")
 (define pkg-authors '(ntoronto))
