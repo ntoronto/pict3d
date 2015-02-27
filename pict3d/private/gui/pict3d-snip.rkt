@@ -27,7 +27,8 @@
          "utils/center-pointer.rkt"
          )
 
-(provide snip-class)
+(provide snip-class
+         scene->pict3d)
 
 (define sema (make-semaphore 1))
 
@@ -912,18 +913,3 @@
     (current-pict3d-ambient)
     (current-pict3d-add-sunlight?)
     (current-pict3d-add-indicators?)))
-
-(define (pict3d-custom-write scene out mode)
-  (define print-it
-    (cond [(eq? mode #t)  write]
-          [(eq? mode #f)  display]
-          [else  print]))
-  (print-it (scene->pict3d scene) out))
-
-(define (pict3d-print-converter scene recur)
-  (scene->pict3d scene))
-
-;; Set the custom printer so Pict3D instances will print nicely in Racket
-(current-pict3d-custom-write pict3d-custom-write)
-;; Set the print converter so Pict3D instances will print nicely in HTDP languages
-(current-pict3d-print-converter pict3d-print-converter)
