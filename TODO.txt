@@ -1,67 +1,45 @@
 ======================================================================================================
 Easy
 
-Make shapes have default color until explicitly colorized (like in pict)
+Add triangle mesh shape
 
-Stop using gl-data->bytes
-
-Use attrib divisor on 3.3
-
-Better types for positions and directions
-
-Light min radius (test with cartoon lighting and use for debug lights)
+OpenGL >= 3.2 render paths
+ * Directional light
+ * Point light
+ * Triangle
+ * Point light shell
 
 Reorder arguments in `call-with-*` functions and macros
 
 pict3d% GUI
- * Point hovered over, plane normal at that point (after simple collision detection, or use to test)
- ? Resize corner
- * Toggle sunlight and underlight
- * Toggle debug view of lights
- * Toggle normals, outlines, etc.
+ * Add normal to surface info
 
-Better default camera when no 'camera basis exists (point along min/max box diagonal)
-
-game-pict3d-canvas%
-
-? Use hash tables again instead of List-Hash instances for bases (test with "spheres-on-canvas.rkt")
-
-? animated-pict3d-canvas%
+? pict3d-game-canvas%
 
 ======================================================================================================
 Medium
 
-3D Universe
+Automate marshaling vertex data
 
-Movement: find a way to move slowly or quickly (acceleration? speed control keys?)
-
-Fix intermittent pict3d% editor lock problem
+Add networking to pict3d/universe
 
 Speed up vector operations (settle for < 4 ulps error)
 
 Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
 New shape constructors
- * cylinder (unit impostor with arbitrary affine transformation)
- ? quadratic patches to generalize cylinders, spheres, arches, etc.
+ * triangle mesh
+ * freeze + send vertices to reside on card
  * heightmap/terrain (try a geometry shader)
  * smooth existing shape (snap extremely close vertices, interpolate normals)
  * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
+ * wrap with texture/skybox
  * extrusion
  * CSG
 
-New kinds of Vertices
- * vao-vertices (need to key these on GL context)
- * indexed-single-vertices
- * indexed-multi-vertices
- * for indexed, try using glDrawElementsBaseVertex instead of manually incrementing offsets
-
-Simple collision detection
-
-Try state grouping on a test application using `equal?` instead of `eq?`
-
 ? Physically-based transparency (i.e. proper transmission fractions)
-? Special-case transformation matrix struct for translation
+
+? Special-case transformation matrix struct for translation and rotation
 
 ======================================================================================================
 Hard
