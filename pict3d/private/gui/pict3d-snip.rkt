@@ -31,6 +31,25 @@
 
 (provide snip-class)
 
+(define sema (make-semaphore 1))
+
+#;
+(define-syntax-rule (with-reentry-lock name . body)
+  (begin
+    (define (thunk) . body)
+    (define can? (semaphore-try-wait? sema))
+    (cond [can?  (dynamic-wind void thunk (λ () (semaphore-post sema)))]
+          [else  (log-pict3d-warning "<snip> tried to reenter callback code at ~a; waiting~n" 'name)
+                 (call-with-semaphore sema thunk)])))
+
+(define-syntax-rule (with-reentry-lock name . body)
+  (begin
+    (define (thunk) . body)
+    (define can? (semaphore-try-wait? sema))
+    (cond [can?  (dynamic-wind void thunk (λ () (semaphore-post sema)))]
+          [else  (log-pict3d-error "<snip> reentered callback code at ~a~n" 'name)
+                 (thunk)])))
+
 ;; ===================================================================================================
 ;; Parameters
 
@@ -239,12 +258,6 @@
     (define/public (get-scene) (send pict get-scene))
     (define/public (set-argb-pixels bs) (send pict set-argb-pixels bs))
     
-    ;(: render-queue (Async-Channel FlAffine3-))
-    (define render-queue (make-async-channel))
-    
-    ;(: render-thread Thread)
-    (define render-thread (make-snip-render-thread this render-queue))
-    
     ;(: camera (Instance Camera%))
     (define camera (new camera%))
     
@@ -253,22 +266,6 @@
             (affine-transform (pict3d-view-transform (pict3d (send pict get-scene))))))
     
     (reset-camera)
-    
-    ;(: last-view-matrix (U #f FlAffine3-))
-    (define last-view-matrix #f)
-    
-    ;(: maybe-redraw (-> Void))
-    (define (maybe-redraw)
-      (define view-matrix (send camera get-view-matrix))
-      (unless (equal? view-matrix last-view-matrix)
-        (set! last-view-matrix view-matrix)
-        (async-channel-put render-queue view-matrix)))
-    
-    (define (force-redraw)
-      (set! last-view-matrix #f)
-      (maybe-redraw))
-    
-    (maybe-redraw)
     
     ;(: capturing? Boolean)
     (define capturing? #f)
@@ -548,7 +545,7 @@
               (define-values (x y) (snip-center-pointer pict))
               (cond [capturing?
                      ;; If capturing, stop capturing
-                     (cond [editor  (send editor set-caret-owner #f)]
+                     (cond [editor  (queue-callback (λ () (send editor set-caret-owner #f)))]
                            [else    (set! capturing? #f)
                                     (stop-frame-timer)])]
                     [(and x y)
@@ -594,7 +591,7 @@
                           (set! center-mouse-y y)
                           (start-frame-timer)]
                          ;; Both of these cases below stop mouse capture
-                         [editor  (send editor set-caret-owner #f)]
+                         [editor  (queue-callback (λ () (send editor set-caret-owner #f)))]
                          [else    (set! capturing? #f)
                                   (stop-frame-timer)]))])]
              [else
@@ -690,6 +687,28 @@
       (set! pitch-vel (* pitch-vel #i1/3))
       
       (maybe-redraw))
+    
+    ;(: render-queue (Async-Channel FlAffine3-))
+    (define render-queue (make-async-channel))
+    
+    ;(: render-thread Thread)
+    (define render-thread (make-snip-render-thread this render-queue))
+    
+    ;(: last-view-matrix (U #f FlAffine3-))
+    (define last-view-matrix #f)
+    
+    ;(: maybe-redraw (-> Void))
+    (define (maybe-redraw)
+      (define view-matrix (send camera get-view-matrix))
+      (unless (equal? view-matrix last-view-matrix)
+        (set! last-view-matrix view-matrix)
+        (async-channel-put render-queue view-matrix)))
+    
+    (define (force-redraw)
+      (set! last-view-matrix #f)
+      (maybe-redraw))
+    
+    (maybe-redraw)
     ))
 
 ;; ===================================================================================================
@@ -738,6 +757,7 @@
     (super-make-object)
     
     (send this set-snipclass snip-class)
+    (send this set-flags (list* 'handles-events 'handles-all-mouse-events (send this get-flags)))
     
     (define/public (get-add-sunlight?) add-sunlight?)
     (define/public (get-add-indicators?) add-indicators?)
@@ -803,9 +823,11 @@
               add-sunlight? add-indicators?))
     
     (define/public (refresh)
-      (define admin (send this get-admin))
-      (when admin
-        (send admin needs-update this 0 0 (+ width 4) (+ height 4))))
+      (queue-callback
+       (λ ()
+         (define admin (send this get-admin))
+         (when admin
+           (send admin needs-update this 0 0 (+ width 4) (+ height 4))))))
     
     (define/public (set-argb-pixels bs)
       (define len (* width height 4))
@@ -818,24 +840,36 @@
     
     ;(: gui (U #f (Instance Pict3D-GUI%)))
     (define gui #f)
+    (define gui-mutex (make-semaphore 1))
+    (define (get-gui)
+      (call-with-semaphore
+       gui-mutex
+       (λ ()
+         (let ([gui-val  gui])
+           (cond [gui-val  gui-val]
+                 [else  (define gui-val (make-object pict3d-gui% this))
+                        (set! gui gui-val)
+                        gui-val])))))
     
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
-      (define smoothing (send dc get-smoothing))
-      (send dc set-smoothing 'unsmoothed)
-      (send dc set-brush trans-brush)
-      (send dc set-pen black-pen)
-      (send dc draw-rectangle (+ x 0.5) (+ y 0.5) (+ width 4) (+ height 4))
-      (send dc set-pen white-pen)
-      (send dc draw-rectangle (+ x 1.5) (+ y 1.5) (+ width 2) (+ height 2))
-      (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
-      (send dc set-smoothing smoothing)
-      (when gui (send gui draw dc x y)))
+      (with-reentry-lock draw
+        (define smoothing (send dc get-smoothing))
+        (send dc set-smoothing 'unsmoothed)
+        (send dc set-brush trans-brush)
+        (send dc set-pen black-pen)
+        (send dc draw-rectangle (+ x 0.5) (+ y 0.5) (+ width 4) (+ height 4))
+        (send dc set-pen white-pen)
+        (send dc draw-rectangle (+ x 1.5) (+ y 1.5) (+ width 2) (+ height 2))
+        (send dc draw-bitmap (get-the-bitmap) (+ x 2) (+ y 2))
+        (send dc set-smoothing smoothing)
+        (send (get-gui) draw dc x y)))
+    
+    (define snip-class-added? #f)
     
     (define/override (get-extent dc x y [w #f] [h #f] [descent #f] [space #f] [lspace #f] [rspace #f])
-      (send (get-the-snip-class-list) add snip-class)
-      (unless gui
-        (send this set-flags (list* 'handles-events 'handles-all-mouse-events (send this get-flags)))
-        (set! gui (make-object pict3d-gui% this)))
+      (unless snip-class-added?
+        (set! snip-class-added? #t)
+        (send (get-the-snip-class-list) add snip-class))
       (when (box? w) (set-box! w (+ width 4)))
       (when (box? h) (set-box! h (+ height 4)))
       (when (box? descent) (set-box! descent 0))
@@ -844,30 +878,26 @@
       (when (box? rspace) (set-box! rspace 0)))
     
     (define/override (own-caret own-it?)
-      (let ([gui-val  gui])
-        (and gui-val (send gui-val own-caret own-it?)))
+      (send (get-gui) own-caret own-it?)
       (super own-caret own-it?))
     
     (define/override (on-event dc x y editorx editory e)
-      (let ([gui-val  gui])
-        (and gui-val (send gui-val on-event dc x y editorx editory e)))
-      (super on-event dc x y editorx editory e))
+      (with-reentry-lock on-event
+        (send (get-gui) on-event dc x y editorx editory e)
+        (super on-event dc x y editorx editory e)))
     
     (define/override (on-char dc x y editorx editory e)
-      (let ([gui-val  gui])
-        (and gui-val (send gui-val on-char e)))
-      (super on-char dc x y editorx editory e))
+      (with-reentry-lock on-char
+        (send (get-gui) on-char e)
+        (super on-char dc x y editorx editory e)))
     
     (define/override (adjust-cursor dc x y editorx editory e)
-      (let ([gui-val  gui])
-        (cond
-          [gui-val
-           (define sx (- (send e get-x) x 2))
-           (define sy (- (send e get-y) y 2))
-           (cond [(and (<= 0 sx width) (<= 0 sy height))
-                  (send gui-val adjust-cursor dc sx sy e)]
-                 [else  #f])]
-          [else  #f])))
+      (with-reentry-lock adjust-cursor
+        (define sx (- (send e get-x) x 2))
+        (define sy (- (send e get-y) y 2))
+        (cond [(and (<= 0 sx width) (<= 0 sy height))
+               (send (get-gui) adjust-cursor dc sx sy e)]
+              [else  #f])))
     ))
 
 (define (scene->pict3d scene)
