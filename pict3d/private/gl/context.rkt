@@ -2,7 +2,7 @@
 
 (require racket/contract
          racket/class
-         racket/gui
+         racket/draw
          "typed-context.rkt"
          ;; The following can't have contracts (e.g. no predicate for (Instance GL-Context<%>))
          (only-in "untyped-context.rkt"

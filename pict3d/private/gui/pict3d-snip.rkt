@@ -23,6 +23,7 @@
          "../utils.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "master-context.rkt"
          "parameters.rkt"
          "utils.rkt"
          "indicators.rkt"
@@ -903,7 +904,7 @@
 (define (scene->pict3d scene)
   (make-object pict3d%
     scene
-    (pict3d-legacy-contexts?)
+    (current-pict3d-legacy?)
     (current-pict3d-width)
     (current-pict3d-height)
     (current-pict3d-z-near)

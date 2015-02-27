@@ -117,7 +117,7 @@
           [stretchable-height  #t])
     (init-field [pict  empty-pict3d])
     
-    (define legacy? (pict3d-legacy-contexts?))
+    (define legacy? (current-pict3d-legacy?))
     
     (define config (new gl-config%))
     (send config set-legacy? legacy?)
@@ -205,27 +205,19 @@
          (define ctxt (send (send this get-dc) get-gl-context))
          (cond
            [(or (not ctxt) (not (send ctxt ok?)))
-            (log-pict3d-warning
-             "<canvas> could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
-             legacy?)
-            (error 'pict3d-canvas%
-                   "could not obtain canvas OpenGL context (pict3d-legacy-contexts? ~a)"
-                   legacy?)]
+            (log-pict3d-warning "<canvas> could not get canvas OpenGL context (legacy? = ~a)" legacy?)
+            (error 'pict3d-canvas% "could not get canvas OpenGL context (legacy? = ~a)" legacy?)]
            [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
             (define version (send ctxt call-as-current gl-version))
-            (log-pict3d-info
-             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
-             version legacy?)
+            (log-pict3d-info "<canvas> got canvas OpenGL ~a context (legacy? = ~a)" version legacy?)
             (let ([mctxt  (managed-gl-context ctxt)])
               (set! managed-ctxt mctxt)
               mctxt)]
            [else
             (define version (send ctxt call-as-current gl-version))
-            (log-pict3d-warning
-             "<canvas> obtained canvas OpenGL ~a context (pict3d-legacy-contexts? ~a)"
-             version legacy?)
-            (error 'pict3d-canvas%
-                   "could not obtain at least an OpenGL 30 context (pict3d-legacy-contexts? ~a)"
+            (log-pict3d-warning "<canvas> got canvas OpenGL ~a context (legacy? = ~a)"
+                                version legacy?)
+            (error 'pict3d-canvas% "could not get at least an OpenGL 30 context (legacy? = ~a)"
                    legacy?)])]))
     
     (define/override (on-paint)

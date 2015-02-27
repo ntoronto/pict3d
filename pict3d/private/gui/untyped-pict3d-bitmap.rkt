@@ -13,6 +13,7 @@
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
+         "master-context.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
          "user-types.rkt"
@@ -45,7 +46,7 @@
                      (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
        (define bm (make-bitmap width height))
        ;; Lock everything up for drawing
-       (with-gl-context (get-master-gl-context (pict3d-legacy-contexts?))
+       (with-gl-context (get-master-gl-context (current-pict3d-legacy?))
          ;; Draw the scene
          (draw-scene (pict3d-scene pict) width height
                      view proj
