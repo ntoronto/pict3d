@@ -1,6 +1,6 @@
 #lang typed/racket/base
 
-(require typed/racket/gui
+(require typed/racket/private/gui-types
          typed/racket/class
          "../gl.rkt"
          "pict3d-struct.rkt"

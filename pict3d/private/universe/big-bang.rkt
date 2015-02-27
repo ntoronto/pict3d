@@ -178,7 +178,6 @@ Universe/networking
          [pict  (on-init-draw init-state)]))
   
   (send window show #t)
-  (send canvas set-async-updates? #f)
   (send canvas focus)
   
   ;; Give the GUI thread a chance to work through its event queue and show the window

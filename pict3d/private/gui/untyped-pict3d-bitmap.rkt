@@ -1,9 +1,10 @@
 #lang racket/base
 
-(require racket/fixnum
-         racket/gui
+(require racket/draw
          racket/class
-         (only-in typed/racket/base assert index?)
+         racket/list
+         racket/contract
+         math/base
          math/flonum
          typed/opengl
          "../math/flt3.rkt"
@@ -20,7 +21,7 @@
          )
 
 (provide (contract-out
-          [pict3d->bitmap  (-> pict3d? (and/c index? (>/c 0)) (and/c index? (>/c 0))
+          [pict3d->bitmap  (-> pict3d? (and/c fixnum? (>/c 0)) (and/c fixnum? (>/c 0))
                                (is-a?/c bitmap%))]))
 
 (define get-the-bytes

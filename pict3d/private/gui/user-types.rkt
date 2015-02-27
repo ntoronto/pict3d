@@ -3,7 +3,7 @@
 (require (only-in racket/unsafe/ops unsafe-flvector-ref)
          racket/match
          typed/racket/class
-         typed/racket/gui
+         typed/racket/draw
          math/flonum
          math/base
          "../engine/scene/tags.rkt"

@@ -1,7 +1,9 @@
 #lang racket/base
 
-(require racket/match
-         racket/gui
+(require racket/gui/base
+         racket/match
+         racket/list
+         racket/draw
          racket/class
          racket/async-channel
          racket/math
@@ -135,7 +137,7 @@
                [stretchable-width   stretchable-width]
                [stretchable-height  stretchable-height])
     
-    (define async-updates? #t)
+    (define async-updates? #f)
     
     (define/public (set-async-updates? async?)
       (set! async-updates? async?))

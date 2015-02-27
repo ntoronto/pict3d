@@ -3,11 +3,8 @@
 (require racket/gui
          racket/class
          racket/async-channel
-         racket/contract
          racket/list
          racket/match
-         racket/fixnum
-         racket/promise
          racket/math
          math/flonum
          typed/opengl
@@ -16,8 +13,6 @@
          "../math/flrect3.rkt"
          "../engine/scene.rkt"
          "../engine/utils.rkt"
-         "../engine/draw-pass.rkt"
-         "../engine/draw-passes.rkt"
          (only-in "../engine/types.rkt" affine affine-transform)
          "../gl.rkt"
          "../utils.rkt"
@@ -25,9 +20,11 @@
          "pict3d-combinators.rkt"
          "master-context.rkt"
          "parameters.rkt"
-         "utils.rkt"
          "indicators.rkt"
          "user-types.rkt"
+         "utils/camera.rkt"
+         "utils/timeout-timer.rkt"
+         "utils/center-pointer.rkt"
          )
 
 (provide snip-class)
@@ -492,13 +489,14 @@
     
     (define (copy-hud-data time)
       (define str
-        (string-append*
+        (string-join
          (for/list ([item  (in-list hud-items)])
            (match item
              [(list 'trace-pos v digits width height)
               (define-values (x y z) (flv3-values v))
-              (format "(pos ~a ~a ~a)~n" x y z)]
-             [_  ""]))))
+              (format "(pos ~a ~a ~a)" x y z)]
+             [_  ""]))
+         "\n"))
       (when (not (equal? str ""))
         (send the-clipboard set-clipboard-string str time)))
     

@@ -137,7 +137,6 @@
 (define frame (new frame% [label "1"] [width 400] [height 400]))
 (define canvas (new pict3d-canvas% [parent frame]))
 (send frame show #t)
-(send canvas set-async-updates? #f)
 
 (define sun
   (combine

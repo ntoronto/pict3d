@@ -1,17 +1,12 @@
 #lang typed/racket/base
 
 (require (except-in racket/list flatten)
-         racket/set
-         racket/match
-         typed/racket/class
-         typed/racket/gui
          math/flonum
          math/base
          "../math/flv3.rkt"
          "../math/flt3.rkt"
          "../math/flrect3.rkt"
          "../engine/scene.rkt"
-         "../engine/utils.rkt"
          (only-in "../engine/types.rkt" affine)
          "../utils.rkt"
          "user-types.rkt"
