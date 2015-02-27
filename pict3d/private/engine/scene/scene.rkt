@@ -147,7 +147,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        [(triangle-shape? a)   (triangle-shape-rect a)]
        [(rectangle-shape? a)  (rectangle-shape-rect a)]
        [(sphere-shape? a)     (sphere-shape-rect a)])]
-    [(light-shape? a)  empty-flrect3]
+    [(light-shape? a)      empty-flrect3]
+    [(indicator-shape? a)  empty-flrect3]
     [(frozen-scene-shape? a)
      (frozen-scene-shape-visible-rect a)]))
 
@@ -159,6 +160,9 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
      (cond
        [(directional-light-shape? a)  directional-light-shape-rect]
        [(point-light-shape? a)        (point-light-shape-rect a)])]
+    [(indicator-shape? a)
+     (cond
+       [(point-light-shell-shape? a)  (point-light-shell-shape-rect a)])]
     [(frozen-scene-shape? a)
      (frozen-scene-shape-invisible-rect a)]))
 
@@ -220,6 +224,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (define (shape-flags a)
   (cond [(solid-shape? a)  (solid-shape-flags a)]
         [(light-shape? a)  (light-shape-flags a)]
+        [(indicator-shape? a)  (indicator-shape-flags a)]
         [(frozen-scene-shape? a)  (frozen-scene-shape-flags a)]))
 
 ;; ===================================================================================================
@@ -737,6 +742,9 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
      (cond
        [(directional-light-shape? a)  (directional-light-shape-easy-transform a t)]
        [(point-light-shape? a)        (point-light-shape-easy-transform a t)])]
+    [(indicator-shape? a)
+     (cond
+       [(point-light-shell-shape? a)  (point-light-shell-shape-easy-transform a t)])]
     ;; Frozen scene
     [(frozen-scene-shape? a)  #f]))
 
@@ -753,6 +761,9 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
      (cond
        [(directional-light-shape? a)  (list (directional-light-shape-easy-transform a t))]
        [(point-light-shape? a)        (list (point-light-shape-easy-transform a t))])]
+    [(indicator-shape? a)
+     (cond
+       [(point-light-shell-shape? a)  (list (point-light-shell-shape-easy-transform a t))])]
     ;; Frozen scene
     [(frozen-scene-shape? a)
      (frozen-scene-shape-transform a t)]))
@@ -796,6 +807,9 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
         (cond
           [(directional-light-shape? a)  (make-directional-light-shape-passes a)]
           [(point-light-shape? a)        (make-point-light-shape-passes a)])]
+       [(indicator-shape? a)
+        (cond
+          [(point-light-shell-shape? a)  (make-point-light-shell-shape-passes a)])]
        [(frozen-scene-shape? a)
         (make-frozen-scene-shape-passes a)]))))
 

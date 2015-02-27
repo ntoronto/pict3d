@@ -55,6 +55,14 @@
                                        [max-radius : Flonum])
   #:transparent)
 
+(struct indicator-shape shape ([flags : Flags]) #:transparent)
+(struct point-light-shell-shape indicator-shape
+  ([emitted : FlVector]
+   [position : FlVector]
+   [min-radius : Flonum]
+   [max-radius : Flonum])
+  #:transparent)
+
 (struct frozen-scene-shape shape
   ([scene : Nonempty-Scene])
   #:transparent)
@@ -64,6 +72,7 @@
                       sphere-shape
                       directional-light-shape
                       point-light-shape
+                      point-light-shell-shape
                       frozen-scene-shape))
 
 ;; ===================================================================================================

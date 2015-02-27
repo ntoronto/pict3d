@@ -46,12 +46,14 @@ camera.
 (example
  (combine (sphere origin 1/2)
           (light (pos 1/2 1/2 1))))
+(display "
+A point light is also a Pict3D, but it's only visible when displayed in
+DrRacket's REPL. You can tell it's there by clicking on the displayed Pict3D
+and backing out by holding down 's'.
+")
 (press-enter)
 
 (display "
-A point light is also a Pict3D, but it's invisible. You can't tell it's there
-unless it illuminates another object.
-
 The 'light' function accepts an optional argument for an emitted color, which
 is a color that includes a fourth component: intensity.
 ")
@@ -77,8 +79,8 @@ to illuminate a larger scene on its own.
           (light origin (emitted "violet" 50))))
 (display "
 This scene may not seem very large if you click on it and fly around, because
-it's been automatically scaled down to be easy to navigate. Click '+' three
-times and fly around to get a feel for its actual size.
+it's been automatically scaled down. Click or press '+' three times and fly
+around to get a feel for its actual size.
 ")
 (press-enter)
 

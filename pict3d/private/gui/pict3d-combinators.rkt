@@ -16,7 +16,6 @@
          "../utils.rkt"
          "user-types.rkt"
          "pict3d-struct.rkt"
-         "axes-scene.rkt"
          )
 
 (provide
@@ -320,7 +319,7 @@
 ;; Point light
 
 (: light (->* [Pos] [Emitted #:min-radius Real #:max-radius Real] Pict3D))
-(define (light v [e  (emitted 1.0 1.0 1.0 1.0)] #:min-radius [r0 0.0] #:max-radius [r1 0.95])
+(define (light v [e  (emitted 1.0 1.0 1.0 1.0)] #:min-radius [r0 0.0] #:max-radius [r1 1.0])
   (let* ([v  (pos->flvector v)]
          [e  (emitted->flvector e)]
          [r0  (max 0.0 (min 1.0 (fl r0)))]

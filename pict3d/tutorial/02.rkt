@@ -68,10 +68,11 @@ therefore often useful to combine light-emitting objects with one or more
 low-intensity lights.
 ")
 (example
+ (current-pict3d-add-indicators? #f)
  (combine (sphere origin 1/2)
           (with-emitted (emitted "oldlace" 4)
             (sphere (pos 0 3/4 3/4) 0.025))
-          (light (pos 0 3/4 3/4) (emitted "oldlace" 1))))
+          (light (pos 0 3/4 3/4) (emitted "oldlace" 0.5))))
 (display "
 Just as 'with-color' has a corresponding function 'set-color' to update an
 existing Pict3D, 'with-emitted' has a corresponding function 'set-emitted'.
@@ -81,3 +82,4 @@ existing Pict3D, 'with-emitted' has a corresponding function 'set-emitted'.
 (press-enter "")
 
 (current-pict3d-add-sunlight? #t)
+(current-pict3d-add-indicators? #t)

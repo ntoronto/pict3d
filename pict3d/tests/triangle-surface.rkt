@@ -101,4 +101,4 @@
  (for ([_  (in-range 100)])
    (pict3d->bitmap pict 32 32)))
 
-pict
+(freeze pict)

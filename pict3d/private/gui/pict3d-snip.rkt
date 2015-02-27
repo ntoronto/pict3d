@@ -25,7 +25,7 @@
          "pict3d-combinators.rkt"
          "parameters.rkt"
          "utils.rkt"
-         "axes-scene.rkt"
+         "indicators.rkt"
          "user-types.rkt"
          )
 
@@ -70,6 +70,9 @@
    (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
    (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
 
+(define light-indicator-hash (make-weak-hasheq))
+(define axes-indicator-hash (make-weak-hasheq))
+
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread gui ch)
   (define (render-thread-loop)
@@ -93,24 +96,38 @@
          (define proj (snip-proj-matrix width height fov-degrees znear zfar))
          
          ;; Get scaling factor for indicator objects like axes
-         (define scale (send gui get-scale))
-         (define scale-t (affine (scale-flt3 (flvector (fl scale) (fl scale) (fl scale)))))
+         (define scale (fl (send gui get-scale)))
+         (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
          
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy?)
            ;; Draw the scene, a couple of lights, the origin basis, group bases
            (define s (send gui get-scene))
+           
+           (define light-scenes
+             (if add-indicators?
+                 (hash-ref! light-indicator-hash s (λ () (scene-light-indicators s)))
+                 empty))
+           
+           (define axes-scenes
+             (if add-indicators?
+                 (let ([h  (hash-ref! axes-indicator-hash s make-hash)])
+                   (hash-ref!
+                    h scale
+                    (λ () (cons (make-trans-scene scale-t axes-scene)
+                                (map (λ (t) (make-trans-scene (affine-compose t scale-t)
+                                                              basis-scene))
+                                     (scene-all-group-transforms s))))))
+                 empty))
+           
            (define scenes
              (append (list s)
                      (if add-sunlight?
                          (list standard-over-light
                                standard-under-light)
                          empty)
-                     (if add-indicators?
-                         (cons (make-trans-scene scale-t axes-scene)
-                               (map (λ (t) (make-trans-scene (affine-compose t scale-t) basis-scene))
-                                    (scene-all-group-transforms s)))
-                         empty)))
+                     light-scenes
+                     axes-scenes))
            (draw-scenes scenes width height view proj
                         (rgba->flvector background)
                         (emitted->flvector ambient))
