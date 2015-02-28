@@ -10,9 +10,19 @@
          "../engine/types.rkt"
          "../engine/scene.rkt")
 
-(provide axes-scene
-         basis-scene
-         scene-light-indicators)
+(provide standard-over-light-scene
+         standard-under-light-scene
+         scene-light-indicators
+         scene-origin-indicator
+         scene-basis-indicators)
+
+(define-values (standard-over-light-scene standard-under-light-scene)
+  (let ([dv  (flvector -0.25 -0.5 -1.0)]
+        [e1  (flvector 1.0 1.0 1.0 1.0)]
+        [e2  (flvector 1.0 1.0 1.0 0.5)])
+    (values
+     (shape->scene (make-directional-light-shape e1 dv))
+     (shape->scene (make-directional-light-shape e2 (flv3neg dv))))))
 
 (: unit-octahedron-vertices (Listof (Vectorof FlVector)))
 (define unit-octahedron-vertices
@@ -195,3 +205,15 @@
            nonempty-scene?)))
 
 (define basis-scene (shape->scene basis-shape))
+
+(: scene-origin-indicator (-> Flonum Scene))
+(define (scene-origin-indicator scale)
+  (make-trans-scene (affine (scale-flt3 (flvector scale scale scale)))
+                    axes-scene))
+
+(: scene-basis-indicators (-> Scene Flonum (Listof Scene)))
+(define (scene-basis-indicators s scale)
+  (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
+  (map (λ ([t : Affine]) (make-trans-scene (affine-compose t scale-t)
+                                           basis-scene))
+       (scene-all-group-transforms s)))

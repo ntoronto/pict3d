@@ -65,6 +65,8 @@
  set-origin
  point-at
  ;; Information
+ camera-transform
+ auto-camera-transform
  pict3d-view-transform
  bounding-rectangle
  center
@@ -446,13 +448,13 @@
 ;; ===================================================================================================
 ;; View transform and auto camera
 
-(: pict3d-camera (-> Pict3D (U #f Affine)))
-(define (pict3d-camera p)
+(: camera-transform (-> Pict3D (U #f Affine)))
+(define (camera-transform p)
   (define ts (scene-map-group/transform (pict3d-scene p) 'camera (λ ([t : Affine] _) t)))
   (if (pair? ts) (first ts) #f))
 
-(: pict3d-auto-camera (-> Pict3D Affine))
-(define (pict3d-auto-camera p)
+(: auto-camera-transform (-> Pict3D Affine))
+(define (auto-camera-transform p)
   (let* ([b  (scene-visible-rect (pict3d-scene p))])
     (cond
       [(empty-flrect3? b)
@@ -472,8 +474,8 @@
 
 (: pict3d-view-transform (-> Pict3D Affine))
 (define (pict3d-view-transform p)
-  (let* ([t  (pict3d-camera p)]
-         [t  (if t t (pict3d-auto-camera p))])
+  (let* ([t  (camera-transform p)]
+         [t  (if t t (auto-camera-transform p))])
     (affine-compose (scale (dir 1.0 -1.0 -1.0))
                     (affine-inverse t))))
 

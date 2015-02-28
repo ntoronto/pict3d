@@ -21,8 +21,8 @@
          )
 
 (provide (contract-out
-          [pict3d->bitmap  (-> pict3d? (and/c fixnum? (>/c 0)) (and/c fixnum? (>/c 0))
-                               (is-a?/c bitmap%))]))
+          [pict3d->bitmap  (->* [pict3d?] [(and/c fixnum? (>/c 0)) (and/c fixnum? (>/c 0))]
+                                (is-a?/c bitmap%))]))
 
 (define get-the-bytes
   (make-gl-cached-vector
@@ -33,7 +33,7 @@
    bytes-length))
 
 ;(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
-(define (pict3d->bitmap pict width height)
+(define (pict3d->bitmap pict [width (current-pict3d-width)] [height (current-pict3d-height)])
   (define-values (bms cpu real gc)
     (time-apply
      (λ ()

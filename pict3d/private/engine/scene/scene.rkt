@@ -71,13 +71,13 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Scene constructors
 
-(: shape->scene (-> Shape Nonempty-Scene))
+(: shape->scene (-> Shape leaf-scene))
 (define (shape->scene a)
   (leaf-scene (shape-visible-rect a)
               (shape-invisible-rect a)
               a))
 
-(: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
+(: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene node-scene))
 (define (make-nonempty-node-scene s1 s2)
   (define bv (lazy-flrect3-join (nonempty-scene-lazy-visible-rect s1)
                                 (nonempty-scene-lazy-visible-rect s2)))
@@ -94,7 +94,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
         [(empty-scene? s2)  s1]
         [else  (make-nonempty-node-scene s1 s2)]))
 
-(: make-simple-trans-scene (-> Affine Nonempty-Scene Nonempty-Scene))
+(: make-simple-trans-scene (-> Affine Nonempty-Scene trans-scene))
 (define (make-simple-trans-scene t0 s0)
   (define bv0 (nonempty-scene-lazy-visible-rect s0))
   (define bi0 (nonempty-scene-lazy-invisible-rect s0))
@@ -124,7 +124,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (define zero-flrect3 (nonempty-flrect3 (flvector 0.0 0.0 0.0) (flvector 0.0 0.0 0.0)))
 
-(: make-group-scene (-> Tag Scene Nonempty-Scene))
+(: make-group-scene (-> Tag Scene group-scene))
 (define (make-group-scene n s)
   (cond [(empty-scene? s)
          (group-scene zero-flrect3 zero-flrect3 0 (singleton-tags n) empty-flags n s)]

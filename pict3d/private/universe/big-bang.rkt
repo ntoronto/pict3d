@@ -13,7 +13,8 @@ Universe/networking
          typed/racket/gui
          typed/racket/class
          typed/racket/async-channel
-         "../../main.rkt")
+         "../lazy-gui.rkt"
+         "../gui/pict3d-canvas.rkt")
 
 (provide Pict3D-World-Canvas%
          pict3d-world-canvas%

@@ -25,10 +25,13 @@
          "utils/camera.rkt"
          "utils/timeout-timer.rkt"
          "utils/center-pointer.rkt"
+         "utils/scales.rkt"
+         "utils/format.rkt"
          )
 
 (provide snip-class
-         scene->pict3d)
+         scene->pict3d%
+         pict3d%->scene)
 
 (define sema (make-semaphore 1))
 
@@ -74,14 +77,6 @@
      (make-bytes n))
    bytes-length))
 
-(define-values (standard-over-light standard-under-light)
-  (let ([dv  (flvector -0.25 -0.5 -1.0)]
-        [e1  (flvector 1.0 1.0 1.0 1.0)]
-        [e2  (flvector 1.0 1.0 1.0 0.5)])
-    (values
-     (shape->scene (make-directional-light-shape e1 dv))
-     (shape->scene (make-directional-light-shape e2 (flv3neg dv))))))
-
 (define (snip-proj-matrix width height fov-degrees znear zfar)
   (define fov-radians (degrees->radians (fl fov-degrees)))
   (flt3compose
@@ -122,6 +117,12 @@
            ;; Draw the scene, a couple of lights, the origin basis, group bases
            (define s (send gui get-scene))
            
+           (define sunlight-scenes
+             (if add-sunlight?
+                 (list standard-over-light-scene
+                       standard-under-light-scene)
+                 empty))
+           
            (define light-scenes
              (if add-indicators?
                  (hash-ref! light-indicator-hash s (λ () (scene-light-indicators s)))
@@ -130,23 +131,12 @@
            (define axes-scenes
              (if add-indicators?
                  (let ([h  (hash-ref! axes-indicator-hash s make-hash)])
-                   (hash-ref!
-                    h scale
-                    (λ () (cons (make-trans-scene scale-t axes-scene)
-                                (map (λ (t) (make-trans-scene (affine-compose t scale-t)
-                                                              basis-scene))
-                                     (scene-all-group-transforms s))))))
+                   (hash-ref! h scale (λ () (cons (scene-origin-indicator scale)
+                                                  (scene-basis-indicators s scale)))))
                  empty))
            
-           (define scenes
-             (append (list s)
-                     (if add-sunlight?
-                         (list standard-over-light
-                               standard-under-light)
-                         empty)
-                     light-scenes
-                     axes-scenes))
-           (draw-scenes scenes width height view proj
+           (draw-scenes (append (list s) sunlight-scenes light-scenes axes-scenes)
+                        width height view proj
                         (rgba->flvector background)
                         (emitted->flvector ambient))
            ;; Get the resulting pixels and set them into the snip's bitmap
@@ -216,34 +206,6 @@
   (send the-font-list find-or-create-font
         12 'modern 'normal 'bold #f 'default #t 'aligned))
 
-(define scales
-  (list->vector
-   (drop-right
-    (rest
-     (sort
-      (append*
-       (for/list ([j  (in-range -5 6)])
-         (list (expt 10 j)
-               (/ (expt 10 j) 2)
-               (* (expt 10 j) 2))))
-      <))
-    1)))
-
-(define max-scale-index (- (vector-length scales) 1))
-
-(define (remove-trailing-zeros str)
-  (define m (regexp-match #rx"(-|)([0-9]*)(\\.0*$)" str))
-  (if m (third m) str))
-
-(define (format/prec x digits)
-  (cond [(rational? x)
-         (define e (expt 10 digits))
-         (remove-trailing-zeros
-          (real->decimal-string (* (exact-round (/ (inexact->exact x) e)) e)
-                                (max 1 (- digits))))]
-        [else
-         (number->string x)]))
-
 ;(: pict3d-gui% Pict3D-GUI%)
 (define pict3d-gui%
   (class object%
@@ -270,17 +232,9 @@
     (define capturing? #f)
     (define/public (is-capturing?) capturing?)
     
-    (define start-scale-index
-      (let ([b  (scene-visible-rect (send pict get-scene))])
-        (cond [b  (define-values (x1 y1 z1) (flv3-values (flrect3-min b)))
-                  (define-values (x2 y2 z2) (flv3-values (flrect3-max b)))
-                  (define r (expt (* (- x2 x1) (- y2 y1) (- z2 z1)) #i1/3))
-                  (define scale (vector-argmin (λ (s) (abs (- r s))) scales))
-                  (vector-member scale scales)]
-              [else  (vector-member 1 scales)])))
-    
+    (define start-scale-index (flrect3->scale-index (scene-visible-rect (send pict get-scene))))
     (define scale-index start-scale-index)
-    (define/public (get-scale) (vector-ref scales scale-index))
+    (define/public (get-scale) (scale-index->scale scale-index))
     
     ;(: frame-timer (U #f (Instance Timeout-Timer%)))
     (define frame-timer #f)
@@ -900,9 +854,9 @@
               [else  #f])))
     ))
 
-(define (scene->pict3d scene)
+(define (scene->pict3d% s)
   (make-object pict3d%
-    scene
+    s
     (current-pict3d-legacy?)
     (current-pict3d-width)
     (current-pict3d-height)
@@ -913,3 +867,6 @@
     (current-pict3d-ambient)
     (current-pict3d-add-sunlight?)
     (current-pict3d-add-indicators?)))
+
+(define (pict3d%->scene p)
+  (send p get-scene))
