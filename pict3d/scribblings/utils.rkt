@@ -1,7 +1,7 @@
 #lang racket/base
 
-(define eval-mode 'record)
-;(define eval-mode 'replay)
+;(define eval-mode 'record)
+(define eval-mode 'replay)
 
 (require racket/match
          scribble/eval
