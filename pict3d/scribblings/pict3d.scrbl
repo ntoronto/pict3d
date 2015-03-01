@@ -37,6 +37,7 @@ Pict3D's solution is analogous to pinholes in @racketmodname[2htdp/image], or a 
    Pos pos?
    RGBA rgba?
    Tag tag?
+   Tag-Path (no predicate?)
 }
 
 @section[#:tag "shape-attributes"]{Shape Attributes}
@@ -132,8 +133,9 @@ Returns a sphere.
    angles->dir
    dir->angles
    flvector->dir
-   +x +y +z -x -y -z
-   +x+y +y+z +x+z, etc.
+   +x +y +z -x -y -z  ; face directions
+   +x+y +x+z +x-y +x-z +y+z +y-z -x+y -x+z -x-y -x-z -y+z -y-z  ; edge directions
+   +x+y+z +x+y-z +x-y+z +x-y-z -x+y+z -x+y-z -x-y+z -x-y-z  ; corner directions
    flvector->pos
    pos
    pos+
@@ -264,3 +266,158 @@ Returns a sphere.
                           (basis 'camera (point-at (pos 4 5 1.5) origin)))]
 
 @(close-pict3d-eval)
+
+@;{
+   Affine
+   Dir
+   Emitted
+   Material
+   Pict3D
+   Pict3D-Canvas%
+   Pict3Ds
+   Pos
+   RGBA
+   Tag
+   Vertex
+   affine->cols
+   affine-compose
+   affine-consistent?
+   affine-inverse
+   affine?
+   angles->dir
+   arrow
+   auto-camera-transform
+   basis
+   bounding-rectangle
+   camera-transform
+   center
+   cols->affine
+   combine
+   cone
+   current-color
+   current-emitted
+   current-material
+   current-pict3d-add-indicators?
+   current-pict3d-add-sunlight?
+   current-pict3d-ambient
+   current-pict3d-background
+   current-pict3d-custom-write
+   current-pict3d-fov-degrees
+   current-pict3d-height
+   current-pict3d-legacy?
+   current-pict3d-print-converter
+   current-pict3d-width
+   current-pict3d-z-far
+   current-pict3d-z-near
+   cylinder
+   default-color
+   default-emitted
+   default-material
+   default-pict3d-ambient
+   default-pict3d-background
+   default-pict3d-fov-degrees
+   default-pict3d-height
+   default-pict3d-width
+   default-pict3d-z-far
+   default-pict3d-z-near
+   dir
+   dir+
+   dir-
+   dir->angles
+   dir->flvector
+   dir-components
+   dir-cross
+   dir-dist
+   dir-dist^2
+   dir-dot
+   dir-negate
+   dir-normalize
+   dir-scale
+   dir?
+   emitted
+   emitted->flvector
+   emitted-components
+   emitted?
+   empty-pict3d
+   empty-pict3d?
+   freeze
+   frustum-cull
+   group
+   group-contents
+   group-name
+   group?
+   identity-affine
+   light
+   make-material
+   make-vertex
+   map-group
+   map-group/transform
+   material
+   material?
+   move
+   move-x
+   move-y
+   move-z
+   origin
+   pict3d
+   pict3d->bitmap
+   pict3d-canvas%
+   pict3d-scene
+   pict3d-view-transform
+   pict3d?
+   pin
+   plane-cull
+   point-at
+   pos
+   pos+
+   pos-
+   pos->flvector
+   pos-between
+   pos-coordinates
+   pos-dist
+   pos-dist^2
+   pos?
+   quad
+   rect-cull
+   remove-group
+   remove-in-group
+   replace-group
+   replace-in-group
+   rgba
+   rgba->flvector
+   rgba-components
+   rgba?
+   rotate
+   rotate-x
+   rotate-y
+   rotate-z
+   scale
+   scale-x
+   scale-y
+   scale-z
+   set-color
+   set-emitted
+   set-material
+   set-origin
+   sunlight
+   surface
+   surface/normal
+   tag?
+   trace
+   trace/normal
+   transform
+   triangle
+   ungroup
+   up-arrow
+   vertex
+   vertex-color
+   vertex-emitted
+   vertex-material
+   vertex-normal
+   vertex-pos
+   vertex?
+   weld
+   with-color
+   with-emitted
+   with-material
+   }

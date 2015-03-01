@@ -18,6 +18,7 @@
 (provide
  ;; Types
  Pict3Ds
+ Tag-Path
  ;; Parameters
  default-color
  default-emitted
@@ -45,8 +46,9 @@
  triangle
  quad
  rectangle
- sphere
+ cube
  ellipsoid
+ sphere
  sunlight
  light
  freeze
@@ -91,6 +93,8 @@
  surface
  surface/normal
  )
+
+(define-type Tag-Path (U Tag (Listof+1 Tag)))
 
 ;; ===================================================================================================
 ;; Parameters
@@ -152,7 +156,7 @@
       (raise-argument-error 'group-contents "a group" p)))
 
 (: make-replace (-> (-> Scene Tag (-> Scene Scene) Scene)
-                    (-> Pict3D (U Tag (Listof+1 Tag)) (-> Pict3D Pict3D) Pict3D)))
+                    (-> Pict3D Tag-Path (-> Pict3D Pict3D) Pict3D)))
 (define ((make-replace g) p n f)
   (if (pair? n)
       (if (empty? (cdr n))
@@ -163,15 +167,15 @@
 (define replace-group (make-replace scene-replace-group))
 (define replace-in-group (make-replace scene-replace-in-group))
 
-(: ungroup (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
+(: ungroup (-> Pict3D Tag-Path Pict3D))
 (define (ungroup p n)
   (replace-group p n group-contents))
 
-(: remove-group (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
+(: remove-group (-> Pict3D Tag-Path Pict3D))
 (define (remove-group p n)
   (replace-group p n (λ (_) empty-pict3d)))
 
-(: remove-in-group (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
+(: remove-in-group (-> Pict3D Tag-Path Pict3D))
 (define (remove-in-group p n)
   (replace-in-group p n (λ (_) empty-pict3d)))
 
@@ -179,7 +183,7 @@
 (define (map-group* p n f)
   (scene-map-group (pict3d-scene p) n (λ ([s : group-scene]) (f (pict3d s)))))
 
-(: map-group (All (A) (-> Pict3D (U Tag (Listof+1 Tag)) (-> Pict3D A) (Listof A))))
+(: map-group (All (A) (-> Pict3D Tag-Path (-> Pict3D A) (Listof A))))
 (define (map-group p n f)
   (if (pair? n)
       (if (empty? (cdr n))
@@ -192,10 +196,7 @@
   (scene-map-group/transform (pict3d-scene p) n
                              (λ ([t : Affine] [s : group-scene]) (f t (pict3d s)))))
 
-(: map-group/transform (All (A) (-> Pict3D
-                                    (U Tag (Listof+1 Tag))
-                                    (-> Affine Pict3D A)
-                                    (Listof A))))
+(: map-group/transform (All (A) (-> Pict3D Tag-Path (-> Affine Pict3D A) (Listof A))))
 (define (map-group/transform p n f)
   (if (pair? n)
       (if (empty? (cdr n))
@@ -288,46 +289,58 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
 
-(: rectangle (->* [Pos Pos] [#:inside? Any] Pict3D))
+(: rectangle (->* [Pos (U Pos Dir Real)] [#:inside? Any] Pict3D))
 (define (rectangle v1 v2 #:inside? [inside? #f])
-  (pict3d
-   (shape->scene
-    (make-rectangle-shape (assert (flv3rect (vector (pos->flvector v1) (pos->flvector v2)))
-                                  nonempty-flrect3?)
-                          (rgba->flvector (current-color))
-                          (emitted->flvector (current-emitted))
-                          (current-material)
-                          (and inside? #t)))))
+  (let ([v1  (pos->flvector v1)])
+    (define b
+      (cond [(pos? v2)  (assert (flv3rect (vector v1 (pos->flvector v2))) nonempty-flrect3?)]
+            [else
+             (define r
+               (cond [(real? v2)  (define r (fl v2))
+                                  (flvector r r r)]
+                     [else  (dir->flvector v2)]))
+             (assert (flv3rect (vector (flv3- v1 r) (flv3+ v1 r))) nonempty-flrect3?)]))
+    (pict3d
+     (shape->scene
+      (make-rectangle-shape b
+                            (rgba->flvector (current-color))
+                            (emitted->flvector (current-emitted))
+                            (current-material)
+                            (and inside? #t))))))
+
+(: cube (->* [Pos Real] [#:inside? Any] Pict3D))
+(define cube rectangle)
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Ellipsoid
 
-(: sphere (->* [Pos Real] [#:inside? Any] Pict3D))
-(define (sphere center radius #:inside? [inside? #f])
-  (define r (fl radius))
-  (define t (flt3compose (translate-flt3 (pos->flvector center))
-                         (scale-flt3 (flvector r r r))))
+(: standard-transform (-> Pos (U Pos Dir Real) FlAffine3))
+(define (standard-transform v1 v2)
+  (let ([v1  (pos->flvector v1)])
+    (cond [(pos? v2)
+           (let ([v2  (pos->flvector v2)])
+             (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
+                          (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))]
+          [else
+           (define r
+             (cond [(real? v2)  (define r (fl v2))
+                                (flvector r r r)]
+                   [else  (dir->flvector v2)]))
+           (flt3compose (translate-flt3 v1)
+                        (scale-flt3 r))])))
+
+(: ellipsoid (->* [Pos (U Pos Dir Real)] [#:inside? Any] Pict3D))
+(define (ellipsoid v1 v2 #:inside? [inside? #f])
   (pict3d
    (shape->scene
-    (make-sphere-shape (affine t)
+    (make-sphere-shape (affine (standard-transform v1 v2))
                        (rgba->flvector (current-color))
                        (emitted->flvector (current-emitted))
                        (current-material)
                        (and inside? #t)))))
 
-(: ellipsoid (->* [Pos Pos] [#:inside? Any] Pict3D))
-(define (ellipsoid v1 v2 #:inside? [inside? #f])
-  (let ([v1  (pos->flvector v1)]
-        [v2  (pos->flvector v2)])
-    (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
-                           (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
-    (pict3d
-     (shape->scene
-      (make-sphere-shape (affine t)
-                         (rgba->flvector (current-color))
-                         (emitted->flvector (current-emitted))
-                         (current-material)
-                         (and inside? #t))))))
+(: sphere (->* [Pos Real] [#:inside? Any] Pict3D))
+(define sphere ellipsoid)
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
@@ -380,8 +393,7 @@
     [(v)  (affine (f v))]
     [(p v)  (transform p (affine (f v)))]))
 
-
-(: set-origin (-> Pict3D (U Tag (Listof+1 Tag)) Pict3D))
+(: set-origin (-> Pict3D Tag-Path Pict3D))
 (define (set-origin p n)
   (: fail (-> Index Nothing))
   (define (fail m)
@@ -536,12 +548,12 @@
   (cond [(empty? ps)  empty-pict3d]
         [else  (pict3d (scene-union* (map pict3d-scene (flatten ps))))]))
 
-(: pin (->* [Pict3D (U Tag (Listof+1 Tag)) Pict3D] [(U Tag (Listof+1 Tag))] Pict3D))
+(: pin (->* [Pict3D Tag-Path Pict3D] [Tag-Path] Pict3D))
 (define (pin p1 n1 p2 [n2 #f])
   (let ([p2  (if n2 (ungroup (set-origin p2 n2) n2) p2)])
     (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))
 
-(: weld (->* [Pict3D Tag Pict3D] [Tag] Pict3D))
+(: weld (->* [Pict3D Tag-Path Pict3D] [Tag-Path] Pict3D))
 (define (weld p1 n1 p2 [n2 #f])
   (let ([p2  (if n2 (ungroup (set-origin p2 n2) n2) p2)])
     (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
@@ -639,14 +651,11 @@
          (dir->flvector -z)
          c e m inside?)))))))
 
-(: cylinder (->* [Pos Pos] [#:inside? Any #:segments Natural] Pict3D))
+(: cylinder (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural] Pict3D))
 (define (cylinder v1 v2 #:inside? [inside? #f] #:segments [n 32])
-  (let ([v1  (pos->flvector v1)]
-        [v2  (pos->flvector v2)])
-    (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
-                           (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
-    (freeze
-     (pict3d (make-trans-scene (affine t) (standard-cylinder-scene (and inside? #t) n))))))
+  (freeze
+   (pict3d (make-trans-scene (affine (standard-transform v1 v2))
+                             (standard-cylinder-scene (and inside? #t) n)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Cone
@@ -692,14 +701,11 @@
          -z-flv3
          c e m inside?)))))))
 
-(: cone (->* [Pos Pos] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
+(: cone (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
 (define (cone v1 v2 #:inside? [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
-  (let ([v1  (pos->flvector v1)]
-        [v2  (pos->flvector v2)])
-    (define t (flt3compose (translate-flt3 (flv3* (flv3+ v1 v2) 0.5))
-                           (scale-flt3 (flv3* (flv3- v2 v1) 0.5))))
-    (define s (standard-cone-scene (and inside? #t) n (and smooth? #t)))
-    (freeze (pict3d (make-trans-scene (affine t) s)))))
+  (freeze
+   (pict3d (make-trans-scene (affine (standard-transform v1 v2))
+                             (standard-cone-scene (and inside? #t) n (and smooth? #t))))))
 
 ;; ===================================================================================================
 ;; Collision detection
