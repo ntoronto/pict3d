@@ -1,6 +1,8 @@
 #lang typed/racket/base
 
 (require (except-in racket/list flatten)
+         racket/match
+         racket/promise
          math/flonum
          math/base
          "../math/flv3.rkt"
@@ -85,7 +87,9 @@
  cone
  ;; Collision detection
  trace
+ trace/normal
  surface
+ surface/normal
  )
 
 ;; ===================================================================================================
@@ -208,55 +212,78 @@
 ;; ===================================================================================================
 ;; Basic shapes
 
-(: interpret-normals (-> Symbol (U #f Dir (Listof Dir)) (Vectorof FlVector)
-                         (U #f FlVector (Vectorof FlVector))))
-(define (interpret-normals name ns vs)
-  (cond [(dir? ns)  (flv3normalize (dir->flvector ns))]
-        [(list? ns)
-         (define m (vector-length vs))
-         (unless (= m (length ns))
-           (error name "expected length-~a list of normals; given ~e" m ns))
-         (let/ec return : (U #f (Vectorof FlVector))
-           (for/vector #:length m ([n  (in-list ns)]) : FlVector
-             (let ([n  (flv3normalize (dir->flvector n))])
-               (if n n (return #f)))))]
+(: interpret-vertex (-> (U Pos Vertex) FlVector FlVector Material
+                        (Values FlVector (U #f FlVector) FlVector FlVector Material)))
+(define (interpret-vertex vert cc ce cm)
+  (cond [(pos? vert)  (values (pos->flvector vert) #f cc ce cm)]
         [else
-         (flv3polygon-normal vs)]))
+         (match-define (Vertex v n c e m) vert)
+         (values (pos->flvector v)
+                 (if n (dir->flvector n) #f)
+                 (if c (rgba->flvector c) cc)
+                 (if e (emitted->flvector e) ce)
+                 (if m m cm))]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
 
-(: triangle (->* [Pos Pos Pos] [#:normals (U #f Dir (Listof Dir)) #:back? Any] Pict3D))
-(define (triangle v1 v2 v3 #:normals [ns #f] #:back? [back? #f])
-  (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3)))
-  (let ([ns  (interpret-normals 'triangle ns vs)])
-    (cond [ns
+(: triangle (->* [(U Pos Vertex) (U Pos Vertex) (U Pos Vertex)] [#:back? Any] Pict3D))
+(define (triangle vert1 vert2 vert3 #:back? [back? #f])
+  (define cc (rgba->flvector (current-color)))
+  (define ce (emitted->flvector (current-emitted)))
+  (define cm (current-material))
+  (define-values (v1 n1 c1 e1 m1) (interpret-vertex vert1 cc ce cm))
+  (define-values (v2 n2 c2 e2 m2) (interpret-vertex vert2 cc ce cm))
+  (define-values (v3 n3 c3 e3 m3) (interpret-vertex vert3 cc ce cm))
+  (define vs (vector v1 v2 v3))
+  (define norm (flv3polygon-normal vs))
+  (cond [norm
+         (let ([n1  (if n1 n1 norm)]
+               [n2  (if n2 n2 norm)]
+               [n3  (if n3 n3 norm)])
            (pict3d
             (shape->scene
-             (make-triangle-shape vs ns
-                                  (rgba->flvector (current-color))
-                                  (emitted->flvector (current-emitted))
-                                  (current-material)
-                                  (and back? #t))))]
-          [else  empty-pict3d])))
+             (make-triangle-shape
+              vs
+              (if (and (eq? n1 n2) (eq? n2 n3)) n1 (vector n1 n2 n3))
+              (if (and (eq? c1 c2) (eq? c2 c3)) c1 (vector c1 c2 c3))
+              (if (and (eq? e1 e2) (eq? e2 e3)) e1 (vector e1 e2 e3))
+              (if (and (eq? m1 m2) (eq? m2 m3)) m1 (vector m1 m2 m3))
+              (and back? #t)))))]
+        [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
-(: quad (->* [Pos Pos Pos Pos] [#:normals (U #f Dir (Listof Dir)) #:back? Any] Pict3D))
-(define (quad v1 v2 v3 v4 #:normals [ns #f] #:back? [back? #f])
-  (define vs (vector (pos->flvector v1) (pos->flvector v2) (pos->flvector v3) (pos->flvector v4)))
-  (let ([ns  (interpret-normals 'quad ns vs)])
-    (cond [ns  (pict3d
-                (scene-union*
-                 (map
-                  shape->scene
-                  (make-quad-shapes vs ns
-                                    (rgba->flvector (current-color))
-                                    (emitted->flvector (current-emitted))
-                                    (current-material)
-                                    (and back? #t)))))]
-          [else  empty-pict3d])))
+(: quad (->* [(U Pos Vertex) (U Pos Vertex) (U Pos Vertex) (U Pos Vertex)] [#:back? Any] Pict3D))
+(define (quad vert1 vert2 vert3 vert4 #:back? [back? #f])
+  (define cc (rgba->flvector (current-color)))
+  (define ce (emitted->flvector (current-emitted)))
+  (define cm (current-material))
+  (define-values (v1 n1 c1 e1 m1) (interpret-vertex vert1 cc ce cm))
+  (define-values (v2 n2 c2 e2 m2) (interpret-vertex vert2 cc ce cm))
+  (define-values (v3 n3 c3 e3 m3) (interpret-vertex vert3 cc ce cm))
+  (define-values (v4 n4 c4 e4 m4) (interpret-vertex vert4 cc ce cm))
+  (define vs (vector v1 v2 v3 v4))
+  (define norm (flv3polygon-normal vs))
+  (cond [norm
+         (let ([n1  (if n1 n1 norm)]
+               [n2  (if n2 n2 norm)]
+               [n3  (if n3 n3 norm)]
+               [n4  (if n4 n4 norm)])
+           (define as
+             (make-quad-shapes
+              vs
+              (if (and (eq? n1 n2) (eq? n2 n3) (eq? n3 n4)) n1 (vector n1 n2 n3 n4))
+              (if (and (eq? c1 c2) (eq? c2 c3) (eq? c3 c4)) c1 (vector c1 c2 c3 c4))
+              (if (and (eq? e1 e2) (eq? e2 e3) (eq? e3 e4)) e1 (vector e1 e2 e3 e4))
+              (if (and (eq? m1 m2) (eq? m2 m3) (eq? m3 m4)) m1 (vector m1 m2 m3 m4))
+              (and back? #t)))
+           (pict3d
+            (scene-union
+             (shape->scene (first as))
+             (shape->scene (second as)))))]
+        [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rectangle
@@ -330,10 +357,13 @@
 
 (: freeze (-> Pict3D Pict3D))
 (define (freeze p)
-  (define scene (pict3d-scene p))
-  (if (empty-scene? scene)
-      p
-      (pict3d (shape->scene (make-frozen-scene-shape scene)))))
+  (define s (pict3d-scene p))
+  (cond [(empty-scene? s)  p]
+        [else
+         (combine
+          (pict3d (shape->scene (make-frozen-scene-shape s)))
+          (for/list : (Listof Pict3D) ([nt  (in-list (scene-group-transforms s 'empty))])
+            (basis (car nt) (cdr nt))))]))
 
 ;; ===================================================================================================
 ;; Transformations
@@ -405,11 +435,11 @@
   (if v v (raise-argument-error name "nonzero axis vector" v)))
 
 (define rotate-x (make-transformer (λ ([a : Real])
-                                     (rotate-flt3 (dir->flvector x+) (degrees->radians (fl a))))))
+                                     (rotate-flt3 (dir->flvector +x) (degrees->radians (fl a))))))
 (define rotate-y (make-transformer (λ ([a : Real])
-                                     (rotate-flt3 (dir->flvector y+) (degrees->radians (fl a))))))
+                                     (rotate-flt3 (dir->flvector +y) (degrees->radians (fl a))))))
 (define rotate-z (make-transformer (λ ([a : Real])
-                                     (rotate-flt3 (dir->flvector z+) (degrees->radians (fl a))))))
+                                     (rotate-flt3 (dir->flvector +z) (degrees->radians (fl a))))))
 
 (: rotate (case-> (-> Dir Real Affine)
                   (-> Pict3D Dir Real Pict3D)))
@@ -424,14 +454,14 @@
 (: point-at (->* [Pos (U Pos Dir)] [#:angle Real #:up Dir #:normalize? Any] Affine))
 (define (point-at from to 
                   #:angle [angle 0.0]
-                  #:up [up z+]
+                  #:up [up +z]
                   #:normalize? [normalize? #t])
   (define z-axis (if (dir? to) to (pos- to from)))
   (let* ([z-axis  (if normalize? (dir-normalize z-axis) z-axis)]
-         [z-axis : Dir  (if z-axis z-axis z+)]
+         [z-axis : Dir  (if z-axis z-axis +z)]
          [angle  (degrees->radians (fl angle))]
          [up  (dir-normalize up)]
-         [up  (if up up z+)])
+         [up  (if up up +z)])
     (define x-axis (dir-normalize (dir-cross z-axis up)))
     (define t
       (cond
@@ -468,7 +498,7 @@
          [norm
           (define-values (dx dy dz) (flv3-values dv))
           (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
-          (point-at (flvector->pos (flv3fma norm (- r) mx)) (flvector->dir dv))]
+          (point-at (pos (flv3fma norm (- r) mx)) (dir dv))]
          [else
           (point-at origin (dir -1 -1 -1))])])))
 
@@ -483,8 +513,8 @@
 (define (bounding-rectangle p)
   (define r (scene-visible-rect (pict3d-scene p)))
   (if (nonempty-flrect3? r)
-      (values (flvector->pos (nonempty-flrect3-min r))
-              (flvector->pos (nonempty-flrect3-max r)))
+      (values (pos (nonempty-flrect3-min r))
+              (pos (nonempty-flrect3-max r)))
       (values #f #f)))
 
 (: center (-> Pict3D (U #f Pos)))
@@ -578,8 +608,8 @@
         (make-triangle-shape
          (vector (flvector x1 y1 1.0)
                  (flvector x2 y2 1.0)
-                 (dir->flvector z+))
-         (dir->flvector z+)
+                 (dir->flvector +z))
+         (dir->flvector +z)
          c e m inside?))
        ;; Sides
        (shape->scene
@@ -605,8 +635,8 @@
         (make-triangle-shape
          (vector (flvector x2 y2 -1.0)
                  (flvector x1 y1 -1.0)
-                 (dir->flvector z-))
-         (dir->flvector z-)
+                 (dir->flvector -z))
+         (dir->flvector -z)
          c e m inside?)))))))
 
 (: cylinder (->* [Pos Pos] [#:inside? Any #:segments Natural] Pict3D))
@@ -644,11 +674,11 @@
        ;; Sides
        (shape->scene
         (make-triangle-shape
-         (vector (flvector 0.0 0.0 1.0)
+         (vector +z-flv3
                  (flvector x1 y1 -1.0)
                  (flvector x2 y2 -1.0))
          (vector (if smooth?
-                     (flvector 0.0 0.0 1.0)
+                     +z-flv3
                      (flvector (* nx x0) (* nx y0) ny))
                  (flvector (* nx x1) (* nx y1) ny)
                  (flvector (* nx x2) (* nx y2) ny))
@@ -658,8 +688,8 @@
         (make-triangle-shape
          (vector (flvector x2 y2 -1.0)
                  (flvector x1 y1 -1.0)
-                 (dir->flvector z-))
-         (dir->flvector z-)
+                 -z-flv3)
+         -z-flv3
          c e m inside?)))))))
 
 (: cone (->* [Pos Pos] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
@@ -681,23 +711,62 @@
      (let ([v1  (pos->flvector v1)]
            [v2  (pos->flvector to)])
        (define dv (flv3- v2 v1))
-       (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (cond [(and tmin (<= tmin 1.0))  (flvector->pos (flv3+ v1 (flv3* dv tmin)))]
-             [else  #f]))]
+       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (and h (<= (line-hit-distance h) 1.0) (pos (line-hit-point h))))]
     [else
      (let ([v1  (pos->flvector v1)]
            [dv  (dir->flvector to)])
-       (define tmin (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (if tmin (flvector->pos (flv3+ v1 (flv3* dv tmin))) #f))]))
+       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (and h (pos (line-hit-point h))))]))
 
-(: surface (-> Pict3D Dir (U #f Pos)))
-(define (surface p dv)
+(: trace/normal (-> Pict3D Pos (U Pos Dir) (Values (U #f Pos) (U #f Dir))))
+(define (trace/normal p v1 to)
+  (cond
+    [(pos? to)
+     (let ([v1  (pos->flvector v1)]
+           [v2  (pos->flvector to)])
+       (define dv (flv3- v2 v1))
+       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (cond [(and h (<= (line-hit-distance h) 1.0))
+              (define v (line-hit-point h))
+              (define n (line-hit-normal h))
+              (values (pos v) (and n (dir n)))]
+             [else  (values #f #f)]))]
+    [else
+     (let ([v1  (pos->flvector v1)]
+           [dv  (dir->flvector to)])
+       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
+       (cond [(not h)  (values #f #f)]
+             [else
+              (define v (line-hit-point h))
+              (define n (line-hit-normal h))
+              (values (pos v) (and n (dir n)))]))]))
+
+(: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
+(define (find-surface-endpoints p dv)
   (define-values (v1 v2) (bounding-rectangle p))
   (define m (dir-dist dv))
   (cond
     [(and v1 v2 (> m 0.0))
      (define v (pos-between v1 v2 0.5))
      (define r (dir-dist (pos- v2 v1)))
-     (define v0 (pos+ v (dir-scale dv (/ r m))))
-     (trace p v0 v)]
-    [else  #f]))
+     (values v (pos+ v (dir-scale dv (/ r m))))]
+    [else
+     (values #f #f)]))
+
+(: surface (->* [Pict3D Dir] [#:inside? Any] (U #f Pos)))
+(define (surface p dv #:inside? [inside? #f])
+  (define-values (vin vout) (find-surface-endpoints p dv))
+  (and vin vout
+       (if inside?
+           (trace p vin vout)
+           (trace p vout vin))))
+
+(: surface/normal (->* [Pict3D Dir] [#:inside? Any] (Values (U #f Pos) (U #f Dir))))
+(define (surface/normal p dv #:inside? [inside? #f])
+  (define-values (vin vout) (find-surface-endpoints p dv))
+  (if (and vin vout)
+      (if inside?
+          (trace/normal p vin vout)
+          (trace/normal p vout vin))
+      (values #f #f)))

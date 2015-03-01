@@ -59,8 +59,8 @@
            z-near
            z-far
            fov-degrees
-           (app flvector->rgba background)
-           (app flvector->emitted ambient)
+           (app rgba background)
+           (app emitted ambient)
            add-sunlight?
            add-indicators?
            (app unmarshal-scene scene))

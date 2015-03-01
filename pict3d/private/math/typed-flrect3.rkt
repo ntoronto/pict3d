@@ -33,6 +33,7 @@
  flrect3-max
  flrect3-values
  ;; Operations
+ zero-flrect3
  flrect3-join
  flrect3-meet
  flrect3-separating-plane
@@ -48,6 +49,8 @@
  flrect3-longest-axis/center
  flrect3-transform
  flrect3-line-intersects
+ flrect3-closest-point
+ flrect3-point-normal
  )
 
 ;; ===================================================================================================
@@ -124,6 +127,8 @@
 ;; ===================================================================================================
 ;; Operations
 
+(define zero-flrect3 (nonempty-flrect3 zero-flv3 zero-flv3))
+
 (: flrect3-join (case-> (-> Nonempty-FlRect3 FlRect3 Nonempty-FlRect3)
                         (-> FlRect3 Nonempty-FlRect3 Nonempty-FlRect3)
                         (-> FlRect3 FlRect3 FlRect3)))
@@ -156,12 +161,12 @@
     [else
      (define-values (xmin1 ymin1 zmin1 xmax1 ymax1 zmax1) (flrect3-values bb1))
      (define-values (xmin2 ymin2 zmin2 xmax2 ymax2 zmax2) (flrect3-values bb2))
-     (cond [(<= xmax1 xmin2)  (flplane3 (flvector +1.0 0.0 0.0) (* -0.5 (+ xmax1 xmin2)))]
-           [(<= xmax2 xmin1)  (flplane3 (flvector -1.0 0.0 0.0) (* +0.5 (+ xmax2 xmin1)))]
-           [(<= ymax1 ymin2)  (flplane3 (flvector 0.0 +1.0 0.0) (* -0.5 (+ ymax1 ymin2)))]
-           [(<= ymax2 ymin1)  (flplane3 (flvector 0.0 -1.0 0.0) (* +0.5 (+ ymax2 ymin1)))]
-           [(<= zmax1 zmin2)  (flplane3 (flvector 0.0 0.0 +1.0) (* -0.5 (+ zmax1 zmin2)))]
-           [(<= zmax2 zmin1)  (flplane3 (flvector 0.0 0.0 -1.0) (* +0.5 (+ zmax2 zmin1)))]
+     (cond [(<= xmax1 xmin2)  (flplane3 +x-flv3 (* -0.5 (+ xmax1 xmin2)))]
+           [(<= xmax2 xmin1)  (flplane3 -x-flv3 (* +0.5 (+ xmax2 xmin1)))]
+           [(<= ymax1 ymin2)  (flplane3 +y-flv3 (* -0.5 (+ ymax1 ymin2)))]
+           [(<= ymax2 ymin1)  (flplane3 -y-flv3 (* +0.5 (+ ymax2 ymin1)))]
+           [(<= zmax1 zmin2)  (flplane3 +z-flv3 (* -0.5 (+ zmax1 zmin2)))]
+           [(<= zmax2 zmin1)  (flplane3 -z-flv3 (* +0.5 (+ zmax2 zmin1)))]
            [else  #f])]))
 
 (: flrect3-inside-planes (-> FlRect3 (Listof FlPlane3)))
@@ -170,12 +175,12 @@
     [(empty-flrect3? b)  empty]
     [else
      (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
-     (define p1 (flplane3 (flvector +1.0 0.0 0.0) (- xmin)))
-     (define p2 (flplane3 (flvector -1.0 0.0 0.0) xmax))
-     (define p3 (flplane3 (flvector 0.0 +1.0 0.0) (- ymin)))
-     (define p4 (flplane3 (flvector 0.0 -1.0 0.0) ymax))
-     (define p5 (flplane3 (flvector 0.0 0.0 +1.0) (- zmin)))
-     (define p6 (flplane3 (flvector 0.0 0.0 -1.0) zmax))
+     (define p1 (flplane3 +x-flv3 (- xmin)))
+     (define p2 (flplane3 -x-flv3 xmax))
+     (define p3 (flplane3 +y-flv3 (- ymin)))
+     (define p4 (flplane3 -y-flv3 ymax))
+     (define p5 (flplane3 +z-flv3 (- zmin)))
+     (define p6 (flplane3 -z-flv3 zmax))
      (filter flplane3? (list p1 p2 p3 p4 p5 p6))]))
 
 (: nonempty-flrect3-center (-> Nonempty-FlRect3 FlVector))
@@ -367,3 +372,38 @@
   (if (empty-flrect3? bb)
       (values #f #f)
       (nonempty-flrect3-line-intersects bb v dv)))
+
+(: flrect3-closest-point (-> Nonempty-FlRect3 FlVector FlVector))
+(define (flrect3-closest-point bb v)
+  (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values bb))
+  (define-values (x y z) (flv3-values v))
+  (define dx0 (- x xmin))
+  (define dx1 (- xmax x))
+  (define dy0 (- y ymin))
+  (define dy1 (- ymax y))
+  (define dz0 (- z zmin))
+  (define dz1 (- zmax z))
+  (define d (min dx0 dx1 dy0 dy1 dz0 dz1))
+  (if (<= d 0.0)
+      (flvector (max xmin (min xmax x))
+                (max ymin (min ymax y))
+                (max zmin (min zmax z)))
+      (flvector (if (= d dx0) xmin (if (= d dx1) xmax x))
+                (if (= d dy0) ymin (if (= d dy1) ymax y))
+                (if (= d dz0) zmin (if (= d dz1) zmax z)))))
+
+(: nonempty-flrect3-point-normal (-> Nonempty-FlRect3 FlVector (U #f FlVector)))
+(define (nonempty-flrect3-point-normal bb v)
+  (define-values (xmin ymin zmin xmax ymax zmax) (nonempty-flrect3-values bb))
+  (define-values (x y z) (flv3-values v))
+  (cond [(= xmin x)  -x-flv3]
+        [(= xmax x)  +x-flv3]
+        [(= ymin y)  -y-flv3]
+        [(= ymax y)  +y-flv3]
+        [(= zmin z)  -z-flv3]
+        [(= zmax z)  +z-flv3]
+        [else  #f]))
+
+(: flrect3-point-normal (-> Nonempty-FlRect3 FlVector (U #f FlVector)))
+(define (flrect3-point-normal bb v)
+  (if (empty-flrect3? bb) #f (nonempty-flrect3-point-normal bb v)))

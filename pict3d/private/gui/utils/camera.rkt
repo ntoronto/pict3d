@@ -29,10 +29,7 @@
 (define camera%
   (class object%
     (init)
-    (init-field [position (flvector 0.0 0.0 0.0)]
-                [velocity (flvector 0.0 0.0 0.0)]
-                [yaw 0.0]
-                [pitch 0.0])
+    (init-field [position zero-flv3] [velocity zero-flv3] [yaw 0.0] [pitch 0.0])
     
     (super-new)
     
@@ -68,7 +65,7 @@
       (set! velocity (flv3+ velocity (flv3* acc dt)))
       (define speed (flv3mag velocity))
       (when (< speed (flexpt 2.0 -20.0))
-        (set! velocity (flvector 0.0 0.0 0.0))))
+        (set! velocity zero-flv3)))
     
     (define/public (rotate-direction v)
       (flt3apply/pos (flt3inverse (get-rotation-matrix)) v))

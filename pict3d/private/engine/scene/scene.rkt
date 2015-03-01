@@ -122,8 +122,6 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (define (make-trans-scene t s)
   (if (empty-scene? s) s (make-nonempty-trans-scene t s)))
 
-(define zero-flrect3 (nonempty-flrect3 (flvector 0.0 0.0 0.0) (flvector 0.0 0.0 0.0)))
-
 (: make-group-scene (-> Tag Scene group-scene))
 (define (make-group-scene n s)
   (cond [(empty-scene? s)
@@ -462,8 +460,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 ;; ===================================================================================================
 
-(: scene-all-group-transforms (-> Scene (Listof Affine)))
-(define (scene-all-group-transforms s)
+(: scene-group-transforms (-> Scene (U 'empty 'nonempty 'all) (Listof (Pair Tag Affine))))
+(define (scene-group-transforms s which)
   (let loop ([t : Affine  identity-affine] [s s])
     (cond
       [(empty-scene? s)  empty]
@@ -479,7 +477,10 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       [(group-scene? s)
        (define n0 (group-scene-tag s))
        (define s0 (group-scene-scene s))
-       (cons t (loop t s0))])))
+       (case which
+         [(empty)     (if (empty-scene? s0) (list (cons n0 t)) (loop t s0))]
+         [(nonempty)  (if (empty-scene? s0) empty (cons (cons n0 t) (loop t s0)))]
+         [(all)       (cons (cons n0 t) (loop t s0))])])))
 
 ;; ===================================================================================================
 ;; Replace groups or within groups - like a fold for Scene, but just on groups
@@ -526,7 +527,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Scene-ray-intersection
 
-(: shape-line-intersect (-> Shape FlVector FlVector (U #f Flonum)))
+(: shape-line-intersect (-> Shape FlVector FlVector (U #f line-hit)))
 (define (shape-line-intersect a v dv)
   (cond
     [(solid-shape? a)
@@ -536,35 +537,50 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        [(sphere-shape? a)     (sphere-shape-line-intersect a v dv)])]
     [else  #f]))
 
-(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlVector FlVector (U #f Flonum)))
-(define (nonempty-scene-ray-intersect s v dv)
-  (define bb (scene-rect s))
-  (define-values (tmin tmax) (flrect3-line-intersects bb v dv))
-  (cond
-    [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
-    [(leaf-scene? s)
-     (define a (leaf-scene-shape s))
-     (cond [(frozen-scene-shape? a)
-            (nonempty-scene-ray-intersect (frozen-scene-shape-scene a) v dv)]
-           [else
-            (define tmin (shape-line-intersect a v dv))
-            (if (or (not tmin) (< tmin 0.0)) #f tmin)])]
-    [(node-scene? s)
-     (define tmin1 (nonempty-scene-ray-intersect (node-scene-neg s) v dv))
-     (define tmin2 (nonempty-scene-ray-intersect (node-scene-pos s) v dv))
-     (cond [(and tmin1 tmin2)  (min tmin1 tmin2)]
-           [tmin1  tmin1]
-           [else   tmin2])]
-    [(trans-scene? s)
-     (define t0 (flt3inverse (affine-transform (trans-scene-affine s))))
-     (define s0 (trans-scene-scene s))
-     (let ([v  (flt3apply/pos t0 v)]
-           [dv  (flt3apply/dir t0 dv)])
-       (nonempty-scene-ray-intersect s0 v dv))]
-    [(group-scene? s)
-     (scene-ray-intersect (group-scene-scene s) v dv)]))
+(: transform-line-hit (-> line-hit FlAffine3- line-hit))
+(define (transform-line-hit h t)
+  (cond [(flidentity3? t)  h]
+        [else
+         (line-hit
+          (line-hit-distance h)
+          (λ () (flt3apply/pos t (line-hit-point h)))
+          (λ () (let ([n  (line-hit-normal h)])
+                  (and n (flt3apply/nrm t n)))))]))
 
-(: scene-ray-intersect (-> Scene FlVector FlVector (U #f Flonum)))
+(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlVector FlVector (U #f line-hit)))
+(define (nonempty-scene-ray-intersect s v dv)
+  (let loop ([s s] [v v] [dv dv] [t : FlAffine3-  identity-flt3])
+    (define tv (flt3apply/pos t v))
+    (define tdv (flt3apply/dir t dv))
+    (define bb (scene-rect s))
+    (define-values (tmin tmax) (flrect3-line-intersects bb tv tdv))
+    (cond
+      [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
+      [(leaf-scene? s)
+       (define a (leaf-scene-shape s))
+       (cond [(frozen-scene-shape? a)
+              (loop (frozen-scene-shape-scene a) v dv t)]
+             [else
+              (define h (shape-line-intersect a tv tdv))
+              (if (or (not h) (< (line-hit-distance h) 0.0))
+                  #f
+                  (transform-line-hit h (flt3inverse t)))])]
+      [(node-scene? s)
+       (define h1 (loop (node-scene-neg s) v dv t))
+       (define h2 (loop (node-scene-pos s) v dv t))
+       (if (and h1 h2)
+           (if (<= (line-hit-distance h1) (line-hit-distance h2)) h1 h2)
+           (if h1 h1 h2))]
+      [(trans-scene? s)
+       (define t0 (flt3inverse (affine-transform (trans-scene-affine s))))
+       (define s0 (trans-scene-scene s))
+       (loop s0 v dv (flt3compose t0 t))]
+      [(group-scene? s)
+       (define s0 (group-scene-scene s))
+       (cond [(empty-scene? s0)  #f]
+             [else  (loop s0 v dv t)])])))
+
+(: scene-ray-intersect (-> Scene FlVector FlVector (U #f line-hit)))
 (define (scene-ray-intersect s v dv)
   (if (empty-scene? s) #f (nonempty-scene-ray-intersect s v dv)))
 

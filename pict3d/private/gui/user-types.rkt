@@ -1,6 +1,8 @@
 #lang typed/racket/base
 
-(require (only-in racket/unsafe/ops unsafe-flvector-ref)
+(require (for-syntax racket/base
+                     racket/syntax)
+         (only-in racket/unsafe/ops unsafe-flvector-ref)
          racket/match
          typed/racket/class
          typed/racket/draw
@@ -30,16 +32,16 @@
              [-Emitted Emitted])
  rgba?
  emitted?
- rgba rgba->flvector flvector->rgba rgba-components
- emitted emitted->flvector flvector->emitted emitted-components
+ rgba rgba->flvector rgba-components
+ emitted emitted->flvector emitted-components
  ;; Vectors
  (rename-out [-Pos Pos]
              [-Dir Dir])
  pos?
  dir?
- origin x+ y+ z+ x- y- z-
- pos pos->flvector flvector->pos pos-coordinates
- dir dir->flvector flvector->dir dir-components
+ origin
+ pos pos->flvector pos-coordinates
+ dir dir->flvector dir-components
  dir+
  dir-
  dir-negate
@@ -49,12 +51,23 @@
  dir-normalize
  dir-dot
  dir-cross
- angles-dir
+ angles->dir
+ dir->angles
  pos+
  pos-
  pos-between
  pos-dist
  pos-dist^2
+ ;; Vertices
+ Vertex
+ vertex
+ make-vertex
+ vertex?
+ vertex-pos
+ vertex-normal
+ vertex-color
+ vertex-emitted
+ vertex-material
  ;; Affine transforms
  Affine
  affine?
@@ -192,20 +205,8 @@
 (: rgba->flvector (-> RGBA FlVector))
 (define rgba->flvector Col-vector)
 
-(: flvector->rgba (-> FlVector RGBA))
-(define (flvector->rgba v)
-  (unless (= 4 (flvector-length v))
-    (raise-argument-error 'flvector->rgba "length-4 flvector" v))
-  (RGBA v))
-
 (: emitted->flvector (-> Emitted FlVector))
 (define emitted->flvector Col-vector)
-
-(: flvector->emitted (-> FlVector Emitted))
-(define (flvector->emitted v)
-  (unless (= 4 (flvector-length v))
-    (raise-argument-error 'flvector->emitted "length-4 flvector" v))
-  (Emitted v))
 
 (: rgba-components (-> RGBA (Values Flonum Flonum Flonum Flonum)))
 (define (rgba-components v) (col-values v))
@@ -226,10 +227,10 @@
 
 (struct Vec ([vector : FlVector]) #:transparent
   #:property prop:custom-print-quotable 'never)
-  
+
 (struct Pos Vec () #:transparent
   #:property prop:custom-write (print-vec 'pos))
-  
+
 (struct Dir Vec () #:transparent
   #:property prop:custom-write (print-vec 'dir))
 
@@ -238,13 +239,22 @@
 (define pos? Pos?)
 (define dir? Dir?)
 
-(define origin (Pos (flvector 0.0 0.0 0.0)))
-(define x+ (Dir (flvector +1.0 0.0 0.0)))
-(define y+ (Dir (flvector 0.0 +1.0 0.0)))
-(define z+ (Dir (flvector 0.0 0.0 +1.0)))
-(define x- (Dir (flvector -1.0 0.0 0.0)))
-(define y- (Dir (flvector 0.0 -1.0 0.0)))
-(define z- (Dir (flvector 0.0 0.0 -1.0)))
+(define origin (Pos zero-flv3))
+
+(define-syntax (define/provide-unit-vectors stx)
+  (define/with-syntax ([name val] ...)
+    (for*/list ([nx  (in-list '("-x" "" "+x"))]
+                [ny  (in-list '("-y" "" "+y"))]
+                [nz  (in-list '("-z" "" "+z"))]
+                #:unless (and (equal? nx "") (equal? ny "") (equal? nz "")))
+      (define str (string-append nx ny nz))
+      (list (format-id stx "~a" str)
+            (format-id stx "~a-flv3" str))))
+  #'(begin
+      (define name (Dir val)) ...
+      (provide name ...)))
+
+(define/provide-unit-vectors)
 
 (define-syntax-rule (vec-values stx)
   (let ([v  (Vec-vector stx)])
@@ -252,31 +262,40 @@
             (unsafe-flvector-ref v 1)
             (unsafe-flvector-ref v 2))))
 
-(: pos (-> Real Real Real Pos))
-(define (pos x y z)
-  (Pos (flvector (fl x) (fl y) (fl z))))
+(: ->flv3 (-> Symbol (U FlVector (Listof Real) (Vectorof Real)) FlVector))
+(define (->flv3 name v)
+  (cond [(flvector? v)
+         (if (= 3 (flvector-length v))
+             v
+             (raise-argument-error name "length-3 flvector" v))]
+        [(vector? v)
+         (if (= 3 (vector-length v))
+             (vector->flvector v)
+             (raise-argument-error name "length-3 vector" v))]
+        [else
+         (if (= 3 (length v))
+             (list->flvector v)
+             (raise-argument-error 'name "length-3 list" v))]))
+
+(: pos (case-> (-> (U FlVector (Listof Real) (Vectorof Real)) Pos)
+               (-> Real Real Real Pos)))
+(define pos
+  (case-lambda
+    [(v)  (Pos (->flv3 'pos v))]
+    [(x y z)  (Pos (flvector (fl x) (fl y) (fl z)))]))
 
 (: pos->flvector (-> Pos FlVector))
 (define pos->flvector Vec-vector)
 
-(: flvector->pos (-> FlVector Pos))
-(define (flvector->pos v)
-  (unless (= 3 (flvector-length v))
-    (raise-argument-error 'flvector->pos "length-3 flvector" v))
-  (Pos v))
-
-(: dir (-> Real Real Real Dir))
-(define (dir dx dy dz)
-  (Dir (flvector (fl dx) (fl dy) (fl dz))))
+(: dir (case-> (-> (U FlVector (Listof Real) (Vectorof Real)) Dir)
+               (-> Real Real Real Dir)))
+(define dir
+  (case-lambda
+    [(dv)  (Dir (->flv3 'dir dv))]
+    [(dx dy dz)  (Dir (flvector (fl dx) (fl dy) (fl dz)))]))
 
 (: dir->flvector (-> Dir FlVector))
 (define dir->flvector Vec-vector)
-
-(: flvector->dir (-> FlVector Dir))
-(define (flvector->dir v)
-  (unless (= 3 (flvector-length v))
-    (raise-argument-error 'flvector->dir "length-3 flvector" v))
-  (Dir v))
 
 (: pos-coordinates (-> Pos (Values Flonum Flonum Flonum)))
 (define (pos-coordinates v) (vec-values v))
@@ -337,8 +356,8 @@
 (define (dir-cross dv1 dv2)
   (Dir (flv3cross (dir->flvector dv1) (dir->flvector dv2))))
 
-(: angles-dir (-> Real Real Dir))
-(define (angles-dir ang alt)
+(: angles->dir (-> Real Real Dir))
+(define (angles->dir ang alt)
   (let ([ang  (fl (degrees->radians ang))]
         [alt  (fl (degrees->radians alt))])
     (define c0 (flcos ang))
@@ -346,6 +365,13 @@
     (define c1 (flcos alt))
     (define s1 (flsin alt))
     (dir (* c0 c1) (* s0 c1) s1)))
+
+(: dir->angles (-> Dir (Values Flonum Flonum)))
+(define (dir->angles dv)
+  (define-values (x y z) (vec-values dv))
+  (define r (flsqrt (+ (sqr x) (sqr y) (sqr z))))
+  (values (radians->degrees (atan y x))
+          (radians->degrees (asin (/ z r)))))
 
 (: pos+ (-> Pos Dir Pos))
 (define (pos+ v dv)
@@ -378,6 +404,46 @@
   (dir-dist (pos- v2 v1)))
 
 ;; ===================================================================================================
+;; Vertex data
+
+;; TODO: make sure n is normal or #f
+
+(define print-vertex
+  (make-constructor-style-printer
+   (λ ([vert : Vertex]) 'make-vertex)
+   (λ ([vert : Vertex])
+     (match-define (Vertex v n c e m) vert)
+     (list v n c e m))))
+
+(struct Vertex ([pos : Pos]
+                [normal : (U #f Dir)]
+                [color : (U #f RGBA)]
+                [emitted : (U #f Emitted)]
+                [material : (U #f Material)])
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-vertex)
+
+(define vertex? Vertex?)
+(define make-vertex Vertex)
+(define vertex-pos Vertex-pos)
+(define vertex-normal Vertex-normal)
+(define vertex-color Vertex-color)
+(define vertex-emitted Vertex-emitted)
+(define vertex-material Vertex-material)
+
+(: vertex
+   (->* [Pos]
+        [#:normal (U #f Dir) #:color (U #f RGBA) #:emitted (U #f Emitted) #:material (U #f Material)]
+        Vertex))
+(define (vertex v
+                #:normal [n #f]
+                #:color [c #f]
+                #:emitted [e #f]
+                #:material [m #f])
+  (let ([n  (if n (dir-normalize n) #f)])
+    (make-vertex v n c e m)))
+
+;; ===================================================================================================
 ;; Affine transforms
 
 (define print-affine
@@ -404,7 +470,7 @@
 (define (affine->cols t)
   (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
     (flvector-values (fltransform3-forward (->flaffine3 (affine-transform t))) 12))
-  (values (flvector->dir (flvector m00 m10 m20))
-          (flvector->dir (flvector m01 m11 m21))
-          (flvector->dir (flvector m02 m12 m22))
-          (flvector->pos (flvector m03 m13 m23))))
+  (values (dir (flvector m00 m10 m20))
+          (dir (flvector m01 m11 m21))
+          (dir (flvector m02 m12 m22))
+          (pos (flvector m03 m13 m23))))

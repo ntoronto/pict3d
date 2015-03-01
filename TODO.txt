@@ -11,9 +11,6 @@ OpenGL >= 3.2 render paths
 
 Reorder arguments in `call-with-*` functions and macros
 
-pict3d% GUI
- * Add normal to surface info
-
 ? pict3d-game-canvas%
 
 ======================================================================================================

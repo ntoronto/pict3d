@@ -80,7 +80,7 @@
 (define (snip-proj-matrix width height fov-degrees znear zfar)
   (define fov-radians (degrees->radians (fl fov-degrees)))
   (flt3compose
-   (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
+   (scale-flt3 +x-y+z-flv3)  ; upside-down: OpenGL origin is lower-left
    (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
 
 (define light-indicator-hash (make-weak-hasheq))
@@ -322,25 +322,30 @@
           (send pict get-init-params))
         
         (define proj (snip-proj-matrix width height fov-degrees znear zfar))
-        (define v0 (flt3apply/pos (flt3inverse view) (flvector 0.0 0.0 0.0)))
+        (define v0 (flt3apply/pos (flt3inverse view) zero-flv3))
         (define dv (snip->world-dir sx sy width height proj view))
-        (define t (scene-ray-intersect (send pict get-scene) v0 dv))
+        (define h (scene-ray-intersect (send pict get-scene) v0 dv))
         
         (define new-hud-items
           (cond
-            [(not t)  empty]
+            [(not h)  empty]
             [else
-             (define v (flv3fma dv t v0))
+             (define t (line-hit-distance h))
+             (define v (line-hit-point h))
              (define dx1 (snip->world-dir (- sx 0.5) sy width height proj view))
              (define dx2 (snip->world-dir (+ sx 0.5) sy width height proj view))
              (define dy1 (snip->world-dir sx (- sy 0.5) width height proj view))
              (define dy2 (snip->world-dir sx (+ sy 0.5) width height proj view))
              (define d (max (flv3dist (flv3fma dx1 t v0) (flv3fma dx2 t v0))
                             (flv3dist (flv3fma dy1 t v0) (flv3fma dy2 t v0))))
-             (cond [(and (rational? d) (> d 0))
-                    (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0))) width height))]
-                   [else
-                    empty])]))
+             (define n (line-hit-normal h))
+             (append
+              (if (and (rational? d) (> d 0))
+                  (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0))) width height))
+                   empty)
+              (if n
+                  (list (list 'trace-norm n width height))
+                  empty))]))
         
         (when (not (equal? hud-items new-hud-items))
           (set! hud-items new-hud-items)
@@ -363,9 +368,17 @@
            (for/fold ([width  (- width 2)]) ([x  (in-list (list z y x))])
              (define str (string-append " " (format/prec x digits)))
              (define-values (w h _1 _2) (send dc get-text-extent str))
-             (draw-outlined-text dc str (- width w) (- height h))
+             (draw-outlined-text dc str (- width w) (- height (* h 2)))
              (- width w))
-           (void)])))
+           (void)]
+          [(list 'trace-norm n width height)
+           (define-values (ang alt) (dir->angles (dir n)))
+           (when (and (rational? ang) (rational? alt))
+             (define str (format "~a\u00b0 ~a\u00b0"
+                                 (real->decimal-string (inexact->exact ang) 1)
+                                 (real->decimal-string (inexact->exact alt) 1)))
+             (define-values (w h _1 _2) (send dc get-text-extent str))
+             (draw-outlined-text dc str (- width w) (- height h)))])))
     
     (define scale-x-min -1)
     (define scale-x-mid -1)
@@ -450,6 +463,9 @@
              [(list 'trace-pos v digits width height)
               (define-values (x y z) (flv3-values v))
               (format "(pos ~a ~a ~a)" x y z)]
+             [(list 'trace-norm n width height)
+              (define-values (dx dy dz) (flv3-values n))
+              (format "(dir ~a ~a ~a)" dx dy dz)]
              [_  ""]))
          "\n"))
       (when (not (equal? str ""))
@@ -596,7 +612,7 @@
         (when (not frame-timer)
           (set! last-frame-time (- (fl (current-inexact-milliseconds))
                                    (fl frame-delay)))
-          (send camera set-velocity (flvector 0.0 0.0 0.0))
+          (send camera set-velocity zero-flv3)
           (frame-timer-tick)
           (start-frame-timer))))
     
@@ -611,26 +627,26 @@
       (define dt (/ frame-delay 1000.0))
       
       (let* ([move-accel  (* (fl (get-scale)) move-accel)]
-             [acc  (flvector 0.0 0.0 0.0)]
+             [acc  zero-flv3]
              [acc  (if (keys-pressed? '(#\a #\A left))
-                       (flv3+ acc (flv3* (flvector -1.0 0.0 0.0) move-accel))
+                       (flv3+ acc (flv3* -x-flv3 move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\d #\D right))
-                       (flv3+ acc (flv3* (flvector +1.0 0.0 0.0) move-accel))
+                       (flv3+ acc (flv3* +x-flv3 move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\f #\F next))
-                       (flv3+ acc (flv3* (flvector 0.0 -1.0 0.0) move-accel))
+                       (flv3+ acc (flv3* -y-flv3 move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\r #\R prior))
-                       (flv3+ acc (flv3* (flvector 0.0 +1.0 0.0) move-accel))
+                       (flv3+ acc (flv3* +y-flv3 move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\w #\W up))
-                       (flv3+ acc (flv3* (flvector 0.0 0.0 -1.0) move-accel))
+                       (flv3+ acc (flv3* -z-flv3 move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\s #\S down))
-                       (flv3+ acc (flv3* (flvector 0.0 0.0 +1.0) move-accel))
+                       (flv3+ acc (flv3* +z-flv3 move-accel))
                        acc)]
-             [_    (unless (equal? acc (flvector 0.0 0.0 0.0))
+             [_    (unless (equal? acc zero-flv3)
                      (start-frame-timer))]
              [acc  (send camera rotate-direction acc)]
              [acc  (flv3+ acc (flv3* (send camera get-velocity) friction-accel))])

@@ -2,6 +2,8 @@
 
 (require racket/match
          racket/list
+         racket/flonum
+         "../../math/flv3.rkt"
          "../../math/flt3.rkt"
          "../../math/flrect3.rkt"
          "../../utils.rkt"
@@ -136,3 +138,30 @@
   (cond [(empty-scene? s)  empty-tags]
         [(leaf-scene? s)  empty-tags]
         [else  (container-scene-child-tags s)]))
+
+;; ===================================================================================================
+;; Ray-scene intersection types
+
+(define-type Lazy-FlVector (U FlVector (-> FlVector)))
+
+(struct line-hit ([distance : Flonum]
+                  [lazy-point : (U FlVector (-> FlVector))]
+                  [lazy-normal : (U #f FlVector (-> (U #f FlVector)))])
+  #:transparent
+  #:mutable)
+
+(: line-hit-point (-> line-hit FlVector))
+(define (line-hit-point h)
+  (define v (line-hit-lazy-point h))
+  (cond [(flvector? v)  v]
+        [else  (let ([v  (v)])
+                 (set-line-hit-lazy-point! h v)
+                 v)]))
+
+(: line-hit-normal (-> line-hit (U #f FlVector)))
+(define (line-hit-normal h)
+  (define v (line-hit-lazy-normal h))
+  (cond [(or (flvector? v) (not v))  v]
+        [else  (let ([v  (v)])
+                 (set-line-hit-lazy-normal! h v)
+                 v)]))

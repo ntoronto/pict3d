@@ -120,11 +120,36 @@
         (let* ([q  (flsqrt discr)])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> sphere-shape FlVector FlVector (U #f Flonum)))
+(: sphere-shape-center (-> sphere-shape FlVector))
+(define (sphere-shape-center a)
+  (define t (affine-transform (sphere-shape-affine a)))
+  (cond [(flidentity3? t)  zero-flv3]
+        [(fllinear3? t)    zero-flv3]
+        [else  (define ms (fltransform3-forward t))
+               (flvector (flvector-ref ms 3)
+                         (flvector-ref ms 7)
+                         (flvector-ref ms 11))]))
+
+(: sphere-shape-line-intersect (-> sphere-shape FlVector FlVector (U #f line-hit)))
 (define (sphere-shape-line-intersect a v dv)
-  (define t (flt3inverse (affine-transform (sphere-shape-affine a))))
-  (define-values (tmin tmax)
-    (let ([v  (flt3apply/pos t v)]
-          [dv  (flt3apply/dir t dv)])
-      (unit-sphere-line-intersects v dv)))
-  (if (sphere-shape-inside? a) tmax tmin))
+  (define s (flt3inverse (affine-transform (sphere-shape-affine a))))
+  (define sv (flt3apply/pos s v))
+  (define sdv (flt3apply/dir s dv))
+  (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
+  (define inside? (sphere-shape-inside? a))
+  (define t (if inside? tmax tmin))
+  (cond [(not t)  #f]
+        [else
+         (define (lazy-point)
+           (flv3fma dv t v))
+         
+         (: lazy-normal (-> (U #f FlVector)))
+         (define (lazy-normal)
+           (define norm (flv3normalize (flv3fma sdv t sv)))
+           (and norm (flt3apply/nrm (flt3inverse s) (if inside? (flv3neg norm) norm))))
+         
+         (: h line-hit)
+         (define h
+           (line-hit t lazy-point lazy-normal))
+         
+         h]))

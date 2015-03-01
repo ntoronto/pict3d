@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
-(require (for-syntax racket/base)
+(require (for-syntax racket/base
+                     racket/syntax)
          racket/match
          racket/list
          racket/vector
@@ -13,9 +14,7 @@
          "fast-fl2.rkt"
          "../utils.rkt")
 
-(provide x-axis-flv3
-         y-axis-flv3
-         z-axis-flv3
+(provide zero-flv3
          
          flv3 flv3? flv3-x flv3-y flv3-z flv3-values
          ev3->flv3
@@ -62,9 +61,26 @@
          flv3triangle-contains-point?
          )
 
-(define x-axis-flv3 (flvector 1.0 0.0 0.0))
-(define y-axis-flv3 (flvector 0.0 1.0 0.0))
-(define z-axis-flv3 (flvector 0.0 0.0 1.0))
+(define zero-flv3 (flvector 0.0 0.0 0.0))
+
+(define-syntax (define/provide-unit-vectors stx)
+  (define/with-syntax (val ...)
+    (for*/list ([dx  (in-list '(-1.0 0.0 1.0))]
+                [dy  (in-list '(-1.0 0.0 1.0))]
+                [dz  (in-list '(-1.0 0.0 1.0))]
+                #:unless (= dx dy dz 0.0))
+      #`(flvector #,dx #,dy #,dz)))
+  (define/with-syntax (name ...)
+    (for*/list ([nx  (in-list '("-x" "" "+x"))]
+                [ny  (in-list '("-y" "" "+y"))]
+                [nz  (in-list '("-z" "" "+z"))]
+                #:unless (and (equal? nx "") (equal? ny "") (equal? nz "")))
+      (format-id stx "~a-flv3" (string-append nx ny nz))))
+  #'(begin
+      (define name val) ...
+      (provide name ...)))
+
+(define/provide-unit-vectors)
 
 ;; ===================================================================================================
 ;; 3-component flonum vectors
@@ -792,7 +808,7 @@ Using fl2 arithmetic,
 
 (: flv3polygon-centroid (-> (Vectorof FlVector) FlVector))
 (define (flv3polygon-centroid vs)
-  (cond [(empty? vs)  (flvector 0.0 0.0 0.0)]
+  (cond [(empty? vs)  zero-flv3]
         [else
          (define v (fast-flv3polygon-centroid vs))
          (define-values (x y z) (flv3-values v))
@@ -944,8 +960,7 @@ Using fl2 arithmetic,
 (: flv3polygon-perp (-> (Vectorof FlVector) FlVector))
 (define (flv3polygon-perp vs)
   (define n (vector-length vs))
-  (cond [(< n 3)
-         (flvector 0.0 0.0 0.0)]
+  (cond [(< n 3)  zero-flv3]
         [else
          (define-values (x y z) (fast-flv3polygon-perp vs))
          (let ([x  (cond [(< +max-subnormal.0 (abs x) +inf.0)  x]

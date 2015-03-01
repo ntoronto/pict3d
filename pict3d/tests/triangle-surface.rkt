@@ -64,7 +64,10 @@
     (for/list ([vs  (in-list vss)]
                [ns  (in-list nss)])
       (match-define (list v1 v2 v3) vs)
-      (triangle v1 v2 v3 #:normals ns)))))
+      (match-define (list n1 n2 n3) ns)
+      (triangle (vertex v1 #:normal n1)
+                (vertex v2 #:normal n2)
+                (vertex v3 #:normal n3))))))
 
 (define lights
   (time

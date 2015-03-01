@@ -8,7 +8,8 @@
          "../math/flt3.rkt"
          "../math/flrect3.rkt"
          "../engine/types.rkt"
-         "../engine/scene.rkt")
+         "../engine/scene.rkt"
+         "../engine/scene/tags.rkt")
 
 (provide standard-over-light-scene
          standard-under-light-scene
@@ -26,30 +27,14 @@
 
 (: unit-octahedron-vertices (Listof (Vectorof FlVector)))
 (define unit-octahedron-vertices
-  (list (vector (flvector 1.0 0.0 0.0)
-                (flvector 0.0 1.0 0.0)
-                (flvector 0.0 0.0 1.0))
-        (vector (flvector 0.0 1.0 0.0)
-                (flvector -1.0 0.0 0.0)
-                (flvector 0.0 0.0 1.0))
-        (vector (flvector -1.0 0.0 0.0)
-                (flvector 0.0 -1.0 0.0)
-                (flvector 0.0 0.0 1.0))
-        (vector (flvector 0.0 -1.0 0.0)
-                (flvector 1.0 0.0 0.0)
-                (flvector 0.0 0.0 1.0))
-        (vector (flvector 0.0 1.0 0.0)
-                (flvector 1.0 0.0 0.0)
-                (flvector 0.0 0.0 -1.0))
-        (vector (flvector -1.0 0.0 0.0)
-                (flvector 0.0 1.0 0.0)
-                (flvector 0.0 0.0 -1.0))
-        (vector (flvector 0.0 -1.0 0.0)
-                (flvector -1.0 0.0 0.0)
-                (flvector 0.0 0.0 -1.0))
-        (vector (flvector 1.0 0.0 0.0)
-                (flvector 0.0 -1.0 0.0)
-                (flvector 0.0 0.0 -1.0))))
+  (list (vector +x-flv3 +y-flv3 +z-flv3)
+        (vector +y-flv3 -x-flv3 +z-flv3)
+        (vector -x-flv3 -y-flv3 +z-flv3)
+        (vector -y-flv3 +x-flv3 +z-flv3)
+        (vector +y-flv3 +x-flv3 -z-flv3)
+        (vector -x-flv3 +y-flv3 -z-flv3)
+        (vector -y-flv3 -x-flv3 -z-flv3)
+        (vector +x-flv3 -y-flv3 -z-flv3)))
 
 (: unit-octahedron-normals (Listof FlVector))
 (define unit-octahedron-normals
@@ -120,9 +105,7 @@
   (scene-union
    (scene-union*
     (for/list : (Listof Scene) ([i  (in-range 4)])
-      (define vs (vector (flvector 1.0 -1.0 0.0)
-                         (flvector 1.0 +1.0 0.0)
-                         (flvector 0.0 0.0 1.0)))
+      (define vs (vector +x-y-flv3 +x+y-flv3 +z-flv3))
       (define norm (assert (flv3polygon-normal vs) values))
       (scene-transform-shapes
        (shape->scene (make-triangle-shape vs norm c e m #f))
@@ -131,11 +114,8 @@
     (map
      shape->scene
      (make-quad-shapes
-      (vector (flvector +1.0 +1.0 0.0)
-              (flvector +1.0 -1.0 0.0)
-              (flvector -1.0 -1.0 0.0)
-              (flvector -1.0 +1.0 0.0))
-      (flvector 0.0 0.0 1.0)
+      (vector +x+y-flv3 +x-y-flv3 -x-y-flv3 -x+y-flv3)
+      +z-flv3
       c e m #f)))))
 
 (: make-unit-arrow-scene (-> FlVector FlVector material Scene))
@@ -214,6 +194,6 @@
 (: scene-basis-indicators (-> Scene Flonum (Listof Scene)))
 (define (scene-basis-indicators s scale)
   (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
-  (map (λ ([t : Affine]) (make-trans-scene (affine-compose t scale-t)
-                                           basis-scene))
-       (scene-all-group-transforms s)))
+  (map (λ ([nt : (Pair Tag Affine)])
+         (make-trans-scene (affine-compose (cdr nt) scale-t) basis-scene))
+       (scene-group-transforms s 'all)))

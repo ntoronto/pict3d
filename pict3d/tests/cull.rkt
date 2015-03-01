@@ -41,7 +41,7 @@
     (for*/list ([z  (list -1.0 1.0)]
                 [y  (list -1.0 1.0)]
                 [x  (list -1.0 1.0)])
-      (flvector->pos (flt3apply/pos tinv (flvector x y z)))))
+      (pos (flt3apply/pos tinv (flvector x y z)))))
   
   (combine
    (quad v1 v2 v3 v4)
@@ -82,8 +82,7 @@
 (combine
  (rect-cull
   spheres
-  (flrect3 (flvector 0.0 0.0 0.0)
-           (flvector 1.0 1.0 1.0)))
+  (flrect3 zero-flv3 +x+y+z-flv3))
  (with-color (rgba 0.75 0 0 0.5)
    (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))
@@ -92,8 +91,7 @@
 (combine
  (rect-cull
   wacky-spheres
-  (flrect3 (flvector 0.0 0.0 0.0)
-           (flvector 1.0 1.0 1.0)))
+  (flrect3 zero-flv3 +x+y+z-flv3))
  (with-color (rgba 0.75 0 0 0.5)
    (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))

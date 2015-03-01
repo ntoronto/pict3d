@@ -68,7 +68,7 @@
 (define (decode-normal v)
   (define zero #i127/255)
   (let ([v  (flv3normalize (flv3- v (flvector zero zero zero)))])
-    (if v v (flvector 0.0 0.0 0.0))))
+    (if v v zero-flv3)))
 
 ;; ===================================================================================================
 ;; Shader analogues

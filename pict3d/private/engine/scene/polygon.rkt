@@ -533,37 +533,22 @@ code
 ;; ===================================================================================================
 ;; Conversions
 
-(define vec-x- (flvector -1.0 0.0 0.0))
-(define vec-x+ (flvector +1.0 0.0 0.0))
-(define vec-y- (flvector 0.0 -1.0 0.0))
-(define vec-y+ (flvector 0.0 +1.0 0.0))
-(define vec-z- (flvector 0.0 0.0 -1.0))
-(define vec-z+ (flvector 0.0 0.0 +1.0))
-
 (: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
 (define (rectangle-shape->triangle-shapes a)
   (match-define (rectangle-shape _ fs b c e m inside?) a)
-  (define-values (xmin ymin zmin xmax ymax zmax) (flrect3-values b))
-  (define v1 (flvector xmin ymin zmin))
-  (define v2 (flvector xmax ymin zmin))
-  (define v3 (flvector xmax ymax zmin))
-  (define v4 (flvector xmin ymax zmin))
-  (define v5 (flvector xmin ymin zmax))
-  (define v6 (flvector xmax ymin zmax))
-  (define v7 (flvector xmax ymax zmax))
-  (define v8 (flvector xmin ymax zmax))
+  (match-define (vector v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
   (append*
-   (list (make-quad-shapes (vector v4 v3 v2 v1) vec-z- c e m inside?)
-         (make-quad-shapes (vector v5 v6 v7 v8) vec-z+ c e m inside?)
-         (make-quad-shapes (vector v1 v2 v6 v5) vec-y- c e m inside?)
-         (make-quad-shapes (vector v3 v4 v8 v7) vec-y+ c e m inside?)
-         (make-quad-shapes (vector v4 v1 v5 v8) vec-x- c e m inside?)
-         (make-quad-shapes (vector v2 v3 v7 v6) vec-x+ c e m inside?))))
+   (list (make-quad-shapes (vector v4 v3 v2 v1) -z-flv3 c e m inside?)
+         (make-quad-shapes (vector v5 v6 v7 v8) +z-flv3 c e m inside?)
+         (make-quad-shapes (vector v1 v2 v6 v5) -y-flv3 c e m inside?)
+         (make-quad-shapes (vector v3 v4 v8 v7) +y-flv3 c e m inside?)
+         (make-quad-shapes (vector v4 v1 v5 v8) -x-flv3 c e m inside?)
+         (make-quad-shapes (vector v2 v3 v7 v6) +x-flv3 c e m inside?))))
 
 ;; ===================================================================================================
 ;; Ray intersection
 
-(: triangle-shape-line-intersect (-> triangle-shape FlVector FlVector (U #f Flonum)))
+(: triangle-shape-line-intersect (-> triangle-shape FlVector FlVector (U #f line-hit)))
 ;; Moller-Trumbore
 (define (triangle-shape-line-intersect a o d)
   (match-define (vector v0 v1 v2) (triangle-shape-vertices a))
@@ -585,10 +570,33 @@ code
           (cond
             [(or (< v 0.0) (> (+ u v) det))  #f]
             [else
-             (/ (flv3dot e2 q) det)])])])))
+             (define t (/ (flv3dot e2 q) det))
+             (define back? (triangle-shape-back? a))
+             (line-hit t
+                       (λ () (flv3fma d t o))
+                       (λ ()
+                         (define norm
+                           (flv3polygon-normal (triangle-shape-vertices a)))
+                         (and norm (if back? (flv3neg norm) norm))))])])])))
 
-(: rectangle-shape-line-intersect (-> rectangle-shape FlVector FlVector (U #f Flonum)))
+(: rectangle-shape-line-intersect (-> rectangle-shape FlVector FlVector (U #f line-hit)))
 (define (rectangle-shape-line-intersect a v dv)
-  (define-values (tmin tmax)
-    (flrect3-line-intersects (rectangle-shape-rect a) v dv))
-  (if (rectangle-shape-inside? a) tmax tmin))
+  (define b (rectangle-shape-rect a))
+  (define-values (tmin tmax) (flrect3-line-intersects b v dv))
+  (define inside? (rectangle-shape-inside? a))
+  (define t (if inside? tmax tmin))
+  (cond [(not t)  #f]
+        [else
+         (define (lazy-point)
+           (flrect3-closest-point b (flv3fma dv t v)))
+         
+         (: lazy-normal (-> FlVector))
+         (define (lazy-normal)
+           (define norm (assert (flrect3-point-normal b (line-hit-point h)) values))
+           (if inside? (flv3neg norm) norm))
+         
+         (: h line-hit)
+         (define h
+           (line-hit t lazy-point lazy-normal))
+         
+         h]))

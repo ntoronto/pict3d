@@ -447,7 +447,7 @@ Higher precision (try to guarantee 2.5 ulps?)
 (: flt3apply/nrm (-> FlTransform3 FlVector FlVector))
 (define (flt3apply/nrm t v)
   (let ([v  (flv3normalize (flv4->norm (flt3apply-invtrans t (norm->flv4 v))))])
-    (if v v (flvector 0.0 0.0 0.0))))
+    (if v v zero-flv3)))
 
 (: flt3apply/pln (-> FlTransform3 FlPlane3 (U #f FlPlane3)))
 (define (flt3apply/pln t p)
@@ -543,12 +543,12 @@ Higher precision (try to guarantee 2.5 ulps?)
 ;; ===================================================================================================
 ;; Frustum utils
 
-(define clip-frustum-plane-x- (assert (flplane3 (flvector +1.0 0.0 0.0) 1.0) values))
-(define clip-frustum-plane-x+ (assert (flplane3 (flvector -1.0 0.0 0.0) 1.0) values))
-(define clip-frustum-plane-y- (assert (flplane3 (flvector 0.0 +1.0 0.0) 1.0) values))
-(define clip-frustum-plane-y+ (assert (flplane3 (flvector 0.0 -1.0 0.0) 1.0) values))
-(define clip-frustum-plane-z- (assert (flplane3 (flvector 0.0 0.0 +1.0) 1.0) values))
-(define clip-frustum-plane-z+ (assert (flplane3 (flvector 0.0 0.0 -1.0) 1.0) values))
+(define clip-frustum-plane-x- (assert (flplane3 +x-flv3 1.0) values))
+(define clip-frustum-plane-x+ (assert (flplane3 -x-flv3 1.0) values))
+(define clip-frustum-plane-y- (assert (flplane3 +y-flv3 1.0) values))
+(define clip-frustum-plane-y+ (assert (flplane3 -y-flv3 1.0) values))
+(define clip-frustum-plane-z- (assert (flplane3 +z-flv3 1.0) values))
+(define clip-frustum-plane-z+ (assert (flplane3 -z-flv3 1.0) values))
 (define clip-frustum-planes
   (list clip-frustum-plane-x- clip-frustum-plane-x+
         clip-frustum-plane-y- clip-frustum-plane-y+

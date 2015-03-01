@@ -12,10 +12,10 @@
   (let ([torso  (ellipsoid (pos -0.35 -0.35 0.0) (pos 0.35 0.35 0.60))])
     (move-z
      (combine
-      (basis 'neck (point-at (surface torso z+) z+))
-      (basis 'right-arm (point-at (surface torso (angles-dir -90 20)) (angles-dir -80 30)
+      (basis 'neck (point-at (surface torso +z) +z))
+      (basis 'right-arm (point-at (surface torso (angles->dir -90 20)) (angles->dir -80 30)
                                   #:angle 180))
-      (basis 'left-arm (point-at (surface torso (angles-dir 90 10)) (angles-dir 85 45)))
+      (basis 'left-arm (point-at (surface torso (angles->dir 90 10)) (angles->dir 85 45)))
       (freeze
        (combine
         torso
@@ -25,7 +25,7 @@
              (combine
               (for/list ([ang  (in-list '(-1 1 -1.5 1))]
                          [alt  (in-list '(-15 0 15 30))])
-                (sphere (surface torso (angles-dir ang alt)) 0.035)))))
+                (sphere (surface torso (angles->dir ang alt)) 0.035)))))
          0.01))))
      -0.2)))
 
@@ -33,7 +33,7 @@
   (let ([base  (ellipsoid (pos -0.5 -0.5 0) (pos 0.5 0.5 0.85))])
     (move-z
      (combine
-      (basis 'hips (point-at (surface base z+) z+))
+      (basis 'hips (point-at (surface base +z) +z))
       (freeze
        (combine
         base
@@ -43,7 +43,7 @@
              (combine
               (for/list ([ang  (in-list '(-1 1 -1.5))]
                          [alt  (in-list '(40 30 20))])
-                (sphere (surface base (angles-dir ang alt)) 0.035)))))
+                (sphere (surface base (angles->dir ang alt)) 0.035)))))
          0.01))))
      -0.15)))
 
@@ -56,8 +56,8 @@
   (let ([head  (sphere origin 0.25)])
     (define eyes
       (move-x
-       (let ([cr  (surface head (angles-dir -25 12))]
-             [cl  (surface head (angles-dir 25 16))])
+       (let ([cr  (surface head (angles->dir -25 12))]
+             [cl  (surface head (angles->dir 25 16))])
          (combine
           ;; Creepy red eye
           (with-color (rgba "red" 0.75)
@@ -79,13 +79,13 @@
          (with-material coal-material
            (combine
             (for/list ([ang  (in-range -45 46 15)])
-              (sphere (surface head (angles-dir ang -20)) 0.025)))))
+              (sphere (surface head (angles->dir ang -20)) 0.025)))))
        0.01))
     
     (move-z
      (combine
-      (basis 'crown (point-at (surface head (angles-dir -10 80)) (angles-dir -10 75)))
-      (basis 'nose (point-at (surface head (angles-dir 0 -3)) (angles-dir 0 10)))
+      (basis 'crown (point-at (surface head (angles->dir -10 80)) (angles->dir -10 75)))
+      (basis 'nose (point-at (surface head (angles->dir 0 -3)) (angles->dir 0 10)))
       (freeze (combine head eyes mouth)))
      0.1)))
 
