@@ -8,7 +8,10 @@
 (current-pict3d-width 512)
 (current-pict3d-height 512)
 
-(current-material (make-material 0.1 0.4 0.5 0.1))
+(current-material (material #:ambient 0.1
+                            #:diffuse 0.4
+                            #:specular 0.5
+                            #:roughness 0.1))
 
 (define shapes
   (combine

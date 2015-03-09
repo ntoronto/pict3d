@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/pretty
+         racket/match
          mzlib/pconvert-prop
          (except-in typed/opengl/ffi cast ->)
          "../math/flt3.rkt"
@@ -25,11 +26,24 @@
 ;; ===================================================================================================
 ;; Materials
 
+(: print-material (-> material Output-Port (U #t #f 0 1) Void))
+(define (print-material mat port mode)
+  (match-define (material a d s r) mat)
+  (write-string "(material" port)
+  (when (> a 0.0) (write-string (format " #:ambient ~v" a) port))
+  (when (> d 0.0) (write-string (format " #:diffuse ~v" d) port))
+  (when (> s 0.0) (write-string (format " #:specular ~v" s) port))
+  (when (> r 0.0) (write-string (format " #:roughness ~v" r) port))
+  (write-string ")" port)
+  (void))
+
 (struct material ([ambient : Flonum]
                   [diffuse : Flonum]
                   [specular : Flonum]
                   [roughness : Flonum])
-  #:transparent)
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-material)
 
 ;; ===================================================================================================
 ;; Affine transformations with GL data lazily cached in an f32vector

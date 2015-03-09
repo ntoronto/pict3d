@@ -17,6 +17,7 @@
          "master-context.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "pict3d-transforms.rkt"
          "user-types.rkt"
          )
 
@@ -37,22 +38,20 @@
   (define-values (bms cpu real gc)
     (time-apply
      (λ ()
-       (define view (affine-transform (pict3d-view-transform pict)))
+       (define view (pict3d-view-transform pict (current-pict3d-auto-camera)))
        ;; Compute a projection matrix
-       (define znear (current-pict3d-z-near))
-       (define zfar (current-pict3d-z-far))
-       (define fov-radians (degrees->radians (fl (current-pict3d-fov-degrees))))
-       (define proj (flt3compose
-                     (scale-flt3 (flvector 1.0 -1.0 1.0))  ; upside-down: OpenGL origin is lower-left
-                     (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
+       (define z-near (current-pict3d-z-near))
+       (define z-far (current-pict3d-z-far))
+       (define fov (current-pict3d-fov))
+       (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
        (define bm (make-bitmap width height))
        ;; Lock everything up for drawing
        (with-gl-context (get-master-gl-context (current-pict3d-legacy?))
          ;; Draw the scene
          (draw-scene (pict3d-scene pict) width height
                      view proj
-                     (rgba->flvector (current-pict3d-background))
-                     (emitted->flvector (current-pict3d-ambient)))
+                     (col-flvector (current-pict3d-background))
+                     (col-flvector (current-pict3d-ambient)))
          ;; Get the resulting pixels and set them into the bitmap
          (define bs (get-the-bytes (* 4 width height)))
          (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)

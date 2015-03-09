@@ -6,7 +6,7 @@
          math/flonum
          profile)
 
-(current-material (make-material 0.05 0.70 0.25 0.1))
+(current-material (material #:ambient 0.05 #:diffuse 0.70 #:specular 0.25 #:roughness 0.1))
 
 (define (random-color)
   (list (+ (* (random) 0.5) 0.5)

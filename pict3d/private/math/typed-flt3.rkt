@@ -57,6 +57,7 @@ Higher precision (try to guarantee 2.5 ulps?)
  perspective-flt3/y-fov
  perspective-flt3/viewport
  orthographic-flt3
+ point-at-flt3
  ;; Operations
  flt3inverse
  flt3apply
@@ -369,6 +370,31 @@ Higher precision (try to guarantee 2.5 ulps?)
                   0.0           0.0      (/ n-f 2.0)  (/ n+f -2.0))
    (/ 8.0 denom)
    (/ denom 8.0)))
+
+(: invent-orthogonal-axes (-> FlVector (Values FlVector FlVector)))
+(define (invent-orthogonal-axes z)
+  (define-values (dx dy dz) (flv3-values z))
+  (define x* (flvector dz dx dy))
+  (define y (assert (flv3normalize (flv3cross z x*)) values))
+  (define x (assert (flv3normalize (flv3cross y z)) values))
+  (values x y))
+
+(: point-at-flt3 (->* [FlVector FlVector] [Flonum FlVector Boolean] FlAffine3-))
+(define (point-at-flt3 from z-axis [angle 0.0] [up +z-flv3] [normalize? #t])
+  (let* ([z-axis  (if normalize? (flv3normalize z-axis) z-axis)]
+         [z-axis : FlVector  (if z-axis z-axis +x-flv3)]
+         [up  (flv3normalize up)]
+         [up  (if up up +z-flv3)])
+    (define x-axis (flv3normalize (flv3cross z-axis up)))
+    (define t
+      (cond
+        [x-axis
+         (define y-axis (assert (flv3normalize (flv3cross z-axis x-axis)) values))
+         (cols->flaffine3 x-axis y-axis z-axis from)]
+        [else
+         (define-values (x-axis y-axis) (invent-orthogonal-axes z-axis))
+         (cols->flaffine3 x-axis y-axis z-axis from)]))
+    (flt3compose t (rotate-z-flt3 angle))))
 
 ;; ===================================================================================================
 ;; Inversion

@@ -65,3 +65,23 @@
                       (point-at v (dir-scale dv 1.5) #:normalize? #f)))))))
 
 (combine shapes traces)
+
+(define pict
+  (let* ([pict  (group (sphere origin 1/2) 1)]
+         [pict  (group (move-z pict 1) 2)]
+         [pict  (group (rotate-x pict 30) 3)]
+         [pict  (group (rotate-z pict 30) 4)]
+         [pict  (group (move-z pict -1) 5)])
+    pict))
+
+(printf "This sphere should be more or less uniformly covered in dots:~n")
+(combine
+ pict
+ (with-color (rgba "darkred")
+   (for*/list : (Listof Pict3D) ([ρ  (in-range -85.0 86.0 5.0)]
+                                 [θ  (in-range -180.0 180.0 (/ 5.0 (cos (degrees->radians ρ))))])
+     (define dv (angles->dir θ ρ))
+     (define v (surface pict dv))
+     (cond [(not v)  (fprintf (current-error-port) "surface missed at ~v ~v ~v~n" θ ρ dv)
+                     empty-pict3d]
+           [else  (sphere v 0.02)]))))

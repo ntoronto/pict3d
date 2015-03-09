@@ -5,6 +5,9 @@
          racket/draw
          racket/fasl
          "lazy-gui.rkt"
+         (only-in "gui/user-types.rkt" col-flvector)
+         "math/flt3.rkt"
+         (only-in "engine/types.rkt" affine-transform)
          "engine/scene/marshal-scene.rkt")
 
 (provide (contract-out
@@ -46,7 +49,7 @@
    proc-mutex
    (λ ()
      (when pid
-       (s-exp->fasl #f out)
+       (s-exp->fasl '(stop) out)
        (flush-output out)
        (close-input-port in)
        (close-output-port out)
@@ -66,23 +69,32 @@
    (λ ()
      (cond
        [pid
+        (define auto-camera-transform
+          (fltransform3-forward (affine-transform ((current-pict3d-auto-camera) p))))
         (define sexp
-          (list as-snip?
+          (list 'render
+                as-snip?
                 width
                 height
                 (current-pict3d-z-near)
                 (current-pict3d-z-far)
-                (current-pict3d-fov-degrees)
-                (rgba->flvector (current-pict3d-background))
-                (emitted->flvector (current-pict3d-ambient))
+                (current-pict3d-fov)
+                (col-flvector (current-pict3d-background))
+                (col-flvector (current-pict3d-ambient))
                 (current-pict3d-add-sunlight?)
                 (current-pict3d-add-indicators?)
+                auto-camera-transform
                 (marshal-scene (pict3d-scene p))))
         (s-exp->fasl sexp out)
         (flush-output out)
-        (define bs (fasl->s-exp in))
-        (define bm (make-bitmap width height))
-        (send bm set-argb-pixels 0 0 width height bs)
-        bm]
+        (match (fasl->s-exp in)
+          [(list 'bitmap width height bs)
+           (define bm (make-bitmap width height))
+           (send bm set-argb-pixels 0 0 width height bs)
+           bm]
+          [(list 'exception msg)
+           (error 'request-render (format "render-server: ~a" msg))]
+          [sexp
+           (error 'request-render "unexpected server message ~e" sexp)])]
        [else
         (error 'request-render "render server is not started~n")]))))

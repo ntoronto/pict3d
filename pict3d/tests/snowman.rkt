@@ -3,10 +3,10 @@
 (require pict3d
          pict3d/universe)
 
-(current-material (make-material 0.25 0.25 0.5 0.4))
+(current-material (material #:ambient 0.25 #:diffuse 0.25 #:specular 0.5 #:roughness 0.4))
 
 (define coal-color (rgba 0.5 0.5 0.5))
-(define coal-material (make-material 0.0 0.2 0.8 0.1))
+(define coal-material (material #:diffuse 0.2 #:specular 0.8 #:roughness 0.1))
 
 (define torso
   (let ([torso  (ellipsoid (pos -0.35 -0.35 0.0) (pos 0.35 0.35 0.60))])
@@ -49,7 +49,7 @@
 
 (define nose
   (with-color (rgba "orange")
-    (with-material (make-material 0.2 0.8 0.0 0.1)
+    (with-material (material #:ambient 0.2 #:diffuse 0.8)
       (cone (pos -0.04 -0.05 -0.02) (pos 0.04 0.05 0.23) #:segments 12 #:smooth? #t))))
 
 (define head
@@ -93,47 +93,44 @@
   (freeze
    (move-z
     (with-color (rgba "white")
-      (with-material (make-material 0.01 0.01 0.98 0.1)
+      (with-material (material #:ambient 0.01 #:diffuse 0.01 #:specular 0.98 #:roughness 0.1)
         (combine
          (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4) #:segments 16)
          (cylinder (pos -0.3 -0.3 -0.01) (pos 0.3 0.3 0.01) #:segments 16))))
     -0.05)))
 
 (define snowman-bottom
-  (pin base 'hips torso))
+  (pin base '(hips) torso))
 
 (define snowman-top
-  (weld (weld head 'crown hat) 'nose nose))
+  (weld (weld head '(crown) hat) '(nose) nose))
 
 (define arm-segment
   (combine
    (move-z (scale (basis 'top (point-at origin (dir 0.25 0 1) #:angle 30)) 0.5) 0.35)
    (move-z (scale (basis 'top (point-at origin (dir -0.1 0 1) #:angle 14)) 0.4) 0.3)
    (with-color (rgba "orange")
-     (with-material (make-material 0.1 0.4 0.5 0.2)
+     (with-material (material #:ambient 0.1 #:diffuse 0.4 #:specular 0.5 #:roughness 0.2)
        (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 8 #:smooth? #t)))))
 
 (define arm
-  (freeze (weld arm-segment 'top arm-segment)))
+  (freeze (weld arm-segment '(top) arm-segment)))
 
 (define (snowman t)
   (let* ([snowman  (scale-z snowman-bottom (+ 1.0 (* 0.01 (sin (/ t 100.0)))))]
-         [snowman  (replace-group snowman 'neck
+         [snowman  (replace-group snowman '(neck)
                                   (λ (p) (rotate-z p (* 10 (sin (/ (+ t 500.0) 1000.0))))))]
-         [snowman  (pin snowman 'neck snowman-top)]
-         [snowman  (pin snowman 'left-arm arm)]
-         [snowman  (pin snowman 'right-arm arm)]
-         [snowman  (replace-group snowman 'hips
+         [snowman  (pin snowman '(neck) snowman-top)]
+         [snowman  (pin snowman '(left-arm) arm)]
+         [snowman  (pin snowman '(right-arm) arm)]
+         [snowman  (replace-group snowman '(hips)
                                   (λ (p) (rotate-z p (* 5 (sin (/ t 1000.0))))))])
     snowman))
 
 (big-bang3d
- 0.0
- #:on-frame
- (λ (p n t)
-   t)
+ #f
  #:on-draw
- (λ (t)
+ (λ (s n t)
    (combine
     (basis 'camera (point-at (pos 0.6 -1 1.25) (pos 0 0 1)))
     (sunlight (dir 0 0 -1) (emitted "azure" 1))

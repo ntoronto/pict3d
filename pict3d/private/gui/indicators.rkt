@@ -77,10 +77,6 @@
   (match-define (point-light-shape _ fs e v r0 r1) a)
   ;; i = intensity
   (define i (flvector-ref e 3))
-  ;; r = max radius of light
-  (define r (flsqrt (* 20.0 i)))
-  ;; rmax = max radius of shell
-  (define rmax (* 1.01 (flsqrt (* 20.0 i))))
   ;; e1 = emitted color of octahedron
   (define e1 (flvector-copy e))
   (flvector-set! e1 3 2.0)  ; 2.0 looks nice and glowy
@@ -92,7 +88,7 @@
    (make-frozen-scene-shape
     (assert
      (scene-union
-       (shape->scene (make-point-light-shell-shape e v (* r r0) (min (* r r1) rmax)))
+       (shape->scene (make-point-light-shell-shape e v (* 0.99 r0) (* 1.01 r1)))
        (make-trans-scene ts (unit-octahedron-scene flv4-black e1 ambient-material #f)))
      nonempty-scene?))))
 
@@ -110,6 +106,8 @@
       (scene-transform-shapes
        (shape->scene (make-triangle-shape vs norm c e m #f))
        (affine (rotate-z-flt3 (degrees->radians (* (fl i) +90.0)))))))
+   empty-scene
+   #;
    (scene-union*
     (map
      shape->scene
@@ -124,7 +122,7 @@
    (shape->scene
     (make-rectangle-shape
      (assert (flrect3 (flvector #i-1/64 #i-1/64 #i-1/64)
-                      (flvector #i1/64 #i1/64 #i56/64))
+                      (flvector #i1/64 #i1/64 #i60/64))
              nonempty-flrect3?)
      c e m #f))
    (let ([t  (flt3compose

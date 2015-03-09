@@ -30,7 +30,7 @@
                [min-height  (U #f Natural) #:optional]
                [stretchable-width   Any #:optional]
                [stretchable-height  Any #:optional])
-         (init-field [pict  Pict3D #:optional])
+         (init-field [pict3d  Pict3D #:optional])
          [set-pict3d  (-> Pict3D Void)]
          [get-pict3d  (-> Pict3D)]
          [get-managed-gl-context  (-> GL-Context)]

@@ -27,7 +27,7 @@
 
 (: weird-material (-> Dir Material))
 (define (weird-material dv)
-  (define-values (dx dy dz) (dir-components dv))
+  (match-define (dir dx dy dz) dv)
   (define d (expt (* 0.5 (+ dx 1.0)) 2))
   (define s (expt (- 1.0 (* 0.5 (+ dx 1.0))) 2))
   (define a (- 1.0 s d))
@@ -38,14 +38,14 @@
 
 (: weird-color (-> Dir RGBA))
 (define (weird-color dv)
-  (define-values (dx dy dz) (dir-components dv))
+  (match-define (dir dx dy dz) dv)
   (rgba (min 1.0 (+ 1.0 dx))
         (min 1.0 (+ 1.0 dy))
         (min 1.0 (+ 1.0 dz))))
 
 (: weird-emitted (-> Dir Emitted))
 (define (weird-emitted dv)
-  (define-values (dx dy dz) (dir-components dv))
+  (match-define (dir dx dy dz) dv)
   (emitted "white" (* 2.0 (max 0.0 (+ dx dy dz -1.25)))))
 
 (: geodesic-sphere (-> Natural Pict3D))

@@ -12,8 +12,8 @@
 (define (build-tree n)
   (ungroup
    (for/fold ([p branch]) ([_  (in-range n)])
-     (weld p 'top branch 'base))
-   'top))
+     (weld p '(top) branch '(base)))
+   '(top)))
 
 (define t (build-tree 11))
 (define frozen-t (freeze t))

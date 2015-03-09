@@ -548,36 +548,54 @@ code
 ;; ===================================================================================================
 ;; Ray intersection
 
+;; The maximum and minimum barycentric coordinates should be 0.0 and 1.0, but because of floating-
+;; point error and whatnot, we might miss if we use those bounds, so we'll fudge a bit
+;; We end up testing against slightly larger trinagles with somewhat cut off corners
+(define fudge (* 128 epsilon.0))
+(define coord-min (- fudge))
+(define coord-max (+ 1.0 fudge))
+
+(: triangle-intersect-time (-> FlVector FlVector FlVector FlVector FlVector (U #f Flonum)))
+;; Moller-Trumbore
+(define (triangle-intersect-time v0 v1 v2 o d)
+  (define e1 (flv3- v1 v0))
+  (define e2 (flv3- v2 v0))
+  (define p (flv3cross d e2))
+  (define det (flv3dot e1 p))
+  (cond
+    [(<= det +max-subnormal.0)  #f]
+    [else
+     ;; Compute first barycentric coordinate u and test
+     (define t (flv3- o v0))
+     (define u (/ (flv3dot t p) det))
+     (cond
+       [(or (< u coord-min) (> u coord-max))  #f]
+       [else
+        ;; Compute the other two barycentric coordinates v,w and test
+        (define q (flv3cross t e1))
+        (define v (/ (flv3dot d q) det))
+        (define w (- 1.0 u v))
+        (cond
+          [(or (< (min v w) coord-min) (> (max v w) coord-max))  #f]
+          [else
+           (/ (flv3dot e2 q) det)])])]))
+
 (: triangle-shape-line-intersect (-> triangle-shape FlVector FlVector (U #f line-hit)))
 ;; Moller-Trumbore
 (define (triangle-shape-line-intersect a o d)
-  (match-define (vector v0 v1 v2) (triangle-shape-vertices a))
+  (define vs (triangle-shape-vertices a))
+  (match-define (vector v0 v1 v2) vs)
   (let-values ([(v0 v1)  (if (triangle-shape-back? a) (values v1 v0) (values v0 v1))])
-    (define e1 (flv3- v1 v0))
-    (define e2 (flv3- v2 v0))
-    (define p (flv3cross d e2))
-    (define det (flv3dot e1 p))
+    (define t (triangle-intersect-time v0 v1 v2 o d))
     (cond
-      [(< det epsilon.0)  #f]
+      [(not t)  #f]
       [else
-       (define t (flv3- o v0))
-       (define u (flv3dot t p))
-       (cond
-         [(or (< u 0.0) (> u det))  #f]
-         [else
-          (define q (flv3cross t e1))
-          (define v (flv3dot d q))
-          (cond
-            [(or (< v 0.0) (> (+ u v) det))  #f]
-            [else
-             (define t (/ (flv3dot e2 q) det))
-             (define back? (triangle-shape-back? a))
-             (line-hit t
-                       (λ () (flv3fma d t o))
-                       (λ ()
-                         (define norm
-                           (flv3polygon-normal (triangle-shape-vertices a)))
-                         (and norm (if back? (flv3neg norm) norm))))])])])))
+       (define back? (triangle-shape-back? a))
+       (line-hit t
+                 (λ () (flv3fma d t o))
+                 (λ ()
+                   (define norm (flv3polygon-normal vs))
+                   (and norm (if back? (flv3neg norm) norm))))])))
 
 (: rectangle-shape-line-intersect (-> rectangle-shape FlVector FlVector (U #f line-hit)))
 (define (rectangle-shape-line-intersect a v dv)

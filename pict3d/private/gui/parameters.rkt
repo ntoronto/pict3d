@@ -1,6 +1,12 @@
 #lang typed/racket/base
 
 (require math/flonum
+         "../math/flv3.rkt"
+         "../math/flt3.rkt"
+         "../math/flrect3.rkt"
+         "../engine/scene.rkt"
+         (only-in "../engine/types.rkt" affine)
+         "pict3d-struct.rkt"
          "user-types.rkt")
 
 (provide (all-defined-out))
@@ -12,19 +18,40 @@
 (define default-pict3d-height 256)
 (define default-pict3d-z-near (assert (flexpt 2.0 -20.0) positive?))
 (define default-pict3d-z-far  (assert (flexpt 2.0 +32.0) positive?))
-(define default-pict3d-fov-degrees 90.0)
+(define default-pict3d-fov 90.0)
 (define default-pict3d-background (rgba 0.0 0.0 0.0 1.0))
 (define default-pict3d-ambient (emitted 1.0 1.0 1.0 1.0))
+
+(: default-pict3d-auto-camera (-> Pict3D Affine))
+(define (default-pict3d-auto-camera p)
+  (let* ([b  (scene-visible-rect (pict3d-scene p))])
+    (define-values (v dv)
+      (cond
+       [(empty-flrect3? b)
+        (values +x+y+z-flv3 -x-y-z-flv3)]
+       [else
+        (define mn (flrect3-min b))
+        (define mx (flrect3-max b))
+        (define dv (flv3- mn mx))
+        (define norm (flv3normalize dv))
+        (cond
+          [norm
+           (define-values (dx dy dz) (flv3-values dv))
+           (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
+           (values (flv3fma norm (- r) mx) dv)]
+          [else
+           (values +x+y+z-flv3 -x-y-z-flv3)])]))
+    (affine (point-at-flt3 v dv))))
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width
   (make-parameter default-pict3d-width
-                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (min 1024 (max 1 n)) index?))))
 
 (: current-pict3d-height (Parameterof Integer Positive-Index))
 (define current-pict3d-height
   (make-parameter default-pict3d-height
-                  (λ ([n : Integer]) (assert (min 4096 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (min 1024 (max 1 n)) index?))))
 
 (: current-pict3d-z-near (Parameterof Real Positive-Flonum))
 (define current-pict3d-z-near
@@ -38,9 +65,9 @@
                   (λ ([z : Real])
                     (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
 
-(: current-pict3d-fov-degrees (Parameterof Positive-Real Positive-Flonum))
-(define current-pict3d-fov-degrees
-  (make-parameter default-pict3d-fov-degrees
+(: current-pict3d-fov (Parameterof Positive-Real Positive-Flonum))
+(define current-pict3d-fov
+  (make-parameter default-pict3d-fov
                   (λ ([z : Positive-Real])
                     (max 1.0 (min 179.0 (fl z))))))
 
@@ -55,3 +82,6 @@
 
 (: current-pict3d-add-indicators? (Parameterof Boolean))
 (define current-pict3d-add-indicators? (make-parameter #t))
+
+(: current-pict3d-auto-camera (Parameterof (-> Pict3D Affine)))
+(define current-pict3d-auto-camera (make-parameter default-pict3d-auto-camera))

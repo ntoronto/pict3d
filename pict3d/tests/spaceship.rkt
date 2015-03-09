@@ -108,12 +108,12 @@
                        (- 1.0 (* (random) 0.20)))
        (freeze
         (combine
-         (with-material (make-material 0.01 0.29 0.70 0.1)
+         (with-material (material #:ambient 0.01 #:diffuse 0.29 #:specular 0.70 #:roughness 0.1)
            (make-planetoid-pict))
-         (with-material (make-material 0.01 0.19 0.80 0.3)
+         (with-material (material #:ambient 0.01 #:diffuse 0.19 #:specular 0.80 #:roughness 0.3)
            (with-color (rgba 1 0.25 0.5)
              (sphere (pos 0 0 0) 1.125)))
-         (with-material (make-material 0.1 0.8 0.1 0.5)
+         (with-material (material #:ambient 0.1 #:diffuse 0.8 #:specular 0.1 #:roughness 0.5)
            (with-color (rgba 1/4 1/2 1 0.075)
              (sphere (pos 0 0 0) 1.35)))))))))
 
@@ -185,7 +185,7 @@
         (sleep/yield #i1/1000))
        (yield)))))
 
-(current-material (make-material 0.05 0.75 0.25 0.1))
+(current-material (material #:ambient 0.05 #:diffuse 0.75 #:specular 0.25 #:roughness 0.1))
 
 (define body
   (let* ([body  (combine
@@ -247,10 +247,10 @@
 
 (define ship
   (rotate-x
-   (weld (weld body 'right-wing (make-wing 'right-gun) 'wing-attach)
-         'left-wing
+   (weld (weld body '(right-wing) (make-wing 'right-gun) '(wing-attach))
+         '(left-wing)
          (make-wing 'left-gun)
-         'wing-attach)
+         '(wing-attach))
    -90))
 
 ship

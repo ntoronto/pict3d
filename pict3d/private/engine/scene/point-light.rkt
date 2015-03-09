@@ -162,10 +162,6 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: max-light-radius (-> Flonum Flonum))
-(define (max-light-radius intensity)
-  (flsqrt (* 20.0 intensity)))
-
 (: make-point-light-shape-passes (-> point-light-shape passes))
 (define (make-point-light-shape-passes a)
   (match-define (point-light-shape _ fs e v r0 r1) a)
@@ -174,13 +170,12 @@ code
     [(flags-subset? emitting-flag fs)
      (define color (flvector-copy e 0 3))
      (define intensity (flvector-ref e 3))
-     (define radius (max-light-radius intensity))
      (define data
        (gl-data->bytes
         ((inst append* (U F32Vector Bytes))
          (for/list ([id  (in-range 4)])
            (list (flvector->f32vector v)
-                 (f32vector intensity (* radius r0) (* radius r1))
+                 (f32vector intensity r0 r1)
                  (pack-color color)
                  (bytes id))))))
      
@@ -198,8 +193,7 @@ code
 (: point-light-shape-rect (-> point-light-shape Nonempty-FlRect3))
 (define (point-light-shape-rect a)
   (define p (point-light-shape-position a))
-  (define intensity (flvector-ref (light-shape-emitted a) 3))
-  (define radius (* (max-light-radius intensity) (point-light-shape-max-radius a)))
+  (define radius (point-light-shape-max-radius a))
   (define r (flvector radius radius radius))
   (nonempty-flrect3 (flv3- p r) (flv3+ p r)))
 

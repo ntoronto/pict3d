@@ -17,6 +17,7 @@
          "parameters.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "pict3d-transforms.rkt"
          "user-types.rkt"
          )
 
@@ -31,46 +32,32 @@
    height
    z-near
    z-far
-   fov-degrees
+   fov
    background
    ambient
+   auto-camera
    ack-channel)
   #:transparent)
-
-#;
-(struct render-command ([pict3d : Pict3D]
-                        [width : Index]
-                        [height : Index]
-                        [z-near : Positive-Flonum]
-                        [z-far : Positive-Flonum]
-                        [fov-degrees : Positive-Flonum]
-                        [background : FlVector]
-                        [ambient : FlVector]
-                        [ack-channel : (U #f (Channelof Boolean))]
-                        ) #:transparent)
 
 (define (render cmd canvas)
   (define-values (_ cpu real gc)
     (time-apply
      (λ ()
        (match-define (render-command pict width height
-                                     znear zfar fov-degrees
-                                     background ambient
+                                     z-near z-far fov
+                                     background ambient auto-camera
                                      ack-channel)
          cmd)
-       ;; Get the view matrix
-       (define view (affine-transform (pict3d-view-transform pict)))
-       ;; Compute the projection matrix
-       (define fov-radians (degrees->radians fov-degrees))
-       (define proj (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar))
-       
+       ;; Compute view and projection matrices
+       (define view (pict3d-view-transform pict auto-camera))
+       (define proj (pict3d-canvas-proj-transform width height z-near z-far fov))
        ;; Lock everything up for drawing
        (call-with-gl-context
         (λ ()
           ;; Draw the scene and swap buffers
           (draw-scene (pict3d-scene pict) width height view proj
-                      (rgba->flvector background)
-                      (emitted->flvector ambient))
+                      (col-flvector background)
+                      (col-flvector ambient))
           (gl-swap-buffers))
         (send canvas get-managed-gl-context))
        
@@ -117,7 +104,7 @@
           [min-height  #f]
           [stretchable-width   #t]
           [stretchable-height  #t])
-    (init-field [pict  empty-pict3d])
+    (init-field [pict3d  empty-pict3d])
     
     (define legacy? (current-pict3d-legacy?))
     
@@ -151,49 +138,45 @@
     ;(: get-gl-window-size (-> (Values Index Index)))
     (define (get-gl-window-size)
       (define-values (w h) (send (send this get-dc) get-size))
-      (values (exact-floor w)
-              (exact-floor h)))
+      (values (exact-ceiling w)
+              (exact-ceiling h)))
     
-    ;(: z-near Positive-Flonum)
-    ;(: z-far Positive-Flonum)
-    ;(: fov-degrees Positive-Flonum)
-    ;(: background FlVector)
-    ;(: ambient-color FlVector)
-    ;(: ambient-intensity Flonum)
     (define z-near (current-pict3d-z-near))
     (define z-far (current-pict3d-z-far))
-    (define fov-degrees (current-pict3d-fov-degrees))
+    (define fov (current-pict3d-fov))
     (define background (current-pict3d-background))
     (define ambient (current-pict3d-ambient))
+    (define auto-camera (current-pict3d-auto-camera))
     
     (define (do-render new-pict width height
-                       z-near z-far fov-degrees
-                       background ambient
+                       z-near z-far fov
+                       background ambient auto-camera
                        async?)
       (define ack-channel (if async? #f (make-channel)))
       (async-channel-put
        render-queue
        (render-command new-pict width height
-                       z-near z-far fov-degrees
-                       background ambient
+                       z-near z-far fov
+                       background ambient auto-camera
                        ack-channel))
       (when ack-channel
         (channel-get ack-channel)))
     
     (define/public (set-pict3d new-pict)
-      (set! pict new-pict)
+      (set! pict3d new-pict)
       (define-values (width height) (get-gl-window-size))
       (set! z-near (current-pict3d-z-near))
       (set! z-far (current-pict3d-z-far))
-      (set! fov-degrees (current-pict3d-fov-degrees))
+      (set! fov (current-pict3d-fov))
       (set! background (current-pict3d-background))
       (set! ambient (current-pict3d-ambient))
+      (set! auto-camera (current-pict3d-auto-camera))
       (do-render new-pict width height
-                 z-near z-far fov-degrees
-                 background ambient
+                 z-near z-far fov
+                 background ambient auto-camera
                  async-updates?))
     
-    (define/public (get-pict3d) pict)
+    (define/public (get-pict3d) pict3d)
     
     ;(: managed-ctxt (U #f GL-Context))
     (define managed-ctxt #f)
@@ -224,9 +207,9 @@
     
     (define/override (on-paint)
       (define-values (width height) (get-gl-window-size))
-      (do-render pict width height
-                 z-near z-far fov-degrees
-                 background ambient
+      (do-render pict3d width height
+                 z-near z-far fov
+                 background ambient auto-camera
                  #t)
       (super on-paint))
     ))

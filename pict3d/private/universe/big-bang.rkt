@@ -26,7 +26,7 @@ Universe/networking
          (init-field [on-key (-> Boolean String Void)]
                      [on-mouse (-> Integer Integer String Void)]
                      [on-start (-> Void)]
-                     [pict Pict3D #:optional])))
+                     [pict3d Pict3D #:optional])))
 
 (: pict3d-world-canvas% Pict3D-World-Canvas%)
 (define pict3d-world-canvas%
@@ -77,81 +77,54 @@ Universe/networking
         (on-start)))
     ))
 
-(define pad-strings
-  (list "w" "a" "s" "d"
-        "up" "left" "down" "right"
-        "shift" "rshift" " "))
-
 (struct key ([release? : Boolean] [code : String]) #:transparent)
 (struct mouse ([x : Integer] [y : Integer] [type : String]) #:transparent)
 (define-type Input (U key mouse))
 
 (: big-bang3d
    (All (S) (-> S
-                [#:valid-state? (-> S Boolean)]
-                [#:stop-state? (-> S Boolean)]
+                [#:valid-state? (-> S Natural Flonum Boolean)]
+                [#:stop-state? (-> S Natural Flonum Boolean)]
                 [#:name String]
                 [#:width Positive-Integer]
                 [#:height Positive-Integer]
                 [#:frame-delay Positive-Real]
-                [#:frame-limit (U Natural +inf.0)]
                 [#:on-frame (-> S Natural Flonum S)]
-                [#:on-draw (-> S Pict3D)]
-                [#:on-key (-> S String S)]
-                [#:on-pad (U #f (-> S String S))]
-                [#:on-release (-> S String S)]
-                [#:on-mouse (-> S Integer Integer String S)]
-                [#:on-init-draw (-> S Pict3D)]
-                [#:on-final-draw (-> S Pict3D)]
+                [#:on-draw (-> S Natural Flonum Pict3D)]
+                [#:on-key (-> S Natural Flonum String S)]
+                [#:on-release (-> S Natural Flonum String S)]
+                [#:on-mouse (-> S Natural Flonum Integer Integer String S)]
                 S)))
 (define (big-bang3d
          init-state
-         #:valid-state? [valid-state? (λ ([s : S]) #t)]
-         #:stop-state? [stop-state? (λ ([s : S]) #f)]
+         #:valid-state? [valid-state? (λ ([s : S] [n : Natural] [t : Flonum]) #t)]
+         #:stop-state? [stop-state? (λ ([s : S] [n : Natural] [t : Flonum]) #f)]
          #:name [name "World3D"]
          #:width [width 512]
          #:height [height 512]
-         #:frame-delay [frame-delay* #i1000/30]
-         #:frame-limit [frame-limit +inf.0]
+         #:frame-delay [orig-frame-delay #i1000/30]
          #:on-frame [on-frame (λ ([s : S] [n : Natural] [t : Flonum]) s)]
-         #:on-draw [on-draw (λ ([s : S]) empty-pict3d)]
-         #:on-key [on-key (λ ([s : S] [k : String]) s)]
-         #:on-pad [on-pad #f]
-         #:on-release [on-release (λ ([s : S] [k : String]) s)]
-         #:on-mouse [on-mouse (λ ([s : S] [x : Integer] [y : Integer] [e : String]) s)]
-         #:on-init-draw [on-init-draw on-draw]
-         #:on-final-draw [on-final-draw on-draw]
+         #:on-draw [on-draw (λ ([s : S] [n : Natural] [t : Flonum]) empty-pict3d)]
+         #:on-key [on-key (λ ([s : S] [n : Natural] [t : Flonum] [k : String]) s)]
+         #:on-release [on-release (λ ([s : S] [n : Natural] [t : Flonum] [k : String]) s)]
+         #:on-mouse [on-mouse (λ ([s : S] [n : Natural] [t : Flonum]
+                                          [x : Integer] [y : Integer] [e : String]) s)]
          ;; For networked worlds
          ;#:on-receive [on-receive #f]
          ;#:register [register #f]
          ;#:port [port #f]
          )
+  (define frame-delay (real->double-flonum orig-frame-delay))
   
-  (define frame-delay (real->double-flonum frame-delay*))
+  (define first-frame-time (current-inexact-milliseconds))
   
-  (unless (valid-state? init-state)
+  (unless (valid-state? init-state 0 0.0)
     (error 'valid-state?
-           "the initial state is ~e, for which valid-state? returns #f"
+           "the initial state is ~e at 0 0.0, for which valid-state? returns #f"
            init-state))
   
   (: running? Boolean)
-  (: current-state S)
-  (define running? #t)
-  (define current-state init-state)
-  
-  (: set-current-state! (-> Symbol S Void))
-  ;; Sets the current state, checks valid-state? and stop-state?
-  (define (set-current-state! setter new-state)
-    (when running?
-      (unless (valid-state? new-state)
-        (set! running? #f)
-        (error 'valid-state?
-               "~a handler returned ~e, for which valid-state? returns #f"
-               setter
-               new-state))
-      (set! current-state new-state)
-      (when (stop-state? new-state)
-        (set! running? #f))))
+  (define running? (not (stop-state? init-state 0 0.0)))
   
   ;; Posted when the canvas first paints something
   (define start-sema (make-semaphore))
@@ -176,7 +149,7 @@ Universe/networking
          ;; Start handler: post to the semaphore so the main loop can start
          [on-start  (λ () (semaphore-post start-sema))]
          ;; Initial pict
-         [pict  (on-init-draw init-state)]))
+         [pict3d  (on-draw init-state 0 0.0)]))
   
   (send window show #t)
   (send canvas focus)
@@ -186,23 +159,40 @@ Universe/networking
   ;; Wait until after the first paint
   (semaphore-wait start-sema)
   
-  (define first-frame? #t)
-  (define first-frame-time 0.0)
+  (: current-state S)
+  (define current-state init-state)
+  
+  (: frame Natural)
+  (define frame 0)
+  
+  (: frame-time Flonum)
+  (define frame-time 0.0)
+  
+  (: set-current-state! (-> Symbol S Void))
+  ;; Sets the current state, checks valid-state? and stop-state?
+  (define (set-current-state! setter new-state)
+    (when running?
+      (unless (valid-state? new-state frame frame-time)
+        (set! running? #f)
+        (error 'valid-state?
+               "~a handler returned ~e at ~a ~a, for which valid-state? returns #f"
+               setter
+               new-state
+               frame
+               frame-time))
+      (set! current-state new-state)
+      (when (stop-state? new-state frame frame-time)
+        (set! running? #f))))
   
   ;; Main loop
-  (let loop ([frame : Natural  0])
-    (when (and (send window is-shown?)
-               (< frame frame-limit)
-               running?)
+  (let loop ()
+    (when (and running? (send window is-shown?))
       ;; Mark the start of the frame
       (define start (real->double-flonum (current-inexact-milliseconds)))
-      (when first-frame?
-        (set! first-frame? #f)
-        (set! first-frame-time start))
+      (set! frame (+ frame 1))
+      (set! frame-time (- start first-frame-time))
       ;; Call the user's on-frame handler
-      (set-current-state! 'on-frame (on-frame current-state frame (- start first-frame-time)))
-      ;; Call the user's on-draw and set the result in the canvas
-      (send canvas set-pict3d (on-draw current-state))
+      (set-current-state! 'on-frame (on-frame current-state frame frame-time))
       ;; Work through all the input events
       (let event-loop ()
         (match (async-channel-try-get event-channel)
@@ -211,27 +201,30 @@ Universe/networking
            (cond
              ;; Release key codes
              [release?
-              (set-current-state! 'on-release (on-release current-state code))]
-             ;; Pad key codes
-             [(and on-pad (member code pad-strings))
-              (set-current-state! 'on-pad (on-pad current-state code))]
+              (set-current-state! 'on-release (on-release current-state frame frame-time code))]
              ;; Regular key codes
              [else
-              (set-current-state! 'on-key (on-key current-state code))])
+              (set-current-state! 'on-key (on-key current-state frame frame-time code))])
            (event-loop)]
           ;; Mouse events
           [(mouse x y e)
-           (set-current-state! 'on-mouse (on-mouse current-state x y e))
+           (set-current-state! 'on-mouse (on-mouse current-state frame frame-time x y e))
            (event-loop)]
           [_
            (void)]))
+      ;; Call the user's on-draw and set the result in the canvas
+      (send canvas set-pict3d (on-draw current-state frame frame-time))
       ;; Determine how much time is left in the frame
       (define duration (max 0.0 (- (real->double-flonum (current-inexact-milliseconds)) start)))
       (define delay (/ (max 1.0 (- frame-delay duration)) 1000.0))
       ;; Sleep for the remainder of the frame and let GUI events run
       (sleep/yield delay)
-      (loop (+ frame 1))))
+      (loop)))
   
   (set! running? #f)
-  (send canvas set-pict3d (on-final-draw current-state))
+  ;; Clean out the event queue
+  (let event-loop ()
+    (when (async-channel-try-get event-channel)
+      (event-loop)))
+  ;; Return the final state
   current-state)

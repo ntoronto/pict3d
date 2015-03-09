@@ -190,7 +190,10 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (loop (affine-compose t t0) s0)]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
-       (cond [(empty-scene? s0)  (flrect3-transform zero-flrect3 (affine-transform t))]
+       (cond [(empty-scene? s0)
+              (if (eq? kind 'visible)
+                  empty-flrect3
+                  (flrect3-transform zero-flrect3 (affine-transform t)))]
              [else  (loop t s0)])])))
 
 (: scene-rect (-> Scene FlRect3))
@@ -400,63 +403,61 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
              [else  (make-node-scene new-s1 new-s2)])]
       [(trans-scene? s)
-       (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene t0 new-s0)])]
+             [else  (make-trans-scene (trans-scene-affine s) new-s0)])]
       [(group-scene? s)
-       (define n0 (group-scene-tag s))
        (define s0 (group-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-group-scene n0 new-s0)])])))
+             [else  (make-group-scene (group-scene-tag s) new-s0)])])))
 
 ;; ===================================================================================================
 ;; Mapping over groups
 
-(: scene-map-group/transform (All (A) (-> Scene Tag (-> Affine group-scene A) (Listof A))))
-(define (scene-map-group/transform s n f)
-  (reverse
-   (let loop ([t : Affine  identity-affine] [s s] [as : (Listof A)  empty])
-     (cond
-       [(empty-scene? s)  as]
-       [(leaf-scene? s)  as]
-       [(not (tags-contain? (container-scene-child-tags s) n))  as]
-       [(node-scene? s)
-        (define s1 (node-scene-neg s))
-        (define s2 (node-scene-pos s))
-        (loop t s2 (loop t s1 as))]
-       [(trans-scene? s)
-        (define t0 (trans-scene-affine s))
-        (define s0 (trans-scene-scene s))
-        (loop (affine-compose t t0) s0 as)]
-       [(group-scene? s)
-        (define n0 (group-scene-tag s))
-        (define s0 (group-scene-scene s))
-        (cond [(equal? n0 n)  (cons (f t s) as)]
-              [else  (loop t s0 as)])]))))
+(: scene-map-group/transform (All (A) (-> Scene (Listof+1 Tag) (-> Affine group-scene A) (Listof A))))
+(define (scene-map-group/transform s ns f)
+  (let loop ([t : Affine  identity-affine] [s s] [ns : (Listof+1 Tag)  ns] [as : (Listof A)  empty])
+    (cond
+      [(empty-scene? s)  as]
+      [(leaf-scene? s)  as]
+      [(let ([tags  (container-scene-child-tags s)])
+         (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
+       as]
+      [(node-scene? s)
+       (loop t (node-scene-pos s) ns
+             (loop t (node-scene-neg s) ns as))]
+      [(trans-scene? s)
+       (loop (affine-compose t (trans-scene-affine s)) (trans-scene-scene s) ns as)]
+      [(group-scene? s)
+       (cond [(equal? (group-scene-tag s) (first ns))
+              (let ([ns  (rest ns)])
+                (cond [(empty? ns)  (cons (f t s) as)]
+                      [else  (loop t (group-scene-scene s) ns as)]))]
+             [else  (loop t (group-scene-scene s) ns as)])])))
 
-(: scene-map-group (All (A) (-> Scene Tag (-> group-scene A) (Listof A))))
-(define (scene-map-group s n f)
-  (reverse
-   (let loop ([s s] [as : (Listof A)  empty])
-     (cond
-       [(empty-scene? s)  as]
-       [(leaf-scene? s)  as]
-       [(not (tags-contain? (container-scene-child-tags s) n))  as]
-       [(node-scene? s)
-        (define s1 (node-scene-neg s))
-        (define s2 (node-scene-pos s))
-        (loop s2 (loop s1 as))]
-       [(trans-scene? s)
-        (define s0 (trans-scene-scene s))
-        (loop s0 as)]
-       [(group-scene? s)
-        (define n0 (group-scene-tag s))
-        (define s0 (group-scene-scene s))
-        (cond [(equal? n0 n)  (cons (f s) as)]
-              [else  (loop s0 as)])]))))
+(: scene-map-group (All (A) (-> Scene (Listof+1 Tag) (-> group-scene A) (Listof A))))
+(define (scene-map-group s ns f)
+  (let loop ([s s] [ns : (Listof+1 Tag)  ns] [as : (Listof A)  empty])
+    (cond
+      [(empty-scene? s)  as]
+      [(leaf-scene? s)  as]
+      [(let ([tags  (container-scene-child-tags s)])
+         (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
+       as]
+      [(node-scene? s)
+       (loop (node-scene-pos s) ns
+             (loop (node-scene-neg s) ns as))]
+      [(trans-scene? s)
+       (loop (trans-scene-scene s) ns as)]
+      [(group-scene? s)
+       (cond [(equal? (group-scene-tag s) (first ns))
+              (let ([ns  (rest ns)])
+                (cond [(empty? ns)  (cons (f s) as)]
+                      [else  (loop (group-scene-scene s) ns as)]))]
+             [else
+              (loop (group-scene-scene s) ns as)])])))
 
 ;; ===================================================================================================
 
@@ -483,46 +484,44 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
          [(all)       (cons (cons n0 t) (loop t s0))])])))
 
 ;; ===================================================================================================
-;; Replace groups or within groups - like a fold for Scene, but just on groups
+;; Replace groups - like a fold for Scene, but just on groups
 
-(: scene-replace-group (-> Scene Tag (-> group-scene Scene) Scene))
-(define (scene-replace-group s n f)
-  (let loop ([s s])
+(: scene-replace-group (-> Scene (Listof+1 Tag) (-> group-scene Scene) Scene))
+(define (scene-replace-group s ns f)
+  (let loop ([s s] [ns : (Listof+1 Tag)  ns])
     (cond
       [(empty-scene? s)  s]
       [(leaf-scene? s)  s]
-      [(not (tags-contain? (container-scene-child-tags s) n))  s]
+      [(let ([tags  (container-scene-child-tags s)])
+         (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
+       s]
       [(node-scene? s)
        (define s1 (node-scene-neg s))
        (define s2 (node-scene-pos s))
-       (define new-s1 (loop s1))
-       (define new-s2 (loop s2))
+       (define new-s1 (loop s1 ns))
+       (define new-s2 (loop s2 ns))
        (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
              [else  (make-node-scene new-s1 new-s2)])]
       [(trans-scene? s)
-       (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (define new-s0 (loop s0))
+       (define new-s0 (loop s0 ns))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene t0 new-s0)])]
+             [else  (make-trans-scene (trans-scene-affine s) new-s0)])]
       [(group-scene? s)
        (define n0 (group-scene-tag s))
-       (define s0 (group-scene-scene s))
-       (cond [(equal? n0 n)  (f s)]
+       (cond [(equal? n0 (first ns))
+              (let ([ns  (rest ns)])
+                (cond [(empty? ns)  (f s)]
+                      [else
+                       (define s0 (group-scene-scene s))
+                       (define new-s0 (loop s0 ns))
+                       (cond [(eq? new-s0 s0)  s]
+                             [else  (make-group-scene n0 new-s0)])]))]
              [else
-              (define new-s0 (loop s0))
+              (define s0 (group-scene-scene s))
+              (define new-s0 (loop s0 ns))
               (cond [(eq? new-s0 s0)  s]
                     [else  (make-group-scene n0 new-s0)])])])))
-
-(: scene-replace-in-group (-> Scene Tag (-> Scene Scene) Scene))
-(define (scene-replace-in-group s n f)
-  (scene-replace-group
-   s n (λ (s)
-         (define n0 (group-scene-tag s))
-         (define s0 (group-scene-scene s))
-         (define new-s0 (f s0))
-         (cond [(eq? new-s0 s0)  s]
-               [else  (make-group-scene n0 new-s0)]))))
 
 ;; ===================================================================================================
 ;; Scene-ray-intersection
@@ -550,10 +549,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (: nonempty-scene-ray-intersect (-> Nonempty-Scene FlVector FlVector (U #f line-hit)))
 (define (nonempty-scene-ray-intersect s v dv)
   (let loop ([s s] [v v] [dv dv] [t : FlAffine3-  identity-flt3])
-    (define tv (flt3apply/pos t v))
-    (define tdv (flt3apply/dir t dv))
     (define bb (scene-rect s))
-    (define-values (tmin tmax) (flrect3-line-intersects bb tv tdv))
+    (define-values (tmin tmax) (flrect3-line-intersects bb v dv))
     (cond
       [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
       [(leaf-scene? s)
@@ -561,7 +558,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (cond [(frozen-scene-shape? a)
               (loop (frozen-scene-shape-scene a) v dv t)]
              [else
-              (define h (shape-line-intersect a tv tdv))
+              (define h (shape-line-intersect a v dv))
               (if (or (not h) (< (line-hit-distance h) 0.0))
                   #f
                   (transform-line-hit h (flt3inverse t)))])]
@@ -574,7 +571,10 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       [(trans-scene? s)
        (define t0 (flt3inverse (affine-transform (trans-scene-affine s))))
        (define s0 (trans-scene-scene s))
-       (loop s0 v dv (flt3compose t0 t))]
+       (loop s0
+             (flt3apply/pos t0 v)
+             (flt3apply/dir t0 dv)
+             (flt3compose t0 t))]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (cond [(empty-scene? s0)  #f]

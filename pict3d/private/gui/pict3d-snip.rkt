@@ -18,6 +18,7 @@
          "../utils.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
+         "pict3d-transforms.rkt"
          "master-context.rkt"
          "parameters.rkt"
          "indicators.rkt"
@@ -77,12 +78,6 @@
      (make-bytes n))
    bytes-length))
 
-(define (snip-proj-matrix width height fov-degrees znear zfar)
-  (define fov-radians (degrees->radians (fl fov-degrees)))
-  (flt3compose
-   (scale-flt3 +x-y+z-flv3)  ; upside-down: OpenGL origin is lower-left
-   (perspective-flt3/viewport (fl width) (fl height) fov-radians znear zfar)))
-
 (define light-indicator-hash (make-weak-hasheq))
 (define axes-indicator-hash (make-weak-hasheq))
 
@@ -102,11 +97,11 @@
       (time-apply
        (λ ()
          (define-values
-           (legacy? width height znear zfar fov-degrees background ambient
-                  add-sunlight? add-indicators?)
+           (legacy? width height z-near z-far fov background ambient
+                    add-sunlight? add-indicators? auto-camera)
            (send gui get-render-params))
          ;; Compute a projection matrix
-         (define proj (snip-proj-matrix width height fov-degrees znear zfar))
+         (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
          
          ;; Get scaling factor for indicator objects like axes
          (define scale (fl (send gui get-scale)))
@@ -137,8 +132,8 @@
            
            (draw-scenes (append (list s) sunlight-scenes light-scenes axes-scenes)
                         width height view proj
-                        (rgba->flvector background)
-                        (emitted->flvector ambient))
+                        (col-flvector background)
+                        (col-flvector ambient))
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
            (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
@@ -224,7 +219,8 @@
     
     (define (reset-camera)
       (send camera set-view-matrix 
-            (affine-transform (pict3d-view-transform (pict3d (send pict get-scene))))))
+            (pict3d-view-transform (pict3d (send pict get-scene))
+                                   (send pict get-auto-camera))))
     
     (reset-camera)
     
@@ -317,11 +313,11 @@
         (define sy last-sy)
         
         (define-values
-          (legacy? width height znear zfar fov-degrees background ambient
-                   add-sunlight? add-indicators?)
+          (legacy? width height z-near z-far fov background ambient
+                   add-sunlight? add-indicators? auto-camera)
           (send pict get-init-params))
         
-        (define proj (snip-proj-matrix width height fov-degrees znear zfar))
+        (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
         (define v0 (flt3apply/pos (flt3inverse view) zero-flv3))
         (define dv (snip->world-dir sx sy width height proj view))
         (define h (scene-ray-intersect (send pict get-scene) v0 dv))
@@ -358,27 +354,28 @@
         (stop-frame-timer))
       (send pict refresh))
     
+    (define (draw-hud-vector dc v digits width height cstr line)
+      (define-values (x y z) (flv3-values v))
+      ;; Have to break it up like this and draw each coordinate in reverse order
+      ;; because of an apparent limit on the lengths of paths
+      (define strs
+        (list (format "(~a " cstr)
+              (string-append (format/prec x digits) " ")
+              (string-append (format/prec y digits) " ")
+              (string-append (format/prec z digits) ")")))
+      (for/fold ([width  (- width 2)]) ([str  (in-list (reverse strs))])
+        (define-values (w h _1 _2) (send dc get-text-extent str))
+        (draw-outlined-text dc str (- width w) (- height (* h line)))
+        (- width w))
+      (void))
+    
     (define (draw-hud-items dc)
       (for ([item  (in-list hud-items)])
         (match item
           [(list 'trace-pos v digits width height)
-           (define-values (x y z) (flv3-values v))
-           ;; Have to break it up like this and draw each coordinate in reverse order
-           ;; because of an apparent limit on the lengths of paths
-           (for/fold ([width  (- width 2)]) ([x  (in-list (list z y x))])
-             (define str (string-append " " (format/prec x digits)))
-             (define-values (w h _1 _2) (send dc get-text-extent str))
-             (draw-outlined-text dc str (- width w) (- height (* h 2)))
-             (- width w))
-           (void)]
+           (draw-hud-vector dc v digits width height "pos" 2)]
           [(list 'trace-norm n width height)
-           (define-values (ang alt) (dir->angles (dir n)))
-           (when (and (rational? ang) (rational? alt))
-             (define str (format "~a\u00b0 ~a\u00b0"
-                                 (real->decimal-string (inexact->exact ang) 1)
-                                 (real->decimal-string (inexact->exact alt) 1)))
-             (define-values (w h _1 _2) (send dc get-text-extent str))
-             (draw-outlined-text dc str (- width w) (- height h)))])))
+           (draw-hud-vector dc n -2 width height "dir" 1)])))
     
     (define scale-x-min -1)
     (define scale-x-mid -1)
@@ -718,11 +715,12 @@
                 height
                 z-near
                 z-far
-                fov-degrees
+                fov
                 background
                 ambient
                 add-sunlight?
-                add-indicators?)
+                add-indicators?
+                auto-camera)
     
     (super-make-object)
     
@@ -739,11 +737,13 @@
     (define/public (get-scene) scene)
     
     (define/public (get-size) (values width height))
+    (define/public (get-auto-camera) auto-camera)
     
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
       (make-object pict3d% scene legacy?
-        width height z-near z-far fov-degrees background ambient add-sunlight? add-indicators?))
+        width height z-near z-far fov background ambient
+        add-sunlight? add-indicators? auto-camera))
     
     (define scroll-step #f)
     (define (calc-scroll-step)
@@ -789,8 +789,8 @@
             the-bitmap-val)))
     
     (define/public (get-init-params)
-      (values legacy? width height z-near z-far fov-degrees background ambient
-              add-sunlight? add-indicators?))
+      (values legacy? width height z-near z-far fov background ambient
+              add-sunlight? add-indicators? auto-camera))
     
     (define/public (refresh)
       (queue-callback
@@ -878,11 +878,12 @@
     (current-pict3d-height)
     (current-pict3d-z-near)
     (current-pict3d-z-far)
-    (current-pict3d-fov-degrees)
+    (current-pict3d-fov)
     (current-pict3d-background)
     (current-pict3d-ambient)
     (current-pict3d-add-sunlight?)
-    (current-pict3d-add-indicators?)))
+    (current-pict3d-add-indicators?)
+    (current-pict3d-auto-camera)))
 
 (define (pict3d%->scene p)
   (send p get-scene))

@@ -30,18 +30,34 @@
  ;; Colors
  (rename-out [-RGBA RGBA]
              [-Emitted Emitted])
+ col-flvector
  rgba?
  emitted?
- rgba rgba->flvector rgba-components
- emitted emitted->flvector emitted-components
+ rgba
+ rgba-red
+ rgba-green
+ rgba-blue
+ rgba-alpha
+ emitted
+ emitted-red
+ emitted-green
+ emitted-blue
+ emitted-intensity
  ;; Vectors
  (rename-out [-Pos Pos]
              [-Dir Dir])
+ vec-flvector
  pos?
  dir?
  origin
- pos pos->flvector pos-coordinates
- dir dir->flvector dir-components
+ pos
+ dir
+ pos-x
+ pos-y
+ pos-z
+ dir-dx
+ dir-dy
+ dir-dz
  dir+
  dir-
  dir-negate
@@ -50,6 +66,7 @@
  dir-dist
  dir-normalize
  dir-dot
+ dir-proj
  dir-cross
  angles->dir
  dir->angles
@@ -77,6 +94,9 @@
  affine-compose
  affine-inverse
  affine-consistent?
+ transform-pos
+ transform-dir
+ transform-norm
  )
 
 ;; ===================================================================================================
@@ -122,18 +142,21 @@
 (define print-col
   (λ ([name : Symbol])
     (make-constructor-style-printer
-     (λ ([v : Col]) name)
-     (λ ([v : Col])
-       (define-values (r g b w) (col-values v))
-       (list r g b w)))))
+     (λ ([c : col]) name)
+     (λ ([c : col])
+       (define v (col-flvector c))
+       (list (flvector-ref v 0)
+             (flvector-ref v 1)
+             (flvector-ref v 2)
+             (flvector-ref v 3))))))
 
-(struct Col ([vector : FlVector]) #:transparent
+(struct col ([flvector : FlVector]) #:transparent
   #:property prop:custom-print-quotable 'never)
-  
-(struct RGBA Col () #:transparent
+
+(struct RGBA col () #:transparent
   #:property prop:custom-write (print-col 'rgba))
   
-(struct Emitted Col () #:transparent
+(struct Emitted col () #:transparent
   #:property prop:custom-write (print-col 'emitted))
 
 (define-type -RGBA RGBA)
@@ -141,42 +164,48 @@
 (define rgba? RGBA?)
 (define emitted? Emitted?)
 
-(define-syntax-rule (col-values stx)
-  (let ([v  (Col-vector stx)])
-    (values (unsafe-flvector-ref v 0)
-            (unsafe-flvector-ref v 1)
-            (unsafe-flvector-ref v 2)
-            (unsafe-flvector-ref v 3))))
-
 (define-type User-Color (U String Real Color-Vector (Instance Color%)))
 
-(: ->flcolor4 (->* [Symbol User-Color] [Real] FlVector))
+(: ->flcolor4 (->* [Symbol User-Color] [Real] (Values Flonum Flonum Flonum Flonum)))
 (define (->flcolor4 name col [w 1.0])
   (cond
     [(real? col)
      (define r (fl col))
-     (flvector r r r (fl w))]
+     (values r r r (fl w))]
     [(or (list? col) (vector? col) (flvector? col))
      (define n (color-vec-length col))
      (cond
        [(= n 4)
         (define v (assert (color-vec->flv col 4) values))
-        (flvector-set! v 3 (* (fl w) (flvector-ref v 3)))
-        v]
+        (values (flvector-ref v 0)
+                (flvector-ref v 1)
+                (flvector-ref v 2)
+                (* (fl w) (flvector-ref v 3)))]
        [(= n 3)
         (define c (make-flvector 4 (fl w)))
         (for ([r  (ann col (Sequenceof Real))]
               [i  (in-range 3)])
           (flvector-set! c i (fl r)))
-        c]
+        (values (flvector-ref c 0)
+                (flvector-ref c 1)
+                (flvector-ref c 2)
+                (fl w))]
        [else
         (raise-argument-error 'name "length-3 or length-4 vector" col)])]
     [else
      (match-define (vector r g b) (color->rgb 'name col))
-     (flvector (/ (fl r) 255.0)
-               (/ (fl g) 255.0)
-               (/ (fl b) 255.0)
-               (fl w))]))
+     (values (/ (fl r) 255.0)
+             (/ (fl g) 255.0)
+             (/ (fl b) 255.0)
+             (fl w))]))
+
+(: make-rgba (-> Flonum Flonum Flonum Flonum RGBA))
+(define (make-rgba r g b a)
+  (let ([r  (min 1.0 (max 0.0 r))]
+        [g  (min 1.0 (max 0.0 g))]
+        [b  (min 1.0 (max 0.0 b))]
+        [a  (min 1.0 (max 0.0 a))])
+    (RGBA (flvector r g b a))))
 
 (: rgba (case-> (-> (U RGBA User-Color) RGBA)
                 (-> (U RGBA User-Color) Real RGBA)
@@ -185,10 +214,23 @@
 (define rgba
   (case-lambda
     [(col)  (rgba col 1.0)]
-    [(col alpha)  (let ([col  (if (rgba? col) (rgba->flvector col) col)])
-                    (RGBA (->flcolor4 'rgba col alpha)))]
-    [(r g b)  (RGBA (flvector (fl r) (fl g) (fl b) 1.0))]
-    [(r g b a)  (RGBA (flvector (fl r) (fl g) (fl b) (fl a)))]))
+    [(col alpha)  (let ([col  (if (rgba? col) (col-flvector col) col)])
+                    (let-values ([(r g b a)  (->flcolor4 'rgba col alpha)])
+                      (make-rgba r g b a)))]
+    [(r g b)  (make-rgba (fl r) (fl g) (fl b) 1.0)]
+    [(r g b a)  (make-rgba (fl r) (fl g) (fl b) (fl a))]))
+
+(define black-flvector (flvector 0.0 0.0 0.0 0.0))
+
+(: make-emitted (-> Flonum Flonum Flonum Flonum Emitted))
+(define (make-emitted r g b i)
+  (let ([r  (max 0.0 r)]
+        [g  (max 0.0 g)]
+        [b  (max 0.0 b)]
+        [i  (max 0.0 i)])
+    (define mx (max r g b))
+    (cond [(or (= mx 0.0) (= i 0.0))  (Emitted black-flvector)]
+          [else  (Emitted (flvector (/ r mx) (/ g mx) (/ b mx) (* i mx)))])))
 
 (: emitted (case-> (-> (U Emitted User-Color) Emitted)
                    (-> (U Emitted User-Color) Real Emitted)
@@ -197,22 +239,21 @@
 (define emitted
   (case-lambda
     [(col)  (emitted col 1.0)]
-    [(col intensity)  (let ([col  (if (emitted? col) (emitted->flvector col) col)])
-                        (Emitted (->flcolor4 'emitted col intensity)))]
-    [(r g b)  (Emitted (flvector (fl r) (fl g) (fl b) 1.0))]
-    [(r g b i)  (Emitted (flvector (fl r) (fl g) (fl b) (fl i)))]))
+    [(col intensity)  (let ([col  (if (emitted? col) (col-flvector col) col)])
+                        (let-values ([(r g b i)  (->flcolor4 'emitted col intensity)])
+                          (make-emitted r g b i)))]
+    [(r g b)  (make-emitted (fl r) (fl g) (fl b) 1.0)]
+    [(r g b i)  (make-emitted (fl r) (fl g) (fl b) (fl i))]))
 
-(: rgba->flvector (-> RGBA FlVector))
-(define rgba->flvector Col-vector)
+(define rgba-red   (λ ([c : RGBA]) (flvector-ref (col-flvector c) 0)))
+(define rgba-green (λ ([c : RGBA]) (flvector-ref (col-flvector c) 1)))
+(define rgba-blue  (λ ([c : RGBA]) (flvector-ref (col-flvector c) 2)))
+(define rgba-alpha (λ ([c : RGBA]) (flvector-ref (col-flvector c) 3)))
 
-(: emitted->flvector (-> Emitted FlVector))
-(define emitted->flvector Col-vector)
-
-(: rgba-components (-> RGBA (Values Flonum Flonum Flonum Flonum)))
-(define (rgba-components v) (col-values v))
-
-(: emitted-components (-> Emitted (Values Flonum Flonum Flonum Flonum)))
-(define (emitted-components v) (col-values v))
+(define emitted-red       (λ ([e : Emitted]) (flvector-ref (col-flvector e) 0)))
+(define emitted-green     (λ ([e : Emitted]) (flvector-ref (col-flvector e) 1)))
+(define emitted-blue      (λ ([e : Emitted]) (flvector-ref (col-flvector e) 2)))
+(define emitted-intensity (λ ([e : Emitted]) (flvector-ref (col-flvector e) 3)))
 
 ;; ===================================================================================================
 ;; Vectors
@@ -220,18 +261,18 @@
 (define print-vec
   (λ ([name : Symbol])
     (make-constructor-style-printer
-     (λ ([v : Vec]) name)
-     (λ ([v : Vec])
+     (λ ([v : vec]) name)
+     (λ ([v : vec])
        (define-values (x y z) (vec-values v))
        (list x y z)))))
 
-(struct Vec ([vector : FlVector]) #:transparent
+(struct vec ([flvector : FlVector]) #:transparent
   #:property prop:custom-print-quotable 'never)
 
-(struct Pos Vec () #:transparent
+(struct Pos vec () #:transparent
   #:property prop:custom-write (print-vec 'pos))
 
-(struct Dir Vec () #:transparent
+(struct Dir vec () #:transparent
   #:property prop:custom-write (print-vec 'dir))
 
 (define-type -Pos Pos)
@@ -257,7 +298,7 @@
 (define/provide-unit-vectors)
 
 (define-syntax-rule (vec-values stx)
-  (let ([v  (Vec-vector stx)])
+  (let ([v  (vec-flvector stx)])
     (values (unsafe-flvector-ref v 0)
             (unsafe-flvector-ref v 1)
             (unsafe-flvector-ref v 2))))
@@ -284,9 +325,6 @@
     [(v)  (Pos (->flv3 'pos v))]
     [(x y z)  (Pos (flvector (fl x) (fl y) (fl z)))]))
 
-(: pos->flvector (-> Pos FlVector))
-(define pos->flvector Vec-vector)
-
 (: dir (case-> (-> (U FlVector (Listof Real) (Vectorof Real)) Dir)
                (-> Real Real Real Dir)))
 (define dir
@@ -294,14 +332,13 @@
     [(dv)  (Dir (->flv3 'dir dv))]
     [(dx dy dz)  (Dir (flvector (fl dx) (fl dy) (fl dz)))]))
 
-(: dir->flvector (-> Dir FlVector))
-(define dir->flvector Vec-vector)
+(define pos-x (λ ([v : Pos]) (flvector-ref (vec-flvector v) 0)))
+(define pos-y (λ ([v : Pos]) (flvector-ref (vec-flvector v) 1)))
+(define pos-z (λ ([v : Pos]) (flvector-ref (vec-flvector v) 2)))
 
-(: pos-coordinates (-> Pos (Values Flonum Flonum Flonum)))
-(define (pos-coordinates v) (vec-values v))
-
-(: dir-components (-> Dir (Values Flonum Flonum Flonum)))
-(define (dir-components v) (vec-values v))
+(define dir-dx (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 0)))
+(define dir-dy (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 1)))
+(define dir-dz (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 2)))
 
 (: dir+ (-> Dir Dir Dir))
 (define (dir+ dv1 dv2)
@@ -337,24 +374,27 @@
 
 (: dir-normalize (-> Dir (U #f Dir)))
 (define (dir-normalize dv)
-  (define-values (dx dy dz) (vec-values dv))
-  (define m (flsqrt (+ (* dx dx) (* dy dy) (* dz dz))))
-  (let ([dx  (/ dx m)]
-        [dy  (/ dy m)]
-        [dz  (/ dz m)])
-    (if (and (< -inf.0 dx +inf.0)
-             (< -inf.0 dy +inf.0)
-             (< -inf.0 dz +inf.0))
-        (Dir (flvector dx dy dz))
-        #f)))
+  (define v (flv3normalize (vec-flvector dv)))
+  (and v (let-values ([(dx dy dz)  (flv3-values v)])
+           (if (and (< -inf.0 dx +inf.0)
+                    (< -inf.0 dy +inf.0)
+                    (< -inf.0 dz +inf.0))
+               (Dir v)
+               #f))))
 
 (: dir-dot (-> Dir Dir Flonum))
 (define (dir-dot dv1 dv2)
-  (flv3dot (dir->flvector dv1) (dir->flvector dv2)))
+  (flv3dot (vec-flvector dv1) (vec-flvector dv2)))
+
+(: dir-proj (-> Dir Dir (U #f Dir)))
+(define (dir-proj A B)
+  (define d (dir-dist^2 B))
+  (cond [(= d 0.0)  #f]
+        [else  (dir-scale B (/ (dir-dot A B) d))]))
 
 (: dir-cross (-> Dir Dir Dir))
 (define (dir-cross dv1 dv2)
-  (Dir (flv3cross (dir->flvector dv1) (dir->flvector dv2))))
+  (Dir (flv3cross (vec-flvector dv1) (vec-flvector dv2))))
 
 (: angles->dir (-> Real Real Dir))
 (define (angles->dir ang alt)
@@ -373,17 +413,30 @@
   (values (radians->degrees (atan y x))
           (radians->degrees (asin (/ z r)))))
 
-(: pos+ (-> Pos Dir Pos))
-(define (pos+ v dv)
-  (define-values (x y z) (vec-values v))
-  (define-values (dx dy dz) (vec-values dv))
-  (Pos (flvector (+ x dx) (+ y dy) (+ z dz))))
+(: pos+ (->* [Pos Dir] [Real] Pos))
+(define pos+
+  (case-lambda
+    [(v dv)
+     (cond [(eq? v origin)  (Pos (vec-flvector dv))]
+           [else  (define-values (x y z) (vec-values v))
+                  (define-values (dx dy dz) (vec-values dv))
+                  (Pos (flvector (+ x dx) (+ y dy) (+ z dz)))])]
+    [(v dv s)
+     (let ([s  (fl s)])
+       (cond [(eq? v origin)
+              (define-values (dx dy dz) (vec-values dv))
+              (Pos (flvector (* s dx) (* s dy) (* s dz)))]
+             [else
+              (Pos (flv3fma (vec-flvector dv) (fl s) (vec-flvector v)))]))]))
 
 (: pos- (-> Pos Pos Dir))
 (define (pos- v1 v2)
-  (define-values (x1 y1 z1) (vec-values v1))
-  (define-values (x2 y2 z2) (vec-values v2))
-  (Dir (flvector (- x1 x2) (- y1 y2) (- z1 z2))))
+  (cond [(eq? v2 origin)
+         (Dir (vec-flvector v1))]
+        [else
+         (define-values (x1 y1 z1) (vec-values v1))
+         (define-values (x2 y2 z2) (vec-values v2))
+         (Dir (flvector (- x1 x2) (- y1 y2) (- z1 z2)))]))
 
 (: pos-between (-> Pos Pos Real Pos))
 (define (pos-between v1 v2 a)
@@ -397,23 +450,26 @@
 
 (: pos-dist^2 (-> Pos Pos Flonum))
 (define (pos-dist^2 v1 v2)
-  (dir-dist^2 (pos- v2 v1)))
+  (flv3dist^2 (vec-flvector v1) (vec-flvector v2)))
 
 (: pos-dist (-> Pos Pos Flonum))
 (define (pos-dist v1 v2)
-  (dir-dist (pos- v2 v1)))
+  (flv3dist (vec-flvector v1) (vec-flvector v2)))
 
 ;; ===================================================================================================
 ;; Vertex data
 
-;; TODO: make sure n is normal or #f
-
-(define print-vertex
-  (make-constructor-style-printer
-   (λ ([vert : Vertex]) 'make-vertex)
-   (λ ([vert : Vertex])
-     (match-define (Vertex v n c e m) vert)
-     (list v n c e m))))
+(: print-vertex (-> Vertex Output-Port (U #t #f 0 1) Void))
+(define (print-vertex vert port mode)
+  (match-define (Vertex v n c e m) vert)
+  (write-string "(vertex" port)
+  (write-string (format " ~v" v) port)
+  (when n (write-string (format " #:normal ~v" n) port))
+  (when c (write-string (format " #:color ~v" c) port))
+  (when e (write-string (format " #:emitted ~v" e) port))
+  (when m (write-string (format " #:material ~v" m) port))
+  (write-string ")" port)
+  (void))
 
 (struct Vertex ([pos : Pos]
                 [normal : (U #f Dir)]
@@ -461,10 +517,10 @@
 
 (: cols->affine (-> Dir Dir Dir Pos Affine))
 (define (cols->affine x y z p)
-  (affine (cols->flaffine3 (dir->flvector x)
-                           (dir->flvector y)
-                           (dir->flvector z)
-                           (pos->flvector p))))
+  (affine (cols->flaffine3 (vec-flvector x)
+                           (vec-flvector y)
+                           (vec-flvector z)
+                           (vec-flvector p))))
 
 (: affine->cols (-> Affine (Values Dir Dir Dir Pos)))
 (define (affine->cols t)
@@ -474,3 +530,15 @@
           (dir (flvector m01 m11 m21))
           (dir (flvector m02 m12 m22))
           (pos (flvector m03 m13 m23))))
+
+(: transform-pos (-> Pos Affine Pos))
+(define (transform-pos v t)
+  (Pos (flt3apply/pos (affine-transform t) (vec-flvector v))))
+
+(: transform-dir (-> Dir Affine Dir))
+(define (transform-dir v t)
+  (Dir (flt3apply/dir (affine-transform t) (vec-flvector v))))
+
+(: transform-norm (-> Dir Affine Dir))
+(define (transform-norm v t)
+  (Dir (flt3apply/nrm (affine-transform t) (vec-flvector v))))

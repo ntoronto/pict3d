@@ -3,6 +3,7 @@
 (require racket/list
          racket/vector
          racket/flonum
+         racket/math
          "../../math/flv3.rkt"
          "../../math/flrect3.rkt"
          )
@@ -29,10 +30,11 @@
 (define (scale-index->scale i)
   (vector-ref scales (max 0 (min max-scale-index i))))
 
+(define (flrect3->scale b)
+  ;; Don't try anything tricky until we figure out something sufficiently tricky
+  1)
+
 (define (flrect3->scale-index b)
-  (cond [b  (define-values (x1 y1 z1) (flv3-values (flrect3-min b)))
-            (define-values (x2 y2 z2) (flv3-values (flrect3-max b)))
-            (define r (flexpt (* (- x2 x1) (- y2 y1) (- z2 z1)) #i1/3))
-            (define scale (vector-argmin (λ (s) (abs (- r s))) scales))
-            (vector-member scale scales)]
-        [else  (vector-member 1 scales)]))
+  (define r (flrect3->scale b))
+  (define scale (vector-argmin (λ (s) (abs (- r s))) scales))
+  (vector-member scale scales))

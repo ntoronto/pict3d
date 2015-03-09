@@ -1,6 +1,8 @@
 ======================================================================================================
 Easy
 
+Clamp pict3d constructor arguments to reasonable values
+
 Add triangle mesh shape
 
 OpenGL >= 3.2 render paths
@@ -15,6 +17,8 @@ Reorder arguments in `call-with-*` functions and macros
 
 ======================================================================================================
 Medium
+
+Raise errors when given +nan.0, and never produce one
 
 Automate marshaling vertex data
 

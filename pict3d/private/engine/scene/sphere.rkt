@@ -109,15 +109,20 @@
 ;; ===================================================================================================
 ;; Ray intersection
 
+;; Minimum discriminant would normally be 0.0, but floating-point error could make rays wrongly miss
+;; This makes the sphere a little fatter in the plane perpendicular to the ray to try to make up for
+;; it, and also makes edge-grazing intersections more likely - don't know whether that's a good thing
+(define discr-min (* -128.0 epsilon.0))
+
 (: unit-sphere-line-intersects (-> FlVector FlVector (Values (U #f Flonum) (U #f Flonum))))
 (define (unit-sphere-line-intersects p d)
   (define m^2 (flv3mag^2 d))
   (define b (/ (- (flv3dot p d)) m^2))
   (define c (/ (- (flv3mag^2 p) 1.0) m^2))
   (let ([discr  (- (* b b) c)])
-    (if (< discr 0.0)
+    (if (< discr discr-min)
         (values #f #f)  ; Missed sphere
-        (let* ([q  (flsqrt discr)])
+        (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
 (: sphere-shape-center (-> sphere-shape FlVector))

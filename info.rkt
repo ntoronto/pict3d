@@ -20,6 +20,10 @@
                      "gui-lib"
                      "racket-doc"
                      "plot-lib"  ; why?
+                     "htdp-doc"
+                     "htdp-lib"  ; why?
+                     "pict-doc"
+                     "typed-racket-doc"
                      ))
 
 (define pkg-desc "Pict3D: Functional 3D Scenes")
