@@ -1662,7 +1662,8 @@ See @method[pict3d-canvas% set-pict3d].
 
 This module provides functionality for creating interactive, graphical programs in the style of
 @racketmodname[2htdp/universe]; i.e. by defining plain mathematical functions.
-The biggest difference is that scenes are in @hyperlink[dun-dun-dun.mp3]{THE THIRD DIMENSION}.
+The biggest difference is that scenes are in THE THIRD DIMENSION!
+@;{@hyperlink[dun-dun-dun.mp3]{THE THIRD DIMENSION}.}
 
 Another difference is that @racket[big-bang3d], the analogue of @racket[big-bang] in
 @racketmodname[2htdp/universe], is a plain Racket function with keyword arguments.
