@@ -286,17 +286,20 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: scene-union* (-> (Listof Scene) Scene))
 (define (scene-union* ss)
-  (define n (length ss))
-  (let loop : Scene ([ss : (Listof Scene)  ss] [n : Index  (length ss)])
-    (define n/2 (fxquotient n 2))
-    (define ss1 (take ss n/2))
-    (define ss2 (drop ss n/2))
-    (cond [(empty? ss1)  (first ss2)]
-          [(empty? ss2)  (first ss1)]  ; can't happen
-          [else
-           (let ([s1  (loop ss1 n/2)]
-                 [s2  (loop ss2 (assert (- n n/2) index?))])
-             (scene-union s1 s2))])))
+  (cond
+    [(empty? ss)  empty-scene]
+    [else
+     (define n (length ss))
+     (let loop : Scene ([ss : (Listof+1 Scene)  ss] [n : Index  (length ss)])
+       (define n/2 (fxquotient n 2))
+       (define ss1 (take ss n/2))
+       (define ss2 (drop ss n/2))
+       (cond [(empty? ss1)  (first ss2)]
+             [(empty? ss2)  (first ss1)]  ; can't happen
+             [else
+              (let ([s1  (loop ss1 n/2)]
+                    [s2  (loop ss2 (assert (- n n/2) index?))])
+                (scene-union s1 s2))]))]))
 
 ;; ===================================================================================================
 ;; Rebalance

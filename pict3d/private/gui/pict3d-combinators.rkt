@@ -479,8 +479,7 @@
 
 (: combine (-> Pict3Ds * Pict3D))
 (define (combine . ps)
-  (cond [(empty? ps)  empty-pict3d]
-        [else  (pict3d (scene-union* (map pict3d-scene (flatten ps))))]))
+  (pict3d (scene-union* (map pict3d-scene (flatten ps)))))
 
 (: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (pin p1 n1 p2 [n2 empty])
