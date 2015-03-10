@@ -34,7 +34,7 @@ For example,
 
 Pict3D's solutions to these difficulties take more or less standard forms: lights, cameras, and affine
 transformations.
-But what is @emph{not} not standard is the overall design:
+But what is @emph{not} standard is the overall design:
 @itemlist[
  @item{Pict3D makes no distinction between development and production/deployment.
        All functions for developing scenes are available during runtime, and vice-versa.}
