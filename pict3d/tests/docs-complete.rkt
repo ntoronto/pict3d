@@ -12,3 +12,18 @@
               current-pict3d-print-converter
               current-pict3d-custom-write
               ))
+
+(check-docs 'pict3d/universe
+            #:skip
+            '(big-bang3d-state/c
+              gen:world-state
+              world-state-big-bang3d
+              world-state-draw
+              world-state-frame
+              world-state-key
+              world-state-mouse
+              world-state-release
+              world-state-stop?
+              world-state-valid?
+              world-state/c
+              world-state?))
