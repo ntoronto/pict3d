@@ -296,12 +296,13 @@ flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
+
 smooth in vec3 frag_start;
 smooth in vec3 frag_dir;
 
 void main() {
-  vec3 dir = normalize(frag_dir);
   vec3 start = frag_start;
+  vec3 dir = normalize(frag_dir);
   vec2 ts = unit_sphere_intersect(start, dir);
   float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does

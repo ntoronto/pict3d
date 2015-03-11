@@ -12,15 +12,61 @@
          "../utils.rkt"
          "utils.rkt"
          "shader-lib.rkt"
+         "scene/shader-lib.rkt"
          "draw-pass.rkt")
 
-(provide bloom-buffer-size
+(provide Engine-Debug-Pass
+         engine-debug-passes
+         current-engine-debug-pass
+         current-engine-bloom-buffer-size
+         current-engine-bloom-levels
          draw-draw-passes)
 
-(: bloom-buffer-size (Parameterof Positive-Integer))
-(define bloom-buffer-size (make-parameter 256))
+(define-type Engine-Debug-Pass
+  (U 'opaque-material
+     'opaque-depth
+     'opaque-diffuse
+     'opaque-specular
+     'opaque-rgba
+     'transparent-material
+     'transparent-depth
+     'transparent-diffuse
+     'transparent-specular
+     'transparent-rgbv
+     'transparent-alpha
+     'composite-rgba
+     'bloom))
 
-(define bloom-levels 4)
+(: engine-debug-passes (Listof Engine-Debug-Pass))
+;; These must be in order!
+(define engine-debug-passes
+  '(opaque-material
+    opaque-depth
+    opaque-diffuse
+    opaque-specular
+    opaque-rgba
+    transparent-material
+    transparent-depth
+    transparent-diffuse
+    transparent-specular
+    transparent-rgbv
+    transparent-alpha
+    composite-rgba
+    bloom))
+
+(: current-engine-debug-pass (Parameterof (U #f Engine-Debug-Pass)))
+(define current-engine-debug-pass (make-parameter #f))
+
+(: current-engine-bloom-buffer-size (Parameterof Positive-Integer))
+(define current-engine-bloom-buffer-size (make-parameter 256))
+
+(: current-engine-bloom-levels (Parameterof Positive-Integer))
+(define current-engine-bloom-levels (make-parameter 4))
+
+(: find-tail (All (A) (-> A (Listof A) (Listof A))))
+(define (find-tail x xs)
+  (let ([xs  (member x xs)])
+    (if xs xs (error 'find-tail "expected list containing ~e; given ~e" x xs))))
 
 ;; ===================================================================================================
 
@@ -52,6 +98,40 @@ void main() {
 code
   )
 
+(define fullscreen-depth-fragment-code
+  (string-append
+   depth-fragment-code
+   #<<code
+uniform sampler2D rgba;
+
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
+void main() {
+  float d = -get_view_depth(texture(rgba, frag_texcoord).r);
+  d = (zfar - d) / (zfar - znear);
+  out_color = vec4(vec3(d),1);
+}
+code
+   ))
+
+(define fullscreen-alpha-fragment-code
+  (string-append
+   depth-fragment-code
+   #<<code
+uniform sampler2D rgba;
+
+smooth in vec2 frag_texcoord;
+
+out vec4 out_color;
+
+void main() {
+  out_color = vec4(vec3(texture(rgba, frag_texcoord).r),1);
+}
+code
+   ))
+
 (define fullscreen-vertex-struct
   (make-vao-struct
    (make-vao-field "vert_position" 2 GL_FLOAT)
@@ -74,6 +154,28 @@ code
    (list "out_color")
    (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
          (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
+
+(define-singleton/context (fullscreen-depth-program)
+  (log-pict3d-info "<engine> creating fullscreen depth debug program")
+  (make-gl-program
+   "fullscreen-depth-program"
+   (list (cons "zfar" 'zfar)
+         (cons "znear" 'znear)
+         (cons "log2_znear_zfar" 'log2_znear_zfar))
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-depth-fragment-code))))
+
+(define-singleton/context (fullscreen-alpha-program)
+  (log-pict3d-info "<engine> creating fullscreen alpha debug program")
+  (make-gl-program
+   "fullscreen-alpha-program"
+   empty
+   (make-vao-struct)
+   (list "out_color")
+   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
+         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-alpha-fragment-code))))
 
 (define-singleton/context (fullscreen-vao)
   (log-pict3d-info "<engine> creating vao for fullscreen compositing passes")
@@ -361,7 +463,7 @@ code
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 
 ;; ===================================================================================================
-;; Draw a frame with OpenGL
+;; Draw a frame
 
 (: gl-log-depth (-> Boolean Boolean Any))
 ;; Prep depth for logarithmic read/write
@@ -397,8 +499,10 @@ code
   (define znear (flprojective3-z-near proj))
   (define zfar  (flprojective3-z-far  proj))
   
+  (define bloom-levels (current-engine-bloom-levels))
+  
   (define-values (bloom-width bloom-height)
-    (let ([s  (bloom-buffer-size)])
+    (let ([s  (current-engine-bloom-buffer-size)])
       (if (> height width)
           (values s (min (* 2 s) (max 1 (round (* height (/ s width))))))
           (values (min (* 2 s) (max 1 (round (* width (/ s height))))) s))))
@@ -423,6 +527,7 @@ code
   (define bloom-fbo (get-bloom-fbo bloom-dwidth bloom-dheight))
   (define blur-fbo (get-blur-fbo bloom-dwidth bloom-dheight))
   
+  ;; Set up standard uniform data
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
     (make-immutable-hasheq
@@ -437,274 +542,333 @@ code
            (cons 'height (uniform-int height))
            (cons 'ambient (uniform-float ambient-rgb)))))
   
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 1 (pre-light): Compute nearest opaque geometry depth, normals and specular powers
+  (define debug-pass (current-engine-debug-pass))
+  (define remaining-passes engine-debug-passes)
   
-  (with-gl-framebuffer mat-fbo
-    (glViewport 0 0 width height)
-    ;; Write to the depth buffer
-    (gl-log-depth #t #t)
-    ;; Blending normals and specular powers doesn't make sense
-    (glDisable GL_BLEND)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
-    ;; Draw pass 1
-    (draw-opaque-material-pass passes num standard-uniforms face))
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Opaque material: Compute nearest opaque geometry depth, normals and specular powers
   
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 0 (light): Accumulate opaque geometry diffuse and specular reflectance
-  
-  (with-gl-framebuffer light-fbo
-    (glViewport 0 0 width height)
-    ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
-    ;; contributions to the colors at known positions
-    (glDisable GL_DEPTH_TEST)
-    ;; Prepare to accumulate light contributions additively
-    (glEnable GL_BLEND)
-    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT)
-    ;; Load depth and material buffers into texture units 0 and 1
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture depth-buffer
-        (with-gl-active-texture GL_TEXTURE1
-          (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-            ;; Draw pass 0
-            (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
-                   [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-              (draw-light-pass passes num standard-uniforms face)))))))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 2 (color): Draw opaque geometry with lighting
-  
-  (with-gl-framebuffer draw-fbo
-    (glViewport 0 0 width height)
-    ;; Don't write to depth buffer, and only draw fragment on nearest z
-    (gl-log-depth #f #f)
-    ;; Opaque geometry occludes
-    (glDisable GL_BLEND)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT)
-    ;; Load diffuse and specular buffers into texture units 0 and 1
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
-        (with-gl-active-texture GL_TEXTURE1
-          (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
-            ;; Draw pass 2
-            (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
-                   [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-              (draw-opaque-color-pass passes num standard-uniforms face)))))))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 3 (pre-light): Compute nearest transparent geometry depth, normals and specular powers
-  
-  (with-gl-framebuffer tran-mat-fbo
-    (glViewport 0 0 width height)
-    ;; Write to the depth buffer
-    (gl-log-depth #t #t)
-    ;; Blending normals and specular powers doesn't make sense
-    (glDisable GL_BLEND)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
-    ;; Draw pass 3
-    (draw-transparent-material-pass passes num standard-uniforms face))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 0 (light): Accumulate transparent geometry diffuse and specular reflectance
-  
-  (with-gl-framebuffer light-fbo
-    (glViewport 0 0 width height)
-    ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
-    ;; contributions to the colors at known positions
-    (glDisable GL_DEPTH_TEST)
-    ;; Prepare to accumulate light contributions additively
-    (glEnable GL_BLEND)
-    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT)
-    ;; Load depth and material buffers into texture units 0 and 1
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture tran-depth-buffer
-        (with-gl-active-texture GL_TEXTURE1
-          (with-gl-texture (gl-framebuffer-texture-2d tran-mat-fbo GL_COLOR_ATTACHMENT0)
-            ;; Draw pass 0
-            (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
-                   [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
-              (draw-light-pass passes num standard-uniforms face)))))))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Pass 4 (transparency): Accumulate transparent geometry weighted outputs
-  
-  (with-gl-framebuffer tran-fbo
-    (glViewport 0 0 width height)
-    ;; Don't write to depth buffer, and only draw in front of the nearest z
-    (gl-log-depth #f #t)
-    ;; Set up for order-independent, weighted transparency w/out per-render-target blending
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT)
-    (glEnable GL_BLEND)
-    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-    ;; Load diffuse and specular buffers into texture units 0 and 1
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
-        (with-gl-active-texture GL_TEXTURE1
-          (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
-            ;; Draw pass 4
-            (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
-                   [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
-              (draw-transparent-color-pass passes num standard-uniforms face)))))))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Compositing: Draw weighted transparency output
-  
-  ;; With framebuffer that already contains opaque pixels and their depths
-  (with-gl-framebuffer draw-fbo
-    (glViewport 0 0 width height)
-    ;(glEnable GL_TEXTURE_2D)
-    ;; Write transparent pixels' weighted averages
-    (define program (blend-program))
-    (with-gl-program program
-      (glDisable GL_DEPTH_TEST)
-      (glEnable GL_BLEND)
-      (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
-      (with-gl-active-texture GL_TEXTURE0
-        (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0)
-          (with-gl-active-texture GL_TEXTURE1
-            (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1)
-              (gl-program-send-uniform program "rgba" (uniform-int 0))
-              (gl-program-send-uniform program "weight" (uniform-int 1))
-              (draw-fullscreen-quad tex-width tex-height)))))))
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Compositing: Extract overbright values and blur
-  
-  (with-gl-framebuffer reduce-fbo
-    (glViewport 0 0 width height)
-    (glDisable GL_BLEND)
-    (glDisable GL_DEPTH_TEST)
-    (define program (bloom-extract-program))
-    (with-gl-program program
-      (gl-program-send-uniform program "rgba" (uniform-int 0))
-      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
-        (draw-fullscreen-quad tex-width tex-height))))
-  
-  (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
-    (when (not (gl-core-profile?))
-      (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST))
-    (glGenerateMipmap GL_TEXTURE_2D))
-  
-  (define horz-program (blur-horz-program))
-  (define vert-program (blur-vert-program))
-  
-  (define view-widths
-    (let ([base-view-width  (quotient bloom-width (expt 2 (- bloom-levels 1)))])
-      (build-list bloom-levels (λ ([i : Index]) (* base-view-width (expt 2 i))))))
-  
-  (define view-heights
-    (let ([base-view-height  (quotient bloom-height (expt 2 (- bloom-levels 1)))])
-      (build-list bloom-levels (λ ([i : Index]) (* base-view-height (expt 2 i))))))
-  
-  (with-gl-framebuffer mat-fbo
-    (glViewport 0 0 width height)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT))
-  
-  (for ([view-width   (in-list view-widths)]
-        [view-height  (in-list view-heights)])
-    (define view-tex-width (fl (/ view-width bloom-dwidth)))
-    (define view-tex-height (fl (/ view-height bloom-dheight)))
-    
-    (glDisable GL_BLEND)
-    
-    (with-gl-framebuffer bloom-fbo
-      (glViewport 0 0 bloom-dwidth bloom-dheight)
-      (glClear GL_COLOR_BUFFER_BIT))
-    
-    (with-gl-framebuffer blur-fbo
-      (glViewport 0 0 bloom-dwidth bloom-dheight)
-      (glClear GL_COLOR_BUFFER_BIT))
-    
-    (with-gl-framebuffer bloom-fbo
-      (glViewport 0 0 view-width view-height)
-      (define program (fullscreen-program))
-      (with-gl-program program
-        (gl-program-send-uniform program "rgba" (uniform-int 0))
-        (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
-          (draw-fullscreen-quad tex-width tex-height))))
-    
-    ;; Ping-pong horizontal and vertical blur, alternating between "bloom-fbo => blur-fbo"
-    ;; and "blur-fbo => bloom-fbo"
-    (for ([_  (in-range 2)])
-      (with-gl-program horz-program
-        ;; Write to blur-fbo
-        (with-gl-framebuffer blur-fbo
-          (glViewport 0 0 view-width view-height)
-          (gl-program-send-uniform horz-program "rgba" (uniform-int 0))
-          (gl-program-send-uniform horz-program "width"
-                                   (uniform-int (gl-framebuffer-width blur-fbo)))
-          ;; Read from bloom-fbo
-          (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad view-tex-width view-tex-height))))
-      
-      (with-gl-program vert-program
-        ;; Write to bloom-fbo
-        (with-gl-framebuffer bloom-fbo
-          (glViewport 0 0 view-width view-height)
-          (gl-program-send-uniform vert-program "rgba" (uniform-int 0))
-          (gl-program-send-uniform vert-program "height"
-                                   (uniform-int (gl-framebuffer-height bloom-fbo)))
-          ;; Read from blur-fbo
-          (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad view-tex-width view-tex-height)))))
-    
-    (glEnable GL_BLEND)
-    (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
-      (define program (fullscreen-program))
+      ;; Write to the depth buffer
+      (gl-log-depth #t #t)
+      ;; Blending normals and specular powers doesn't make sense
+      (glDisable GL_BLEND)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
+      ;; Draw pass 1
+      (draw-opaque-material-pass passes num standard-uniforms face)))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Opaque light: Accumulate opaque geometry diffuse and specular reflectance
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'opaque-diffuse remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer light-fbo
+      (glViewport 0 0 width height)
+      ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
+      ;; contributions to the colors at known positions
+      (glDisable GL_DEPTH_TEST)
+      ;; Prepare to accumulate light contributions additively
+      (glEnable GL_BLEND)
+      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear GL_COLOR_BUFFER_BIT)
+      ;; Load depth and material buffers into texture units 0 and 1
+      (with-gl-active-texture GL_TEXTURE0
+        (with-gl-texture depth-buffer
+          (with-gl-active-texture GL_TEXTURE1
+            (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+              ;; Draw pass 0
+              (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
+                     [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
+                (draw-light-pass passes num standard-uniforms face))))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Opaque color: Draw opaque geometry with lighting
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'opaque-rgba remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer draw-fbo
+      (glViewport 0 0 width height)
+      ;; Don't write to depth buffer, and only draw fragment on nearest z
+      (gl-log-depth #f #f)
+      ;; Opaque geometry occludes
+      (glDisable GL_BLEND)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear GL_COLOR_BUFFER_BIT)
+      ;; Load diffuse and specular buffers into texture units 0 and 1
+      (with-gl-active-texture GL_TEXTURE0
+        (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
+          (with-gl-active-texture GL_TEXTURE1
+            (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
+              ;; Draw pass 2
+              (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
+                     [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
+                (draw-opaque-color-pass passes num standard-uniforms face))))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Transparent material: Compute nearest transparent geometry depth, normals and specular powers
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'transparent-material remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer tran-mat-fbo
+      (glViewport 0 0 width height)
+      ;; Write to the depth buffer
+      (gl-log-depth #t #t)
+      ;; Blending normals and specular powers doesn't make sense
+      (glDisable GL_BLEND)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
+      ;; Draw pass 3
+      (draw-transparent-material-pass passes num standard-uniforms face)))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Transparent light: Accumulate transparent geometry diffuse and specular reflectance
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'transparent-diffuse remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer light-fbo
+      (glViewport 0 0 width height)
+      ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
+      ;; contributions to the colors at known positions
+      (glDisable GL_DEPTH_TEST)
+      ;; Prepare to accumulate light contributions additively
+      (glEnable GL_BLEND)
+      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear GL_COLOR_BUFFER_BIT)
+      ;; Load depth and material buffers into texture units 0 and 1
+      (with-gl-active-texture GL_TEXTURE0
+        (with-gl-texture tran-depth-buffer
+          (with-gl-active-texture GL_TEXTURE1
+            (with-gl-texture (gl-framebuffer-texture-2d tran-mat-fbo GL_COLOR_ATTACHMENT0)
+              ;; Draw pass 0
+              (let* ([standard-uniforms  (hash-set standard-uniforms 'depth (uniform-int 0))]
+                     [standard-uniforms  (hash-set standard-uniforms 'material (uniform-int 1))])
+                (draw-light-pass passes num standard-uniforms face))))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Transparent color: Accumulate transparent geometry weighted outputs
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'transparent-rgbv remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer tran-fbo
+      (glViewport 0 0 width height)
+      ;; Don't write to depth buffer, and only draw in front of the nearest z
+      (gl-log-depth #f #t)
+      ;; Set up for order-independent, weighted transparency w/out per-render-target blending
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear GL_COLOR_BUFFER_BIT)
+      (glEnable GL_BLEND)
+      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+      ;; Load diffuse and specular buffers into texture units 0 and 1
+      (with-gl-active-texture GL_TEXTURE0
+        (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
+          (with-gl-active-texture GL_TEXTURE1
+            (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT1)
+              ;; Draw pass 4
+              (let* ([standard-uniforms  (hash-set standard-uniforms 'diffuse (uniform-int 0))]
+                     [standard-uniforms  (hash-set standard-uniforms 'specular (uniform-int 1))])
+                (draw-transparent-color-pass passes num standard-uniforms face))))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Compositing: Draw weighted transparency output
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'composite-rgba remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    ;; With framebuffer that already contains opaque pixels and their depths
+    (with-gl-framebuffer draw-fbo
+      (glViewport 0 0 width height)
+      ;(glEnable GL_TEXTURE_2D)
+      ;; Write transparent pixels' weighted averages
+      (define program (blend-program))
+      (with-gl-program program
+        (glDisable GL_DEPTH_TEST)
+        (glEnable GL_BLEND)
+        (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
+        (with-gl-active-texture GL_TEXTURE0
+          (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0)
+            (with-gl-active-texture GL_TEXTURE1
+              (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT1)
+                (gl-program-send-uniform program "rgba" (uniform-int 0))
+                (gl-program-send-uniform program "weight" (uniform-int 1))
+                (draw-fullscreen-quad tex-width tex-height))))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Compositing: Extract overbright values and blur
+  
+  (when debug-pass
+    (set! remaining-passes (find-tail 'bloom remaining-passes)))
+  
+  (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (with-gl-framebuffer reduce-fbo
+      (glViewport 0 0 width height)
+      (glDisable GL_BLEND)
+      (glDisable GL_DEPTH_TEST)
+      (define program (bloom-extract-program))
       (with-gl-program program
         (gl-program-send-uniform program "rgba" (uniform-int 0))
-        (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-          (draw-fullscreen-quad view-tex-width view-tex-height))))
-    )
-  
-  ;; ----------------------------------------------------------------------------------------------
-  ;; Compositing: Draw image and bloom onto system-provided framebuffer
-
-  (glViewport 0 0 width height)
-  (define alpha (flvector-ref background 3))
-  (glClearColor (* (flvector-ref background 0) alpha)
-                (* (flvector-ref background 1) alpha)
-                (* (flvector-ref background 2) alpha)
-                alpha)
-  (glClear GL_COLOR_BUFFER_BIT)
-  
-  (define program (bloom-combine-program))
-  (with-gl-program program
-    (glDisable GL_DEPTH_TEST)
-    (glEnable GL_BLEND)
-    (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
+        (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+          (draw-fullscreen-quad tex-width tex-height))))
     
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
-        (with-gl-active-texture GL_TEXTURE1
-          (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-            (define bloom-frac (/ 1.0 (fl bloom-levels)))
-            (gl-program-send-uniform program "bloom_frac" (uniform-float bloom-frac))
-            (gl-program-send-uniform program "color_tex" (uniform-int 0))
-            (gl-program-send-uniform program "bloom_tex" (uniform-int 1))
-            (draw-fullscreen-quad tex-width tex-height))))))
-  #|
-  (define program (fullscreen-program))
-  (with-gl-program program
-    (glViewport 0 0 width height)
-    (glClearColor 0.0 0.0 0.0 0.0)
-    (glClear GL_COLOR_BUFFER_BIT)
-    (glDisable GL_BLEND)
-    (glDisable GL_DEPTH_TEST)
-    (with-gl-active-texture GL_TEXTURE0
-      (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-        (gl-program-send-uniform program "rgba" (uniform-int 0))
-        (draw-fullscreen-quad tex-width tex-height))))
-  |#
-  )
+    (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
+      (when (not (gl-core-profile?))
+        (glHint GL_GENERATE_MIPMAP_HINT GL_NICEST))
+      (glGenerateMipmap GL_TEXTURE_2D))
+    
+    (define horz-program (blur-horz-program))
+    (define vert-program (blur-vert-program))
+    
+    (define view-widths
+      (let ([base-view-width  (quotient bloom-width (expt 2 (- bloom-levels 1)))])
+        (build-list bloom-levels (λ ([i : Index]) (* base-view-width (expt 2 i))))))
+    
+    (define view-heights
+      (let ([base-view-height  (quotient bloom-height (expt 2 (- bloom-levels 1)))])
+        (build-list bloom-levels (λ ([i : Index]) (* base-view-height (expt 2 i))))))
+    
+    (with-gl-framebuffer mat-fbo
+      (glViewport 0 0 width height)
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glClear GL_COLOR_BUFFER_BIT))
+    
+    (for ([view-width   (in-list view-widths)]
+          [view-height  (in-list view-heights)])
+      (define view-tex-width (fl (/ view-width bloom-dwidth)))
+      (define view-tex-height (fl (/ view-height bloom-dheight)))
+      
+      (glDisable GL_BLEND)
+      
+      (with-gl-framebuffer bloom-fbo
+        (glViewport 0 0 bloom-dwidth bloom-dheight)
+        (glClear GL_COLOR_BUFFER_BIT))
+      
+      (with-gl-framebuffer blur-fbo
+        (glViewport 0 0 bloom-dwidth bloom-dheight)
+        (glClear GL_COLOR_BUFFER_BIT))
+      
+      (with-gl-framebuffer bloom-fbo
+        (glViewport 0 0 view-width view-height)
+        (define program (fullscreen-program))
+        (with-gl-program program
+          (gl-program-send-uniform program "rgba" (uniform-int 0))
+          (with-gl-texture (gl-framebuffer-texture-2d reduce-fbo GL_COLOR_ATTACHMENT0)
+            (draw-fullscreen-quad tex-width tex-height))))
+      
+      ;; Ping-pong horizontal and vertical blur, alternating between "bloom-fbo => blur-fbo"
+      ;; and "blur-fbo => bloom-fbo"
+      (for ([_  (in-range 2)])
+        (with-gl-program horz-program
+          ;; Write to blur-fbo
+          (with-gl-framebuffer blur-fbo
+            (glViewport 0 0 view-width view-height)
+            (gl-program-send-uniform horz-program "rgba" (uniform-int 0))
+            (gl-program-send-uniform horz-program "width"
+                                     (uniform-int (gl-framebuffer-width blur-fbo)))
+            ;; Read from bloom-fbo
+            (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
+              (draw-fullscreen-quad view-tex-width view-tex-height))))
+        
+        (with-gl-program vert-program
+          ;; Write to bloom-fbo
+          (with-gl-framebuffer bloom-fbo
+            (glViewport 0 0 view-width view-height)
+            (gl-program-send-uniform vert-program "rgba" (uniform-int 0))
+            (gl-program-send-uniform vert-program "height"
+                                     (uniform-int (gl-framebuffer-height bloom-fbo)))
+            ;; Read from blur-fbo
+            (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
+              (draw-fullscreen-quad view-tex-width view-tex-height)))))
+      
+      (glEnable GL_BLEND)
+      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+      (with-gl-framebuffer mat-fbo
+        (glViewport 0 0 width height)
+        (define program (fullscreen-program))
+        (with-gl-program program
+          (gl-program-send-uniform program "rgba" (uniform-int 0))
+          (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
+            (draw-fullscreen-quad view-tex-width view-tex-height))))))
+  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Compositing: Draw image and bloom onto system-provided framebuffer
+  
+  (cond
+    [(or (not debug-pass)
+         (eq? debug-pass 'bloom))
+     ;; If we want to see just bloom, clear the draw buffer
+     (when (eq? debug-pass 'bloom)
+       (with-gl-framebuffer draw-fbo
+         (glViewport 0 0 width height)
+         (glClearColor 0.0 0.0 0.0 0.0)
+         (glClear GL_COLOR_BUFFER_BIT)))
+     
+     (glViewport 0 0 width height)
+     (define alpha (flvector-ref background 3))
+     (glClearColor (* (flvector-ref background 0) alpha)
+                   (* (flvector-ref background 1) alpha)
+                   (* (flvector-ref background 2) alpha)
+                   alpha)
+     (glClear GL_COLOR_BUFFER_BIT)
+     
+     (define program (bloom-combine-program))
+     (with-gl-program program
+       (glDisable GL_DEPTH_TEST)
+       (glEnable GL_BLEND)
+       (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
+       (with-gl-active-texture GL_TEXTURE0
+         (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
+           (with-gl-active-texture GL_TEXTURE1
+             (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
+               (define bloom-frac (/ 1.0 (fl bloom-levels)))
+               (gl-program-send-uniform program "bloom_frac" (uniform-float bloom-frac))
+               (gl-program-send-uniform program "color_tex" (uniform-int 0))
+               (gl-program-send-uniform program "bloom_tex" (uniform-int 1))
+               (draw-fullscreen-quad tex-width tex-height))))))]
+    [else
+     (define-values (fbo attachment debug-program)
+       (case debug-pass
+         [(opaque-material)       (values      mat-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(opaque-depth)          (values      mat-fbo GL_DEPTH_ATTACHMENT  fullscreen-depth-program)]
+         [(opaque-diffuse)        (values    light-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(opaque-specular)       (values    light-fbo GL_COLOR_ATTACHMENT1 fullscreen-program)]
+         [(opaque-rgba)           (values     draw-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(transparent-material)  (values tran-mat-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(transparent-depth)     (values tran-mat-fbo GL_DEPTH_ATTACHMENT  fullscreen-depth-program)]
+         [(transparent-diffuse)   (values    light-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(transparent-specular)  (values    light-fbo GL_COLOR_ATTACHMENT1 fullscreen-program)]
+         [(transparent-rgbv)      (values     tran-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [(transparent-alpha)     (values     tran-fbo GL_COLOR_ATTACHMENT1 fullscreen-alpha-program)]
+         [(composite-rgba)        (values     draw-fbo GL_COLOR_ATTACHMENT0 fullscreen-program)]
+         [else  (error 'draw-draw-passes "unknown debug pass ~e" debug-pass)]))
+     
+     (define tex (gl-framebuffer-texture-2d fbo attachment))
+     (define program (debug-program))
+     
+     (define program-uniforms (gl-program-standard-uniforms program))
+     
+     (with-gl-program program
+       (glViewport 0 0 width height)
+       (glClearColor 0.0 0.0 0.0 0.0)
+       (glClear GL_COLOR_BUFFER_BIT)
+       (glDisable GL_BLEND)
+       (glDisable GL_DEPTH_TEST)
+       (with-gl-active-texture GL_TEXTURE0
+         (with-gl-texture tex
+           (gl-program-send-uniform program "rgba" (uniform-int 0))
+           (gl-program-send-uniforms program program-uniforms standard-uniforms)
+           (draw-fullscreen-quad tex-width tex-height))))]))

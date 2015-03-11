@@ -27,3 +27,7 @@
               world-state-valid?
               world-state/c
               world-state?))
+
+#;
+(check-docs 'pict3d/engine
+            #:skip '())
