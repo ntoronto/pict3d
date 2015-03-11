@@ -336,9 +336,9 @@
 (define pos-y (λ ([v : Pos]) (flvector-ref (vec-flvector v) 1)))
 (define pos-z (λ ([v : Pos]) (flvector-ref (vec-flvector v) 2)))
 
-(define dir-dx (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 0)))
-(define dir-dy (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 1)))
-(define dir-dz (λ ([dv : Pos]) (flvector-ref (vec-flvector dv) 2)))
+(define dir-dx (λ ([dv : Dir]) (flvector-ref (vec-flvector dv) 0)))
+(define dir-dy (λ ([dv : Dir]) (flvector-ref (vec-flvector dv) 1)))
+(define dir-dz (λ ([dv : Dir]) (flvector-ref (vec-flvector dv) 2)))
 
 (: dir+ (-> Dir Dir Dir))
 (define (dir+ dv1 dv2)
