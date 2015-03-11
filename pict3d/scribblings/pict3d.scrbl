@@ -355,7 +355,7 @@ When @racket[normalize?] is non-@racket[#f], the arrow has length @racket[1].
 See @secref["vector" #:doc '(lib "pict3d/scribblings/pict3d.scrbl")] for examples.
 }
 
-@(pict3d-eval '(current-pict3d-auto-camera default-pict3d-auto-camera))
+@interaction-eval[#:eval pict3d-eval (current-pict3d-auto-camera default-pict3d-auto-camera)]
 
 @;{===================================================================================================
    ===================================================================================================
@@ -606,7 +606,9 @@ Pict3D distinguishes between two kinds of vectors:
 ]
 Generally, think of direction vectors as how to get from one position vector in space to another.
 
-@(pict3d-eval '(current-pict3d-auto-camera (λ (_) (point-at (pos 0.4 -0.5 1.15) (pos 0.4 1.0 0)))))
+@interaction-eval[#:eval pict3d-eval
+                         (current-pict3d-auto-camera
+                          (λ (_) (point-at (pos 0.4 -0.5 1.15) (pos 0.4 1.0 0))))]
 
 Suppose we define a direction vector @racket[dv1] as
 @interaction[#:eval pict3d-eval
@@ -659,7 +661,7 @@ moving the center to a corner:
                                    (arrow origin (dir 1/3 1/3 1)))
                           (dir 1/2 1/2 0))]
 
-@(pict3d-eval '(current-pict3d-auto-camera default-pict3d-auto-camera))
+@interaction-eval[#:eval pict3d-eval (current-pict3d-auto-camera default-pict3d-auto-camera)]
 
 @subsection[#:tag "direction-vectors"]{Direction Vectors}
 
@@ -1404,9 +1406,10 @@ For the parameters to have an effect on interactive displays, they should be mut
                     (current-pict3d-height 512)
                     (sphere origin 1/2)]
 
-@(pict3d-eval '(begin
-                 (current-pict3d-width default-pict3d-width)
-                 (current-pict3d-height default-pict3d-height)))
+@interaction-eval[#:eval pict3d-eval
+                         (begin
+                           (current-pict3d-width default-pict3d-width)
+                           (current-pict3d-height default-pict3d-height))]
 
 See the @method[pict3d-canvas% set-pict3d] method of @racket[pict3d-canvas%], and
 @racket[pict3d->bitmap],

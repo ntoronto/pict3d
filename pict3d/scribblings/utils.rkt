@@ -1,7 +1,11 @@
 #lang racket/base
 
-;(define eval-mode 'record)
-(define eval-mode 'replay)
+(require racket/gui/dynamic)
+
+(define eval-mode (if (gui-available?) 'record 'replay))
+
+(when (eq? eval-mode 'record)
+  (printf "RECORDING MODE~n"))
 
 (require racket/match
          scribble/eval
@@ -58,21 +62,22 @@
              (require (for-syntax racket/base)
                       racket/match
                       racket/pretty
-                      (only-in pict bitmap)
-                      (except-in pict3d/private/lazy-gui pict3d->bitmap)
-                      pict3d/private/render-client
+                      (rename-in pict3d/private/lazy-gui
+                                 [pict3d->bitmap orig-pict3d->bitmap])
+                      pict3d/scribblings/sniplike-bitmap
                       pict3d/scribblings/serializable-bitmap)
-             (start-render-server)
              
              (define (pict3d->bitmap v)
-               (serializable-bitmap (request-render v) 'jpeg))
+               (serializable-bitmap (orig-pict3d->bitmap v) 'jpeg))
              
              (define (pict3d->png-bitmap v)
-               (serializable-bitmap (request-render v) 'png))
+               (serializable-bitmap (orig-pict3d->bitmap v) 'png))
              
              (define (render-pict3d v)
                (if (pict3d? v)
-                   (serializable-bitmap (request-render v #:as-snip? #t) 'jpeg)
+                   (serializable-bitmap
+                    (pict3d->sniplike-bitmap v (current-pict3d-width) (current-pict3d-height))
+                    'jpeg)
                    v))
              
              (define-syntax (render-pict3ds stx)
@@ -97,6 +102,5 @@
     eval))
 
 (define (close-evals)
-  (pict3d-eval '(stop-render-server))
   (close-eval pict3d-eval)
   (close-eval normal-eval))
