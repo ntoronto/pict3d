@@ -43,6 +43,8 @@ out mat4 geom_untrans;
 out float geom_roughness;
 out float geom_inside;
 
+invariant geom_trans_z, geom_trans, geom_untrans;
+
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
   mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
@@ -62,6 +64,7 @@ code
 
 (define-singleton (sphere-mat-geometry-code)
   (string-append
+   "invariant gl_Position;\n\n"
    impostor-bounds-code
    output-impostor-strip-geometry-code
    #<<code
@@ -84,6 +87,9 @@ flat out float frag_inside;
 
 smooth out vec3 frag_start;
 smooth out vec3 frag_dir;
+
+invariant geom_trans_z, geom_trans, geom_untrans;
+invariant frag_trans_z, frag_dir, frag_start;
 
 void main() {
   rect bbx = impostor_bounds(geom_trans[0], proj, vec3(-1.0), vec3(+1.0));
@@ -124,14 +130,18 @@ flat in float frag_inside;
 smooth in vec3 frag_dir;
 smooth in vec3 frag_start;
 
+// Make everything that could affect vpos_z or the output invariant
+invariant frag_trans_z, frag_dir, frag_start;
+
 void main() {
+  vec3 start = frag_start;
   vec3 dir = normalize(frag_dir);
-  vec2 ts = unit_sphere_intersect(frag_start, dir);
+  vec2 ts = unit_sphere_intersect(start, dir);
   float t = mix(ts.x, ts.y, frag_inside);
   // many nearby fragments should discard if this one does
   if (t <= 0.0) discard;
   
-  vec3 pos = frag_start + dir * t;
+  vec3 pos = start + dir * t;
   float vpos_z = dot(frag_trans_z, vec4(pos,1.0));  // transformed pos z coord only
   vec3 vnorm = pos * frag_untrans;
   output_mat(mix(vnorm,-vnorm,frag_inside), frag_roughness, vpos_z);
@@ -191,6 +201,8 @@ out float geom_diffuse;
 out float geom_specular;
 out float geom_inside;
 
+invariant geom_trans_z, geom_trans, geom_untrans;
+
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
   mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
@@ -216,6 +228,7 @@ code
 
 (define-singleton (sphere-draw-geometry-code)
   (string-append
+   "invariant gl_Position;\n\n"
    impostor-bounds-code
    output-impostor-strip-geometry-code
    #<<code
@@ -248,6 +261,9 @@ flat out float frag_inside;
 smooth out vec3 frag_start;
 smooth out vec3 frag_dir;
 
+invariant geom_trans_z, geom_trans, geom_untrans;
+invariant frag_trans_z, frag_dir, frag_start;
+
 void main() {
   rect bbx = impostor_bounds(geom_trans[0], proj, vec3(-1.0), vec3(+1.0));
   if (bbx.is_degenerate == 0.0) {
@@ -264,9 +280,9 @@ void main() {
       frag_specular = geom_specular[0];
       frag_inside = geom_inside[0];
 
-      vec4 vdir = unproj * gl_Position;
+      vec4 dir = unproj * gl_Position;
+      frag_dir = mat3(geom_untrans[0]) * (dir.xyz / dir.w);
       frag_start = geom_untrans[0][3].xyz;
-      frag_dir = mat3(geom_untrans[0]) * (vdir.xyz / vdir.w);
 
       EmitVertex();
     }
@@ -299,6 +315,9 @@ flat in float frag_inside;
 
 smooth in vec3 frag_start;
 smooth in vec3 frag_dir;
+
+// Make everything that could affect vpos_z or the output invariant
+invariant frag_trans_z, frag_dir, frag_start;
 
 void main() {
   vec3 start = frag_start;
@@ -344,6 +363,9 @@ flat in float frag_inside;
 
 smooth in vec3 frag_start;
 smooth in vec3 frag_dir;
+
+// Make everything that could affect vpos_z or the output invariant
+invariant frag_trans_z, frag_dir, frag_start;
 
 void main() {
   vec3 start = frag_start;

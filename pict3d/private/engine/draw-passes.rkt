@@ -463,43 +463,16 @@ code
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 rgba))))
 
 ;; ===================================================================================================
+;; ===================================================================================================
 ;; Draw a frame
-
-(: gl-log-depth (-> Boolean Boolean Any))
-;; Prep depth for logarithmic read/write
-(define (gl-log-depth write? strict?)
-  (glEnable GL_DEPTH_TEST)
-  (glDepthFunc (if strict? GL_GREATER GL_GEQUAL))
-  (glDepthMask write?)
-  (glClearDepth 0.0))
-
-(: gl-setup-state (-> Void))
-(define (gl-setup-state)
-  (unless (gl-core-profile?)
-    (glEnable GL_TEXTURE_2D)))
 
 (: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural Natural
                         FlAffine3- FlTransform3
                         FlVector FlVector
                         Void))
-(define (draw-draw-passes passes num width height view* proj* background ambient)
-  ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
-  (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
-  
-  (gl-setup-state)
-  
-  (define view (->flprojective3 view*))
-  (define proj (->flprojective3 proj*))
-  ;; Gamma-correct the ambient color and multiply by its intensity
-  (define intensity (flvector-ref ambient 3))
-  (define ambient-rgb (flvector (* (flexpt (flvector-ref ambient 0) 2.2) intensity)
-                                (* (flexpt (flvector-ref ambient 1) 2.2) intensity)
-                                (* (flexpt (flvector-ref ambient 2) 2.2) intensity)))
-  
-  (define znear (flprojective3-z-near proj))
-  (define zfar  (flprojective3-z-far  proj))
-  
-  (define bloom-levels (current-engine-bloom-levels))
+(define (draw-draw-passes passes num width height view* proj* background ambient)  
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Framebuffers
   
   (define-values (bloom-width bloom-height)
     (let ([s  (current-engine-bloom-buffer-size)])
@@ -515,7 +488,6 @@ code
   (define tex-width (fl (/ width dwidth)))
   (define tex-height (fl (/ height dheight)))
   
-  ;; Set up framebuffer objects for the different passes
   (define depth-buffer (get-depth-buffer dwidth dheight))
   (define tran-depth-buffer (get-tran-depth-buffer dwidth dheight))
   (define mat-fbo (get-mat-fbo dwidth dheight))
@@ -527,7 +499,23 @@ code
   (define bloom-fbo (get-bloom-fbo bloom-dwidth bloom-dheight))
   (define blur-fbo (get-blur-fbo bloom-dwidth bloom-dheight))
   
-  ;; Set up standard uniform data
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Standard uniform data
+  
+  ;; View and projection matrices as 4x4
+  (define view (->flprojective3 view*))
+  (define proj (->flprojective3 proj*))
+  
+  ;; Near and far plane distances in view coordinates
+  (define znear (flprojective3-z-near proj))
+  (define zfar  (flprojective3-z-far  proj))
+  
+  ;; Gamma-correct the ambient color and multiply by its intensity
+  (define intensity (flvector-ref ambient 3))
+  (define ambient-rgb (flvector (* (flexpt (flvector-ref ambient 0) 2.2) intensity)
+                                (* (flexpt (flvector-ref ambient 1) 2.2) intensity)
+                                (* (flexpt (flvector-ref ambient 2) 2.2) intensity)))
+  
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
     (make-immutable-hasheq
@@ -542,6 +530,30 @@ code
            (cons 'height (uniform-int height))
            (cons 'ambient (uniform-float ambient-rgb)))))
   
+  ;; -------------------------------------------------------------------------------------------------
+  ;; Static OpenGL state
+  
+  ;; Core profiles always have this enabled
+  (unless (gl-core-profile?)
+    (glEnable GL_TEXTURE_2D))
+  
+  ;; Necessary for logarithmic depth buffer, which is flipped (1 is near, 0 is far)
+  (glClearDepth 0.0)
+  
+  ;; The OpenGL spec is stupid. Fragment generation isn't guaranteed to be invariant under blend and
+  ;; other enable/disable state. So we'll leave everything enabled that we might need, and use
+  ;; equivalent settings to disable them.
+  (glEnable GL_DEPTH_TEST)  ; Disabled by (glDepthFunc GL_ALWAYS)
+  (glEnable GL_BLEND)       ; Disabled by (glBlendFunc GL_ONE GL_ZERO)
+  ;; Oh, and it gets even more stupider: fragment generation is only *recommended* to be invariant
+  ;; under certain settings that shouldn't affect it. But there's nothing we can do about that.
+  
+  ;; =================================================================================================
+  ;; Rendering passes
+  
+  ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
+  (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
+  
   (define debug-pass (current-engine-debug-pass))
   (define remaining-passes engine-debug-passes)
   
@@ -551,10 +563,11 @@ code
   (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
-      ;; Write to the depth buffer
-      (gl-log-depth #t #t)
+      ;; Write to the depth buffer (GL_GREATER because the logarithmic buffer is flipped - 0 is far)
+      (glDepthMask #t)
+      (glDepthFunc GL_GREATER)
       ;; Blending normals and specular powers doesn't make sense
-      (glDisable GL_BLEND)
+      (glBlendFunc GL_ONE GL_ZERO)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
       ;; Draw pass 1
@@ -571,9 +584,9 @@ code
       (glViewport 0 0 width height)
       ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
       ;; contributions to the colors at known positions
-      (glDisable GL_DEPTH_TEST)
+      (glDepthMask #f)
+      (glDepthFunc GL_ALWAYS)
       ;; Prepare to accumulate light contributions additively
-      (glEnable GL_BLEND)
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
@@ -597,9 +610,13 @@ code
     (with-gl-framebuffer draw-fbo
       (glViewport 0 0 width height)
       ;; Don't write to depth buffer, and only draw fragment on nearest z
-      (gl-log-depth #f #f)
+      (glDepthMask #f)
+      (glDepthFunc GL_GEQUAL)
+      ;; ? FIXME: If recent changes to maintain invariance don't fix Asumu's speckled spheres, enable
+      ;; depth writes here and clear the depth buffer below
+      
       ;; Opaque geometry occludes
-      (glDisable GL_BLEND)
+      (glBlendFunc GL_ONE GL_ZERO)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
       ;; Load diffuse and specular buffers into texture units 0 and 1
@@ -622,9 +639,10 @@ code
     (with-gl-framebuffer tran-mat-fbo
       (glViewport 0 0 width height)
       ;; Write to the depth buffer
-      (gl-log-depth #t #t)
+      (glDepthMask #t)
+      (glDepthFunc GL_GREATER)
       ;; Blending normals and specular powers doesn't make sense
-      (glDisable GL_BLEND)
+      (glBlendFunc GL_ONE GL_ZERO)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
       ;; Draw pass 3
@@ -641,9 +659,8 @@ code
       (glViewport 0 0 width height)
       ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
       ;; contributions to the colors at known positions
-      (glDisable GL_DEPTH_TEST)
+      (glDepthFunc GL_ALWAYS)
       ;; Prepare to accumulate light contributions additively
-      (glEnable GL_BLEND)
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
@@ -666,13 +683,14 @@ code
   (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer tran-fbo
       (glViewport 0 0 width height)
-      ;; Don't write to depth buffer, and only draw in front of the nearest z
-      (gl-log-depth #f #t)
+      ;; Don't write to depth buffer, and only draw in front of the nearest z (we're using the opaque
+      ;; objects' depth buffer)
+      (glDepthMask #f)
+      (glDepthFunc GL_GREATER)
       ;; Set up for order-independent, weighted transparency w/out per-render-target blending
+      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
-      (glEnable GL_BLEND)
-      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       ;; Load diffuse and specular buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
         (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
@@ -693,12 +711,10 @@ code
     ;; With framebuffer that already contains opaque pixels and their depths
     (with-gl-framebuffer draw-fbo
       (glViewport 0 0 width height)
-      ;(glEnable GL_TEXTURE_2D)
       ;; Write transparent pixels' weighted averages
       (define program (blend-program))
       (with-gl-program program
-        (glDisable GL_DEPTH_TEST)
-        (glEnable GL_BLEND)
+        (glDepthFunc GL_ALWAYS)
         (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
         (with-gl-active-texture GL_TEXTURE0
           (with-gl-texture (gl-framebuffer-texture-2d tran-fbo GL_COLOR_ATTACHMENT0)
@@ -711,14 +727,16 @@ code
   ;; -------------------------------------------------------------------------------------------------
   ;; Compositing: Extract overbright values and blur
   
+  (define bloom-levels (current-engine-bloom-levels))
+  
   (when debug-pass
     (set! remaining-passes (find-tail 'bloom remaining-passes)))
   
   (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer reduce-fbo
       (glViewport 0 0 width height)
-      (glDisable GL_BLEND)
-      (glDisable GL_DEPTH_TEST)
+      (glBlendFunc GL_ONE GL_ZERO)
+      (glDepthFunc GL_ALWAYS)
       (define program (bloom-extract-program))
       (with-gl-program program
         (gl-program-send-uniform program "rgba" (uniform-int 0))
@@ -751,7 +769,7 @@ code
       (define view-tex-width (fl (/ view-width bloom-dwidth)))
       (define view-tex-height (fl (/ view-height bloom-dheight)))
       
-      (glDisable GL_BLEND)
+      (glBlendFunc GL_ONE GL_ZERO)
       
       (with-gl-framebuffer bloom-fbo
         (glViewport 0 0 bloom-dwidth bloom-dheight)
@@ -794,7 +812,6 @@ code
             (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
               (draw-fullscreen-quad view-tex-width view-tex-height)))))
       
-      (glEnable GL_BLEND)
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       (with-gl-framebuffer mat-fbo
         (glViewport 0 0 width height)
@@ -827,8 +844,7 @@ code
      
      (define program (bloom-combine-program))
      (with-gl-program program
-       (glDisable GL_DEPTH_TEST)
-       (glEnable GL_BLEND)
+       (glDepthFunc GL_ALWAYS)
        (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
        (with-gl-active-texture GL_TEXTURE0
          (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
@@ -865,8 +881,8 @@ code
        (glViewport 0 0 width height)
        (glClearColor 0.0 0.0 0.0 0.0)
        (glClear GL_COLOR_BUFFER_BIT)
-       (glDisable GL_BLEND)
-       (glDisable GL_DEPTH_TEST)
+       (glBlendFunc GL_ONE GL_ZERO)
+       (glDepthFunc GL_ALWAYS)
        (with-gl-active-texture GL_TEXTURE0
          (with-gl-texture tex
            (gl-program-send-uniform program "rgba" (uniform-int 0))
