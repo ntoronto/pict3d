@@ -37,13 +37,17 @@
     (define/public (set-position v) (set! position v))
     (define/public (get-velocity) velocity)
     (define/public (set-velocity v) (set! velocity v))
+    (define/public (get-yaw) yaw)
+    (define/public (set-yaw v) (set! yaw v))
+    (define/public (get-pitch) pitch)
+    (define/public (set-pitch v) (set! pitch v))
     
     #;(: get-translation-matrix (-> FlAffine3))
-    (define/private (get-translation-matrix)
+    (define/public (get-translation-matrix)
       (translate-flt3 (flv3neg position)))
     
     #;(: get-rotation-matrix (-> FlLinear3))
-    (define/private (get-rotation-matrix)
+    (define/public (get-rotation-matrix)
       (flt3compose
        (flt3compose (rotate-x-flt3 (- pitch))
                     (rotate-y-flt3 (- yaw)))

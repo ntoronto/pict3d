@@ -84,17 +84,20 @@ When the mouse hovers over a displayed @racket[Pict3D] instance, it looks someth
 @indicators-png
 
 If you're following along in DrRacket, click on it.
-Use the mouse to look around, and these keys to navigate:
+@margin-note*{You can also click and drag to look.
+              ``Mouse look'' doesn't work on Mac OS X because of reasons.}
+Move the mouse to look around, and use these keys to navigate:
 @itemlist[
- @item{@tt{W} and @tt{S}: forwards and backwards}
- @item{@tt{A} and @tt{D}: left and right}
- @item{@tt{R} and @tt{F}: up and down}
+ @item{@tt{W} and @tt{S} (or @tt{↑} and @tt{↓}): forwards and backwards}
+ @item{@tt{A} and @tt{D} (or @tt{←} and @tt{→}): left and right}
+ @item{@tt{R} and @tt{F} (or @tt{PgUp} and @tt{PgDn}): up and down}
 ]
 If you're familiar with first-person 3D games, this should feel fairly natural.
 Click the mouse button again to return control of the keyboard and mouse to DrRacket.
 
 Flying around demonstrates why the axis arrows are necessary.
 The sphere looks similar from every direction, so it's easy to get lost.
+(If you do get lost, press @tt{Esc}.)
 
 The numbers in the lower right are information about the position and orientation of the closest
 surface point in space under the mouse cursor.

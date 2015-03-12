@@ -67,6 +67,11 @@
 
 (define icon-timeout 2000)
 
+(define allow-capture?
+  (case (system-type 'os)
+    [(macosx)  #f]
+    [else      #t]))
+
 ;; ===================================================================================================
 ;; Rendering threads
 
@@ -224,9 +229,8 @@
     
     (reset-camera)
     
-    ;(: capturing? Boolean)
-    (define capturing? #f)
-    (define/public (is-capturing?) capturing?)
+    ;(: mouse-mode Boolean)
+    (define mouse-mode 'none)
     
     (define start-scale-index (flrect3->scale-index (scene-visible-rect (send pict get-scene))))
     (define scale-index start-scale-index)
@@ -295,22 +299,24 @@
     
     (define hud-items empty)
     
-    (define (snip->world-dir sx sy width height proj view)
-      (define clip-x (* (- (/ (- sx 2.0) width) 0.5) 2.0))
-      (define clip-y (* (- (/ (- sy 2.0) height) 0.5) 2.0))
+    (define (snip->world-dir snip-x snip-y width height proj view)
+      (define clip-x (* (- (/ (- snip-x 2.0) width) 0.5) 2.0))
+      (define clip-y (* (- (/ (- snip-y 2.0) height) 0.5) 2.0))
       (define view-v (flv3normalize (flt3apply/pos (flt3inverse proj) (flvector clip-x clip-y 0.0))))
       (flv3normalize (flt3apply/dir (flt3inverse view) view-v)))
     
     (define surface-changed? #f)
-    (define last-sx -1)
-    (define last-sy -1)
+    (define last-snip-x -1)
+    (define last-snip-y -1)
+    
+    (define last-trace-pos #f)
     
     (define (hud-timer-tick)
       (define view last-view-matrix)
       (when (and view surface-changed?)
         (set! surface-changed? #f)
-        (define sx last-sx)
-        (define sy last-sy)
+        (define snip-x last-snip-x)
+        (define snip-y last-snip-y)
         
         (define-values
           (legacy? width height z-near z-far fov background ambient
@@ -319,26 +325,31 @@
         
         (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
         (define v0 (flt3apply/pos (flt3inverse view) zero-flv3))
-        (define dv (snip->world-dir sx sy width height proj view))
+        (define dv (snip->world-dir snip-x snip-y width height proj view))
         (define h (scene-ray-intersect (send pict get-scene) v0 dv))
         
         (define new-hud-items
           (cond
-            [(not h)  empty]
+            [(not h)  ;(set! last-trace-pos #f)
+                      empty]
             [else
              (define t (line-hit-distance h))
              (define v (line-hit-point h))
-             (define dx1 (snip->world-dir (- sx 0.5) sy width height proj view))
-             (define dx2 (snip->world-dir (+ sx 0.5) sy width height proj view))
-             (define dy1 (snip->world-dir sx (- sy 0.5) width height proj view))
-             (define dy2 (snip->world-dir sx (+ sy 0.5) width height proj view))
+             (define dx1 (snip->world-dir (- snip-x 0.5) snip-y width height proj view))
+             (define dx2 (snip->world-dir (+ snip-x 0.5) snip-y width height proj view))
+             (define dy1 (snip->world-dir snip-x (- snip-y 0.5) width height proj view))
+             (define dy2 (snip->world-dir snip-x (+ snip-y 0.5) width height proj view))
              (define d (max (flv3dist (flv3fma dx1 t v0) (flv3fma dx2 t v0))
                             (flv3dist (flv3fma dy1 t v0) (flv3fma dy2 t v0))))
              (define n (line-hit-normal h))
              (append
               (if (and (rational? d) (> d 0))
-                  (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0))) width height))
-                   empty)
+                  (begin
+                    (set! last-trace-pos v)
+                    (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0))) width height)))
+                  (begin
+                    ;(set! last-trace-pos #f)
+                    empty))
               (if n
                   (list (list 'trace-norm n width height))
                   empty))]))
@@ -349,7 +360,7 @@
     
     (define/public (own-caret own-it?)
       (unless own-it?
-        (set! capturing? #f)
+        (set! mouse-mode 'none)
         (hash-clear!* key-hash)
         (stop-frame-timer))
       (send pict refresh))
@@ -404,6 +415,7 @@
     (define/public (draw dc x y)
       (with-handlers ([exn?  (λ (e) (displayln e))])
         (define-values (ofs-x ofs-y) (send dc get-origin))
+        (define alpha (send dc get-alpha))
         (define pen (send dc get-pen))
         (define brush (send dc get-brush))
         (define font (send dc get-font))
@@ -427,20 +439,64 @@
                  (draw-axes-icon dc 24 0 "white" red green blue)
                  (draw-axes-icon dc 24 0 gray gray gray gray)))
            
-           (unless capturing?
-             (draw-hud-items dc)))
+           (unless (eq? mouse-mode 'capturing)
+             (draw-hud-items dc))
+           
+           (when (eq? mouse-mode 'dragging)
+             (define dx (fl (- last-snip-x drag-down-x)))
+             (define dy (fl (- last-snip-y drag-down-y)))
+             (define d (flsqrt (+ (sqr dx) (sqr dy))))
+             (when (> d 1.0)
+               (send dc set-brush "black" 'transparent)
+               (define nx (/ dx d))
+               (define ny (/ dy d))
+               (define r (min 12 (/ (* 12 (sqrt 12)) (sqrt d))))
+               (define l (- (* 2 pi 12) (* 2 pi r)))
+               
+               (define (draw-source)
+                 (send dc draw-ellipse (- drag-down-x r) (- drag-down-y r) (* r 2) (* r 2)))
+               
+               (define (draw-dest)
+                 (send dc draw-line last-snip-x last-snip-y
+                       (- last-snip-x (* 0.5 l (/ (+ nx (- ny)) (sqrt 2))))
+                       (- last-snip-y (* 0.5 l (/ (+ ny nx) (sqrt 2)))))
+                 (send dc draw-line last-snip-x last-snip-y
+                       (- last-snip-x (* 0.5 l (/ (+ ny nx) (sqrt 2))))
+                       (- last-snip-y (* 0.5 l (/ (- (+ nx (- ny))) (sqrt 2))))))
+               
+               (define (draw-line)
+                 (send dc draw-line
+                       (+ drag-down-x (* nx r))
+                       (+ drag-down-y (* ny r))
+                       last-snip-x last-snip-y))
+               
+               (send dc set-pen "black" 3 'solid)
+               (draw-source)
+               (draw-dest)
+               (when (> d 12.0) (draw-line))
+               
+               (send dc set-pen "white" 2 'short-dash)
+               (draw-source)
+               (draw-dest)
+               (when (> d 12.0) (draw-line))))
+           )
          (λ ()
            (send dc set-smoothing smoothing)
            (send dc set-text-foreground text-foreground)
            (send dc set-font font)
            (send dc set-brush brush)
            (send dc set-pen pen)
+           (send dc set-alpha alpha)
            (send dc set-origin ofs-x ofs-y)))))
     
     ;(: last-mouse-x Integer)
     ;(: last-mouse-y Integer)
     (define last-mouse-x 0)
     (define last-mouse-y 0)
+    
+    (define dragged? #f)
+    (define drag-down-x 0)
+    (define drag-down-y 0)
     
     ;(: center-mouse-x Integer)
     ;(: center-mouse-y Integer)
@@ -468,52 +524,74 @@
       (when (not (equal? str ""))
         (send the-clipboard set-clipboard-string str time)))
     
+    (define (copy-camera-data time)
+      (define t (send camera get-view-matrix))
+      (define-values (dx dy dz p) (affine->cols (affine (flt3inverse t))))
+      (define str (format "~v~n~v" p (dir-negate dz)))
+      (send the-clipboard set-clipboard-string str time))
+    
     (define right-click-menu (new popup-menu%))
     (new menu-item%
          [label "Copy Surface Data"]
          [parent right-click-menu]
          [callback  (λ (i e) (copy-hud-data (send e get-time-stamp)))])
+    (new menu-item%
+         [label "Copy Camera Data"]
+         [parent right-click-menu]
+         [callback  (λ (i e) (copy-camera-data (send e get-time-stamp)))])
     
-    (define (mouse-moved sx sy)
-      (when (not (and (equal? sx last-sx) (equal? sy last-sy)))
+    (define (mouse-moved snip-x snip-y)
+      (unless (and (equal? snip-x last-snip-x)
+                   (equal? snip-y last-snip-y))
         (set! surface-changed? #t)
-        (set! last-sx sx)
-        (set! last-sy sy)
+        (set! last-snip-x snip-x)
+        (set! last-snip-y snip-y)
         (start-hud-timer))
       (start-display-icons))
     
-    (define/public (on-event dc x y editorx editory e)
+    (define/public (on-event dc orig-x orig-y editorx editory e)
       (with-handlers ([exn?  (λ (e) (displayln e))])
-        (define sx (- (send e get-x) x 2))
-        (define sy (- (send e get-y) y 2))
+        (define x (send e get-x))
+        (define y (send e get-y))
+        (define dx (- x last-mouse-x))
+        (define dy (- y last-mouse-y))
+        (set! last-mouse-x x)
+        (set! last-mouse-y y)
+        (define type (send e get-event-type))
+        (define snip-x (- x orig-x 2))
+        (define snip-y (- y orig-y 2))
         (define admin (send pict get-admin))
         (define editor (and admin (send admin get-editor)))
-        (case (send e get-event-type)
+        (case type
           [(left-down)
+           (when (eq? mouse-mode 'none)
+             (set! drag-down-x snip-x)
+             (set! drag-down-y snip-y)
+             (set! mouse-mode 'dragging)
+             (set! dragged? #f)
+             (start-frame-timer))]
+          [(left-up)
+           (when (eq? mouse-mode 'dragging)
+             (set! mouse-mode 'none))
+           (force-redraw)
+           (start-display-icons)
            (cond
-             [(and (<= 0 sx 24) (<= 0 sy 24))
-              (send pict toggle-add-sunlight?)
-              (force-redraw)
-              (start-display-icons)]
-             [(and (<= 24 sx (+ 24 24)) (<= 0 sy 24))
-              (send pict toggle-add-indicators?)
-              (set! last-view-matrix #f)
-              (force-redraw)
-              (start-display-icons)]
-             [(and (<= scale-x-min sx scale-x-max) (<= scale-y-min sy scale-y-max))
-              (cond [(< sx scale-x-mid)
+             [(and (<= 0 snip-x 24) (<= 0 snip-y 24))
+              (send pict toggle-add-sunlight?)]
+             [(and (<= 24 snip-x (+ 24 24)) (<= 0 snip-y 24))
+              (send pict toggle-add-indicators?)]
+             [(and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max))
+              (cond [(< snip-x scale-x-mid)
                      (set! scale-index (min (+ scale-index 1) max-scale-index))]
                     [else
-                     (set! scale-index (max (- scale-index 1) 0))])
-              (force-redraw)
-              (start-display-icons)]
-             [else
+                     (set! scale-index (max (- scale-index 1) 0))])]
+             [(and allow-capture? (not dragged?))
               ;; Center the mouse pointer (generates another mouse event)
               (define-values (x y) (snip-center-pointer pict))
-              (cond [capturing?
+              (cond [(eq? mouse-mode 'capturing)
                      ;; If capturing, stop capturing
                      (cond [editor  (queue-callback (λ () (send editor set-caret-owner #f)))]
-                           [else    (set! capturing? #f)
+                           [else    (set! mouse-mode 'none)
                                     (stop-frame-timer)])]
                     [(and x y)
                      ;; If not capturing and it worked, start capturing
@@ -521,56 +599,72 @@
                      (set! center-mouse-y y)
                      (set! last-mouse-x x)
                      (set! last-mouse-y y)
-                     (set! capturing? #t)
+                     (set! mouse-mode 'capturing)
                      (start-frame-timer)])])]
           [(right-down middle-down)
            (void)]
           [(right-up middle-up)
-           (when (not capturing?)
+           (when (eq? mouse-mode 'none)
              (define editor-admin (and editor (send editor get-admin)))
-             (send editor-admin popup-menu right-click-menu (+ editorx sx 2) (+ editory sy 2)))]
+             (send editor-admin popup-menu right-click-menu
+                   (+ editorx snip-x 2)
+                   (+ editory snip-y 2)))]
           [(motion)
            (cond
-             [capturing?
-              (define x (send e get-x))
-              (define y (send e get-y))
-              (cond
-                [(and (= x center-mouse-x) (= y center-mouse-y))
-                 ;; This event is almost certainly generated by centering the pointer, so don't
-                 ;; update the angle velocities
-                 (set! last-mouse-x x)
-                 (set! last-mouse-y y)]
-                [else
-                 ;; Update the angle velocities using mouse position differences
-                 (define dx (- x last-mouse-x))
-                 (define dy (- y last-mouse-y))
-                 (set! last-mouse-x x)
-                 (set! last-mouse-y y)
-                 (unless (and (= dx 0) (= dy 0))
-                   (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
-                   (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
-                   ;; Center the mouse pointer (generates another mouse event)
-                   (define-values (x y) (snip-center-pointer pict))
-                   (cond [(and x y)
-                          ;; Keep track of these so we can tell the next time through whether the
-                          ;; mouse event was generated by centering
-                          (set! center-mouse-x x)
-                          (set! center-mouse-y y)
-                          (start-frame-timer)]
-                         ;; Both of these cases below stop mouse capture
-                         [editor  (queue-callback (λ () (send editor set-caret-owner #f)))]
-                         [else    (set! capturing? #f)
-                                  (stop-frame-timer)]))])]
-             [else
-              (mouse-moved sx sy)])])))
+             [(eq? mouse-mode 'capturing)
+              (unless (and (= x center-mouse-x) (= y center-mouse-y))
+                ;; This event is almost certainly not generated by centering the pointer
+                ;; Update the angle velocities using mouse position differences
+                (unless (and (= dx 0) (= dy 0))
+                  (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
+                  (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
+                  ;; Center the mouse pointer (generates another mouse event)
+                  (define-values (x y) (snip-center-pointer pict))
+                  (cond [(and x y)
+                         ;; Keep track of these so we can tell the next time through whether the
+                         ;; mouse event was generated by centering
+                         (set! center-mouse-x x)
+                         (set! center-mouse-y y)
+                         (start-frame-timer)]
+                        ;; Both of these cases below stop mouse capture
+                        [editor  (queue-callback (λ () (send editor set-caret-owner #f)))]
+                        [else    (set! mouse-mode 'none)
+                                 (stop-frame-timer)])))]
+             [(eq? mouse-mode 'dragging)
+              (mouse-moved snip-x snip-y)
+              
+              #;; Rotate around a point
+              (unless (and (= dx 0) (= dy 0))
+                (define view-t (send camera get-view-matrix))
+                (define rot-t (send camera get-rotation-matrix))
+                (define pos-t (translate-flt3 drag-pos))
+                (define dpitch
+                  (let* ([dpitch  (- (fl (degrees->radians dy)))]
+                         [p  (+ dpitch (send camera get-pitch))]
+                         [p  (min (* 0.49 pi) (max (* -0.49 pi) p))])
+                    (- (send camera get-pitch) p)))
+                (define dyaw (fl (degrees->radians dx)))
+                (define drot-t
+                  (let* ([t  (flt3inverse pos-t)]
+                         [t  (flt3compose rot-t t)]
+                         [t  (flt3compose (rotate-x-flt3 dpitch) t)]
+                         [t  (flt3compose (flt3inverse rot-t) t)]
+                         [t  (flt3compose (rotate-z-flt3 dyaw) t)]
+                         [t  (flt3compose pos-t t)])
+                    t))
+                (define new-view-t
+                  (flt3compose view-t drot-t))
+                (send camera set-view-matrix new-view-t)
+                (start-frame-timer))
+              ])])))
     
-    (define/public (adjust-cursor dc sx sy e)
+    (define/public (adjust-cursor dc snip-x snip-y e)
       (cond
-        [capturing?  blank-cursor]
+        [(eq? mouse-mode 'capturing)  blank-cursor]
         [else
-         (mouse-moved sx sy)
-         (if (or (and (<= 0 sx (+ 24 24)) (<= 0 sy 24))
-                 (and (<= scale-x-min sx scale-x-max) (<= scale-y-min sy scale-y-max)))
+         (mouse-moved snip-x snip-y)
+         (if (or (and (<= 0 snip-x (+ 24 24)) (<= 0 snip-y 24))
+                 (and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max)))
              arrow-cursor
              cross-cursor)]))
     
@@ -648,6 +742,25 @@
              [acc  (send camera rotate-direction acc)]
              [acc  (flv3+ acc (flv3* (send camera get-velocity) friction-accel))])
         (send camera accelerate acc dt))
+      
+      (cond
+        [(eq? mouse-mode 'dragging)
+         (define dx (fl (- last-snip-x drag-down-x)))
+         (define dy (fl (- last-snip-y drag-down-y)))
+         (define d (flsqrt (+ (sqr dx) (sqr dy))))
+         (when (> d 12.0)
+           (set! dragged? #t)
+           (define nx (/ dx d))
+           (define ny (/ dy d))
+           (let ([dx  (- dx (* nx 12.0))]
+                 [dy  (- dy (* ny 12.0))])
+             (set! yaw-vel (+ yaw-vel (* 0.0002 dx)))
+             (set! pitch-vel (+ pitch-vel (* 0.0002 dy)))))
+         (set! surface-changed? #t)
+         (start-hud-timer)
+         (start-frame-timer)]
+        [else
+         (set! dragged? #f)])
       
       (send camera change-angles yaw-vel pitch-vel)
       (set! yaw-vel (* yaw-vel #i1/3))
@@ -861,12 +974,12 @@
         (send (get-gui) on-char e)
         (super on-char dc x y editorx editory e)))
     
-    (define/override (adjust-cursor dc x y editorx editory e)
+    (define/override (adjust-cursor dc orig-x orig-y editorx editory e)
       (with-reentry-lock adjust-cursor
-        (define sx (- (send e get-x) x 2))
-        (define sy (- (send e get-y) y 2))
-        (cond [(and (<= 0 sx width) (<= 0 sy height))
-               (send (get-gui) adjust-cursor dc sx sy e)]
+        (define snip-x (- (send e get-x) orig-x 2))
+        (define snip-y (- (send e get-y) orig-y 2))
+        (cond [(and (<= 0 snip-x width) (<= 0 snip-y height))
+               (send (get-gui) adjust-cursor dc snip-x snip-y e)]
               [else  #f])))
     ))
 
