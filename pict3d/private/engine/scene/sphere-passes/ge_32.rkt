@@ -37,13 +37,11 @@ in vec4 sphere1;
 in vec4 sphere2;
 in vec4 vert_roughness_inside_id;
 
-out mat4 geom_trans;
-out vec4 geom_trans_z;
-out mat4 geom_untrans;
+invariant out mat4 geom_trans;
+invariant out vec4 geom_trans_z;
+invariant out mat4 geom_untrans;
 out float geom_roughness;
 out float geom_inside;
-
-invariant geom_trans_z, geom_trans, geom_untrans;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -74,22 +72,19 @@ layout(triangle_strip, max_vertices=4) out;
 uniform mat4 proj;
 uniform mat4 unproj;
 
-in mat4 geom_trans[];
-in vec4 geom_trans_z[];
-in mat4 geom_untrans[];
+invariant in mat4 geom_trans[];
+invariant in vec4 geom_trans_z[];
+invariant in mat4 geom_untrans[];
 in float geom_roughness[];
 in float geom_inside[];
 
-flat out vec4 frag_trans_z;
+invariant flat out vec4 frag_trans_z;
 flat out mat3 frag_untrans;
 flat out float frag_roughness;
 flat out float frag_inside;
 
-smooth out vec3 frag_start;
-smooth out vec3 frag_dir;
-
-invariant geom_trans_z, geom_trans, geom_untrans;
-invariant frag_trans_z, frag_dir, frag_start;
+invariant smooth out vec3 frag_start;
+invariant smooth out vec3 frag_dir;
 
 void main() {
   rect bbx = impostor_bounds(geom_trans[0], proj, vec3(-1.0), vec3(+1.0));
@@ -122,16 +117,13 @@ code
    #<<code
 uniform mat4 proj;
 
-flat in vec4 frag_trans_z;
+invariant flat in vec4 frag_trans_z;
 flat in mat3 frag_untrans;
 flat in float frag_roughness;
 flat in float frag_inside;
 
-smooth in vec3 frag_dir;
-smooth in vec3 frag_start;
-
-// Make everything that could affect vpos_z or the output invariant
-invariant frag_trans_z, frag_dir, frag_start;
+invariant smooth in vec3 frag_dir;
+invariant smooth in vec3 frag_start;
 
 void main() {
   vec3 start = frag_start;
@@ -190,9 +182,9 @@ in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
 in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
 in vec2 vert_inside_id; // vec2(inside, id)
 
-out mat4 geom_trans;
-out vec4 geom_trans_z;
-out mat4 geom_untrans;
+invariant out mat4 geom_trans;
+invariant out vec4 geom_trans_z;
+invariant out mat4 geom_untrans;
 out vec3 geom_rcolor;
 out vec3 geom_ecolor;
 out float geom_alpha;
@@ -200,8 +192,6 @@ out float geom_ambient;
 out float geom_diffuse;
 out float geom_specular;
 out float geom_inside;
-
-invariant geom_trans_z, geom_trans, geom_untrans;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -238,9 +228,9 @@ layout(triangle_strip, max_vertices=4) out;
 uniform mat4 proj;
 uniform mat4 unproj;
 
-in mat4 geom_trans[];
-in vec4 geom_trans_z[];
-in mat4 geom_untrans[];
+invariant in mat4 geom_trans[];
+invariant in vec4 geom_trans_z[];
+invariant in mat4 geom_untrans[];
 in vec3 geom_rcolor[];
 in vec3 geom_ecolor[];
 in float geom_alpha[];
@@ -249,7 +239,7 @@ in float geom_diffuse[];
 in float geom_specular[];
 in float geom_inside[];
 
-flat out vec4 frag_trans_z;
+invariant flat out vec4 frag_trans_z;
 flat out vec3 frag_rcolor;
 flat out vec3 frag_ecolor;
 flat out float frag_alpha;
@@ -258,11 +248,8 @@ flat out float frag_diffuse;
 flat out float frag_specular;
 flat out float frag_inside;
 
-smooth out vec3 frag_start;
-smooth out vec3 frag_dir;
-
-invariant geom_trans_z, geom_trans, geom_untrans;
-invariant frag_trans_z, frag_dir, frag_start;
+invariant smooth out vec3 frag_start;
+invariant smooth out vec3 frag_dir;
 
 void main() {
   rect bbx = impostor_bounds(geom_trans[0], proj, vec3(-1.0), vec3(+1.0));
@@ -352,7 +339,7 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in vec4 frag_trans_z;
+invariant flat in vec4 frag_trans_z;
 flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_alpha;
@@ -361,11 +348,8 @@ flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
 
-smooth in vec3 frag_start;
-smooth in vec3 frag_dir;
-
-// Make everything that could affect vpos_z or the output invariant
-invariant frag_trans_z, frag_dir, frag_start;
+invariant smooth in vec3 frag_start;
+invariant smooth in vec3 frag_dir;
 
 void main() {
   vec3 start = frag_start;

@@ -39,15 +39,14 @@ in vec4 sphere1;
 in vec4 sphere2;
 in vec4 vert_roughness_inside_id;
 
-flat out vec4 frag_trans_z;
+invariant flat out vec4 frag_trans_z;
 flat out mat3 frag_untrans;
 flat out float frag_roughness;
 flat out float frag_inside;
-smooth out float frag_is_degenerate;
-smooth out vec3 frag_start;
-smooth out vec3 frag_dir;
 
-invariant frag_trans_z, frag_dir, frag_start;
+smooth out float frag_is_degenerate;
+invariant smooth out vec3 frag_start;
+invariant smooth out vec3 frag_dir;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -77,15 +76,14 @@ code
    #<<code
 uniform mat4 proj;
 
-flat in vec4 frag_trans_z;
+invariant flat in vec4 frag_trans_z;
 flat in mat3 frag_untrans;
 flat in float frag_roughness;
 flat in float frag_inside;
-smooth in float frag_is_degenerate;
-smooth in vec3 frag_dir;
-smooth in vec3 frag_start;
 
-invariant frag_trans_z, frag_dir, frag_start;
+smooth in float frag_is_degenerate;
+invariant smooth in vec3 frag_dir;
+invariant smooth in vec3 frag_start;
 
 void main() {
   // all fragments should discard if this one does
@@ -146,7 +144,7 @@ in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
 in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
 in vec2 vert_inside_id; // vec2(inside, id)
 
-flat out vec4 frag_trans_z;
+invariant flat out vec4 frag_trans_z;
 flat out vec3 frag_rcolor;
 flat out vec3 frag_ecolor;
 flat out float frag_alpha;
@@ -154,11 +152,10 @@ flat out float frag_ambient;
 flat out float frag_diffuse;
 flat out float frag_specular;
 flat out float frag_inside;
-smooth out float frag_is_degenerate;
-smooth out vec3 frag_start;
-smooth out vec3 frag_dir;
 
-invariant frag_trans_z, frag_dir, frag_start;
+smooth out float frag_is_degenerate;
+invariant smooth out vec3 frag_start;
+invariant smooth out vec3 frag_dir;
 
 void main() {
   mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
@@ -198,7 +195,7 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in vec4 frag_trans_z;
+invariant flat in vec4 frag_trans_z;
 flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_alpha;
@@ -206,11 +203,10 @@ flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
-smooth in float frag_is_degenerate;
-smooth in vec3 frag_start;
-smooth in vec3 frag_dir;
 
-invariant frag_trans_z, frag_dir, frag_start;
+smooth in float frag_is_degenerate;
+invariant smooth in vec3 frag_start;
+invariant smooth in vec3 frag_dir;
 
 void main() {
   // all fragments should discard if this one does
@@ -248,7 +244,7 @@ uniform vec3 ambient;
 uniform sampler2D diffuse;
 uniform sampler2D specular;
 
-flat in vec4 frag_trans_z;
+invariant flat in vec4 frag_trans_z;
 flat in vec3 frag_rcolor;
 flat in vec3 frag_ecolor;
 flat in float frag_alpha;
@@ -256,11 +252,10 @@ flat in float frag_ambient;
 flat in float frag_diffuse;
 flat in float frag_specular;
 flat in float frag_inside;
-smooth in float frag_is_degenerate;
-smooth in vec3 frag_start;
-smooth in vec3 frag_dir;
 
-invariant frag_trans_z, frag_dir, frag_start;
+smooth in float frag_is_degenerate;
+invariant smooth in vec3 frag_start;
+invariant smooth in vec3 frag_dir;
 
 void main() {
   // all fragments should discard if this one does

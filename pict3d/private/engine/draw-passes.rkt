@@ -35,7 +35,8 @@
      'transparent-rgbv
      'transparent-alpha
      'composite-rgba
-     'bloom))
+     'bloom
+     'no-bloom))
 
 (: engine-debug-passes (Listof Engine-Debug-Pass))
 ;; These must be in order!
@@ -52,7 +53,8 @@
     transparent-rgbv
     transparent-alpha
     composite-rgba
-    bloom))
+    bloom
+    no-bloom))
 
 (: current-engine-debug-pass (Parameterof (U #f Engine-Debug-Pass)))
 (define current-engine-debug-pass (make-parameter #f))
@@ -826,10 +828,17 @@ code
   
   (cond
     [(or (not debug-pass)
-         (eq? debug-pass 'bloom))
+         (eq? debug-pass 'bloom)
+         (eq? debug-pass 'no-bloom))
      ;; If we want to see just bloom, clear the draw buffer
      (when (eq? debug-pass 'bloom)
        (with-gl-framebuffer draw-fbo
+         (glViewport 0 0 width height)
+         (glClearColor 0.0 0.0 0.0 0.0)
+         (glClear GL_COLOR_BUFFER_BIT)))
+     
+     (when (eq? debug-pass 'no-bloom)
+       (with-gl-framebuffer mat-fbo
          (glViewport 0 0 width height)
          (glClearColor 0.0 0.0 0.0 0.0)
          (glClear GL_COLOR_BUFFER_BIT)))
