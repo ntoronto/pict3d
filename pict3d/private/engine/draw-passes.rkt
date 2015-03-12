@@ -444,8 +444,8 @@ code
   (define color (make-gl-texture-2d width height GL_RGBA16F GL_BGRA GL_FLOAT
                                     (list (cons GL_TEXTURE_WRAP_S GL_CLAMP_TO_EDGE)
                                           (cons GL_TEXTURE_WRAP_T GL_CLAMP_TO_EDGE)
-                                          (cons GL_TEXTURE_MIN_FILTER GL_NEAREST_MIPMAP_NEAREST)
-                                          (cons GL_TEXTURE_MAG_FILTER GL_NEAREST))))
+                                          (cons GL_TEXTURE_MIN_FILTER GL_LINEAR_MIPMAP_LINEAR)
+                                          (cons GL_TEXTURE_MAG_FILTER GL_LINEAR))))
   (make-gl-framebuffer width height (list (cons GL_COLOR_ATTACHMENT0 color))))
 
 (define blur-texture-params
@@ -476,19 +476,31 @@ code
   ;; -------------------------------------------------------------------------------------------------
   ;; Framebuffers
   
-  (define-values (bloom-width bloom-height)
-    (let ([s  (current-engine-bloom-buffer-size)])
-      (if (> height width)
-          (values s (min (* 2 s) (max 1 (round (* height (/ s width))))))
-          (values (min (* 2 s) (max 1 (round (* width (/ s height))))) s))))
-  
   (define dwidth (dimension-ceiling width))
   (define dheight (dimension-ceiling height))
-  (define bloom-dwidth (dimension-ceiling bloom-width))
-  (define bloom-dheight (dimension-ceiling bloom-height))
-  
   (define tex-width (fl (/ width dwidth)))
   (define tex-height (fl (/ height dheight)))
+  
+  (define bloom-size (current-engine-bloom-buffer-size))
+  (: bloom-levels Positive-Integer)
+  (define bloom-levels (min (assert (integer-length bloom-size) positive?)
+                            (current-engine-bloom-levels)))
+  (define div (expt 2 (- bloom-levels 1)))
+  
+  (define-values (bloom-width bloom-height)
+    (let ([min-size  (* div (ceiling (/ bloom-size div)))])
+      (if (> height width)
+          (values min-size
+                  (min (* 2 min-size)
+                       (max 1 (* div (ceiling (/ (* height (/ bloom-size width)) div))))))
+          (values (min (* 2 min-size)
+                       (max 1 (* div (ceiling (/ (* width (/ bloom-size height)) div)))))
+                  min-size))))
+  
+  (define bloom-dwidth (dimension-ceiling bloom-width))
+  (define bloom-dheight (dimension-ceiling bloom-height))
+  (define bloom-tex-width (fl (/ bloom-width bloom-dwidth)))
+  (define bloom-tex-height (fl (/ bloom-height bloom-dheight)))
   
   (define depth-buffer (get-depth-buffer dwidth dheight))
   (define tran-depth-buffer (get-tran-depth-buffer dwidth dheight))
@@ -541,6 +553,7 @@ code
   
   ;; Necessary for logarithmic depth buffer, which is flipped (1 is near, 0 is far)
   (glClearDepth 0.0)
+  (glClearColor 0.0 0.0 0.0 0.0)
   
   ;; The OpenGL spec is stupid. Fragment generation isn't guaranteed to be invariant under blend and
   ;; other enable/disable state. So we'll leave everything enabled that we might need, and use
@@ -570,7 +583,6 @@ code
       (glDepthFunc GL_GREATER)
       ;; Blending normals and specular powers doesn't make sense
       (glBlendFunc GL_ONE GL_ZERO)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
       ;; Draw pass 1
       (draw-opaque-material-pass passes num standard-uniforms face)))
@@ -590,7 +602,6 @@ code
       (glDepthFunc GL_ALWAYS)
       ;; Prepare to accumulate light contributions additively
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
       ;; Load depth and material buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
@@ -619,7 +630,6 @@ code
       
       ;; Opaque geometry occludes
       (glBlendFunc GL_ONE GL_ZERO)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
       ;; Load diffuse and specular buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
@@ -645,7 +655,6 @@ code
       (glDepthFunc GL_GREATER)
       ;; Blending normals and specular powers doesn't make sense
       (glBlendFunc GL_ONE GL_ZERO)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
       ;; Draw pass 3
       (draw-transparent-material-pass passes num standard-uniforms face)))
@@ -661,10 +670,10 @@ code
       (glViewport 0 0 width height)
       ;; Doesn't matter how deep each light's impostor geometry is; we're only accumulating their
       ;; contributions to the colors at known positions
+      (glDepthMask #f)
       (glDepthFunc GL_ALWAYS)
       ;; Prepare to accumulate light contributions additively
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
       ;; Load depth and material buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
@@ -691,7 +700,6 @@ code
       (glDepthFunc GL_GREATER)
       ;; Set up for order-independent, weighted transparency w/out per-render-target blending
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT)
       ;; Load diffuse and specular buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
@@ -716,6 +724,7 @@ code
       ;; Write transparent pixels' weighted averages
       (define program (blend-program))
       (with-gl-program program
+        (glDepthMask #f)
         (glDepthFunc GL_ALWAYS)
         (glBlendFunc GL_ONE GL_ONE_MINUS_SRC_ALPHA)
         (with-gl-active-texture GL_TEXTURE0
@@ -729,16 +738,21 @@ code
   ;; -------------------------------------------------------------------------------------------------
   ;; Compositing: Extract overbright values and blur
   
-  (define bloom-levels (current-engine-bloom-levels))
-  
   (when debug-pass
     (set! remaining-passes (find-tail 'bloom remaining-passes)))
   
+  (: actual-bloom-levels Natural)
+  (define actual-bloom-levels 0)
+  
   (when (or (not debug-pass) (member debug-pass remaining-passes))
+    (glDepthMask #f)
+    (glDepthFunc GL_ALWAYS)
+    (glBlendFunc GL_ONE GL_ZERO)
+    
     (with-gl-framebuffer reduce-fbo
+      (glViewport 0 0 dwidth dheight)
+      (glClear GL_COLOR_BUFFER_BIT)
       (glViewport 0 0 width height)
-      (glBlendFunc GL_ONE GL_ZERO)
-      (glDepthFunc GL_ALWAYS)
       (define program (bloom-extract-program))
       (with-gl-program program
         (gl-program-send-uniform program "rgba" (uniform-int 0))
@@ -753,23 +767,21 @@ code
     (define horz-program (blur-horz-program))
     (define vert-program (blur-vert-program))
     
-    (define view-widths
-      (let ([base-view-width  (quotient bloom-width (expt 2 (- bloom-levels 1)))])
-        (build-list bloom-levels (λ ([i : Index]) (* base-view-width (expt 2 i))))))
-    
-    (define view-heights
-      (let ([base-view-height  (quotient bloom-height (expt 2 (- bloom-levels 1)))])
-        (build-list bloom-levels (λ ([i : Index]) (* base-view-height (expt 2 i))))))
-    
     (with-gl-framebuffer mat-fbo
       (glViewport 0 0 width height)
-      (glClearColor 0.0 0.0 0.0 0.0)
       (glClear GL_COLOR_BUFFER_BIT))
     
-    (for ([view-width   (in-list view-widths)]
-          [view-height  (in-list view-heights)])
-      (define view-tex-width (fl (/ view-width bloom-dwidth)))
-      (define view-tex-height (fl (/ view-height bloom-dheight)))
+    (for/fold ([bloom-width : Nonnegative-Exact-Rational  bloom-width]
+               [bloom-height : Nonnegative-Exact-Rational  bloom-height]
+               [bloom-tex-width bloom-tex-width]
+               [bloom-tex-height bloom-tex-height])
+              ([i  (in-range bloom-levels)]
+               #:when (and (exact-positive-integer? bloom-width)
+                           (exact-positive-integer? bloom-height)))
+      (assert bloom-width exact-positive-integer?)
+      (assert bloom-height exact-positive-integer?)
+      
+      (set! actual-bloom-levels (+ 1 actual-bloom-levels))
       
       (glBlendFunc GL_ONE GL_ZERO)
       
@@ -782,7 +794,7 @@ code
         (glClear GL_COLOR_BUFFER_BIT))
       
       (with-gl-framebuffer bloom-fbo
-        (glViewport 0 0 view-width view-height)
+        (glViewport 0 0 bloom-width bloom-height)
         (define program (fullscreen-program))
         (with-gl-program program
           (gl-program-send-uniform program "rgba" (uniform-int 0))
@@ -795,33 +807,38 @@ code
         (with-gl-program horz-program
           ;; Write to blur-fbo
           (with-gl-framebuffer blur-fbo
-            (glViewport 0 0 view-width view-height)
+            (glViewport 0 0 bloom-width bloom-height)
             (gl-program-send-uniform horz-program "rgba" (uniform-int 0))
             (gl-program-send-uniform horz-program "width"
                                      (uniform-int (gl-framebuffer-width blur-fbo)))
             ;; Read from bloom-fbo
             (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-              (draw-fullscreen-quad view-tex-width view-tex-height))))
+              (draw-fullscreen-quad bloom-tex-width bloom-tex-height))))
         
         (with-gl-program vert-program
           ;; Write to bloom-fbo
           (with-gl-framebuffer bloom-fbo
-            (glViewport 0 0 view-width view-height)
+            (glViewport 0 0 bloom-width bloom-height)
             (gl-program-send-uniform vert-program "rgba" (uniform-int 0))
             (gl-program-send-uniform vert-program "height"
                                      (uniform-int (gl-framebuffer-height bloom-fbo)))
             ;; Read from blur-fbo
             (with-gl-texture (gl-framebuffer-texture-2d blur-fbo GL_COLOR_ATTACHMENT0)
-              (draw-fullscreen-quad view-tex-width view-tex-height)))))
+              (draw-fullscreen-quad bloom-tex-width bloom-tex-height)))))
       
-      (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
+      (glBlendFunc GL_ONE GL_ONE)
       (with-gl-framebuffer mat-fbo
         (glViewport 0 0 width height)
         (define program (fullscreen-program))
         (with-gl-program program
           (gl-program-send-uniform program "rgba" (uniform-int 0))
           (with-gl-texture (gl-framebuffer-texture-2d bloom-fbo GL_COLOR_ATTACHMENT0)
-            (draw-fullscreen-quad view-tex-width view-tex-height))))))
+            (draw-fullscreen-quad bloom-tex-width bloom-tex-height))))
+      
+      (values (/ bloom-width 2)
+              (/ bloom-height 2)
+              (* bloom-tex-width 0.5)
+              (* bloom-tex-height 0.5))))
   
   ;; -------------------------------------------------------------------------------------------------
   ;; Compositing: Draw image and bloom onto system-provided framebuffer
@@ -834,13 +851,11 @@ code
      (when (eq? debug-pass 'bloom)
        (with-gl-framebuffer draw-fbo
          (glViewport 0 0 width height)
-         (glClearColor 0.0 0.0 0.0 0.0)
          (glClear GL_COLOR_BUFFER_BIT)))
      
      (when (eq? debug-pass 'no-bloom)
        (with-gl-framebuffer mat-fbo
          (glViewport 0 0 width height)
-         (glClearColor 0.0 0.0 0.0 0.0)
          (glClear GL_COLOR_BUFFER_BIT)))
      
      (glViewport 0 0 width height)
@@ -859,7 +874,7 @@ code
          (with-gl-texture (gl-framebuffer-texture-2d draw-fbo GL_COLOR_ATTACHMENT0)
            (with-gl-active-texture GL_TEXTURE1
              (with-gl-texture (gl-framebuffer-texture-2d mat-fbo GL_COLOR_ATTACHMENT0)
-               (define bloom-frac (/ 1.0 (fl bloom-levels)))
+               (define bloom-frac (/ 1.0 (fl (max 1 actual-bloom-levels))))
                (gl-program-send-uniform program "bloom_frac" (uniform-float bloom-frac))
                (gl-program-send-uniform program "color_tex" (uniform-int 0))
                (gl-program-send-uniform program "bloom_tex" (uniform-int 1))
