@@ -622,15 +622,19 @@ code
   (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer draw-fbo
       (glViewport 0 0 width height)
-      ;; Don't write to depth buffer, and only draw fragment on nearest z
-      (glDepthMask #f)
-      (glDepthFunc GL_GEQUAL)
-      ;; ? FIXME: If recent changes to maintain invariance don't fix Asumu's speckled spheres, enable
-      ;; depth writes here and clear the depth buffer below
-      
-      ;; Opaque geometry occludes
-      (glBlendFunc GL_ONE GL_ZERO)
-      (glClear GL_COLOR_BUFFER_BIT)
+      #;; If we had invariance with sphere drawing, this would work
+      (begin
+        ;; Don't write to depth buffer, and only draw fragment on nearest z
+        (glDepthMask #f)
+        (glDepthFunc GL_GEQUAL)
+        ;; Opaque geometry occludes
+        (glBlendFunc GL_ONE GL_ZERO)
+        (glClear GL_COLOR_BUFFER_BIT))
+      (begin
+        (glDepthMask #t)
+        (glDepthFunc GL_GREATER)
+        (glBlendFunc GL_ONE GL_ZERO)
+        (glClear (bitwise-ior GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT)))
       ;; Load diffuse and specular buffers into texture units 0 and 1
       (with-gl-active-texture GL_TEXTURE0
         (with-gl-texture (gl-framebuffer-texture-2d light-fbo GL_COLOR_ATTACHMENT0)
