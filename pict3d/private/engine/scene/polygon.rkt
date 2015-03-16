@@ -16,11 +16,11 @@
          "../../utils.rkt"
          "../types.rkt"
          "../utils.rkt"
-         "../shader-lib.rkt"
+         "../shader-code.rkt"
+         "../serialize-vertices.rkt"
          "../draw-pass.rkt"
          "types.rkt"
-         "flags.rkt"
-         "shader-lib.rkt")
+         "flags.rkt")
 
 (provide make-triangle-shape
          set-triangle-shape-color
@@ -226,247 +226,199 @@
 ;; ===================================================================================================
 ;; Program for pass 1: material
 
+(define polygon-mat-fragment-attributes
+  (list (attribute "smooth" 'vec4 "frag_position")
+        (attribute "smooth" 'vec3 "frag_normal")
+        (attribute "smooth" 'float "frag_roughness")))
+
 (define polygon-mat-vertex-code
-  (string-append
-   model-vertex-code
+  (make-vertex-code
+   "polygon-mat-vertex"
+   #:includes
+   (list model-vertex-code)
+   #:standard-uniforms
+   (list (standard-uniform "" 'mat4 "view" 'view)
+         (standard-uniform "" 'mat4 "unview" 'unview)
+         (standard-uniform "" 'mat4 "proj" 'proj))
+   #:in-attributes
+   (list (attribute "" 'vec4/bytes "vert_normal_roughness")
+         (attribute "" 'vec3 "vert_position"))
+   #:out-attributes
+   polygon-mat-fragment-attributes
    #<<code
-uniform mat4 view;
-uniform mat4 unview;
-uniform mat4 proj;
-
-in vec4 vert_normal_roughness;
-in vec3 vert_position;
-
-smooth out vec4 frag_position;
-smooth out vec3 frag_normal;
-smooth out float frag_roughness;
-
-void main() {
-  mat4x3 model = get_model_transform();
-  mat4x3 unmodel = affine_inverse(model);
-  vec4 position = view * (a2p(model) * vec4(vert_position,1));
-  gl_Position = proj * position;
-  vec3 normal = normalize(vert_normal_roughness.xyz - vec3(127.0));
-  vec4 norm = (vec4(normal,0) * a2p(unmodel)) * unview;
-  frag_position = position;
-  frag_normal = normalize(norm.xyz);
-  frag_roughness = vert_normal_roughness.w / 255;
-}
+mat4x3 model = get_model_transform();
+mat4x3 unmodel = affine_inverse(model);
+vec4 position = view * (a2p(model) * vec4(vert_position,1));
+gl_Position = proj * position;
+vec3 normal = normalize(vert_normal_roughness.xyz - vec3(127.0));
+vec4 norm = (vec4(normal,0) * a2p(unmodel)) * unview;
+frag_position = position;
+frag_normal = normalize(norm.xyz);
+frag_roughness = vert_normal_roughness.w / 255;
 code
    ))
 
 (define polygon-mat-fragment-code
-  (string-append
-   output-mat-fragment-code
+  (make-fragment-code
+   "polygon-mat-fragment"
+   #:includes
+   (list output-mat-fragment-code)
+   #:in-attributes
+   polygon-mat-fragment-attributes
    #<<code
-smooth in vec4 frag_position;
-smooth in vec3 frag_normal;
-smooth in float frag_roughness;
-
-void main() {
-  output_mat(frag_normal, frag_roughness, frag_position.z);
-}
+output_mat(frag_normal, frag_roughness, frag_position.z);
 code
    ))
 
+(define polygon-mat-program-code
+  (make-program-code
+   "polygon-mat-program"
+   polygon-mat-vertex-code
+   polygon-mat-fragment-code))
+
 (define-singleton/context (polygon-mat-program)
   (log-pict3d-info "<engine> creating polygon material pass program")
-  (make-gl-program
-   "polygon-mat-program"
-   (list (cons "view" 'view)
-         (cons "unview" 'unview)
-         (cons "proj" 'proj))
-   (make-vao-struct
-    (make-vao-field "vert_normal_roughness" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_position" 3 GL_FLOAT))
-   (list "out_mat")
-   (list (make-gl-shader GL_VERTEX_SHADER polygon-mat-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER polygon-mat-fragment-code))))
+  (program-code->gl-program polygon-mat-program-code))
 
 ;; ===================================================================================================
 ;; Program for pass 2: color
 
+(define polygon-draw-vertex-attributes
+  (list (attribute "" 'vec3 "vert_position")
+        (attribute "" 'vec4/bytes "vert_rcolor")    ; vec4(r, g, b, a)
+        (attribute "" 'vec4/bytes "vert_ecolor")    ; vec4(r, g, intensity.lo, intensity.hi)
+        (attribute "" 'vec3/bytes "vert_material")  ; vec3(ambient, diffuse, specular)
+        ))
+
+(define polygon-draw-fragment-attributes
+  (list (attribute "smooth" 'vec4 "frag_position")
+        (attribute "smooth" 'vec3 "frag_rcolor")
+        (attribute "smooth" 'vec3 "frag_ecolor")
+        (attribute "smooth" 'float "frag_alpha")
+        (attribute "smooth" 'float "frag_ambient")
+        (attribute "smooth" 'float "frag_diffuse")
+        (attribute "smooth" 'float "frag_specular")))
+
 (define polygon-draw-vertex-code
-  (string-append
-   model-vertex-code
-   rgb-hsv-code
+  (make-vertex-code
+   "polygon-draw-vertex"
+   #:includes
+   (list model-vertex-code
+         unpack-emitted-code)
+   #:standard-uniforms
+   (list (standard-uniform "" 'mat4 "view" 'view)
+         (standard-uniform "" 'mat4 "proj" 'proj))
+   #:in-attributes
+   polygon-draw-vertex-attributes
+   #:out-attributes
+   polygon-draw-fragment-attributes
    #<<code
-uniform mat4 view;
-uniform mat4 proj;
-
-in vec4 vert_rcolor;    // vec4(r, g, b, a)
-in vec4 vert_ecolor;    // vec4(r, g, b, intensity.hi)
-in vec4 vert_material;  // vec4(ambient, diffuse, specular, intensity.lo)
-in vec3 vert_position;
-
-smooth out vec4 frag_position;
-smooth out vec3 frag_rcolor;
-smooth out vec3 frag_ecolor;
-smooth out float frag_alpha;
-smooth out float frag_ambient;
-smooth out float frag_diffuse;
-smooth out float frag_specular;
-
-void main() {
-  mat4x3 model = get_model_transform();
-  vec4 position = view * (a2p(model) * vec4(vert_position,1));
-  gl_Position = proj * position;
-  frag_position = position;
-  frag_rcolor = pow(vert_rcolor.rgb / 255, vec3(2.2));
-  frag_alpha = vert_rcolor.a / 255;
-  float intensity = (vert_ecolor.a * 256 + vert_material.w) / 255;
-  frag_ecolor = pow(vert_ecolor.rgb / 255, vec3(2.2)) * intensity;
-  frag_ambient = vert_material.x / 255;
-  frag_diffuse = vert_material.y / 255;
-  frag_specular = vert_material.z / 255;
-}
+mat4x3 model = get_model_transform();
+vec4 position = view * (a2p(model) * vec4(vert_position,1));
+gl_Position = proj * position;
+frag_position = position;
+frag_rcolor = pow(vert_rcolor.rgb / 255, vec3(2.2));
+frag_alpha = vert_rcolor.a / 255;
+frag_ecolor = unpack_emitted(vert_ecolor);
+frag_ambient = vert_material.x / 255;
+frag_diffuse = vert_material.y / 255;
+frag_specular = vert_material.z / 255;
 code
-   ))
+    ))
 
 (define polygon-opaq-fragment-code
-  (string-append
-   output-opaq-fragment-code
+  (make-fragment-code
+   "polygon-opaq-fragment"
+   #:includes
+   (list output-opaq-fragment-code)
+   #:standard-uniforms
+   (list (standard-uniform "" 'vec3 "ambient" 'ambient)
+         (standard-uniform "" 'sampler2D "diffuse" 'diffuse)
+         (standard-uniform "" 'sampler2D "specular" 'specular))
+   #:in-attributes
+   polygon-draw-fragment-attributes
    #<<code
-uniform vec3 ambient;
-uniform sampler2D diffuse;
-uniform sampler2D specular;
-
-smooth in vec4 frag_position;
-smooth in vec3 frag_rcolor;
-smooth in vec3 frag_ecolor;
-smooth in float frag_alpha;
-smooth in float frag_ambient;
-smooth in float frag_diffuse;
-smooth in float frag_specular;
-
-void main() {
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 color = frag_ecolor + frag_rcolor * light;
-  output_opaq(color, frag_position.z);
-}
+vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
+vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
+vec3 color = frag_ecolor + frag_rcolor * light;
+output_opaq(color, frag_position.z);
 code
    ))
 
 (define polygon-tran-fragment-code
-  (string-append
-   output-tran-fragment-code
+  (make-fragment-code
+   "polygon-tran-fragment"
+   #:includes
+   (list output-tran-fragment-code)
+   #:standard-uniforms
+   (list (standard-uniform "" 'vec3 "ambient" 'ambient)
+         (standard-uniform "" 'sampler2D "diffuse" 'diffuse)
+         (standard-uniform "" 'sampler2D "specular" 'specular))
+   #:in-attributes
+   polygon-draw-fragment-attributes
    #<<code
-uniform vec3 ambient;
-uniform sampler2D diffuse;
-uniform sampler2D specular;
-
-smooth in vec4 frag_position;
-smooth in vec3 frag_rcolor;
-smooth in vec3 frag_ecolor;
-smooth in float frag_alpha;
-smooth in float frag_ambient;
-smooth in float frag_diffuse;
-smooth in float frag_specular;
-
-void main() {
-  vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
-  vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
-  vec3 color = frag_ecolor + frag_rcolor * light;
-  output_tran(color, frag_alpha, frag_position.z);
-}
+vec3 diff = texelFetch(diffuse, ivec2(gl_FragCoord.xy), 0).rgb;
+vec3 spec = texelFetch(specular, ivec2(gl_FragCoord.xy), 0).rgb;
+vec3 light = frag_ambient * ambient + frag_diffuse * diff + frag_specular * spec;
+vec3 color = frag_ecolor + frag_rcolor * light;
+output_tran(color, frag_alpha, frag_position.z);
 code
    ))
 
+(define polygon-opaq-program-code
+  (make-program-code
+   "polygon-opaq-program"
+   polygon-draw-vertex-code
+   polygon-opaq-fragment-code))
+
+(define polygon-tran-program-code
+  (make-program-code
+   "polygon-tran-program"
+   polygon-draw-vertex-code
+   polygon-tran-fragment-code))
+
 (define-singleton/context (polygon-opaq-program)
   (log-pict3d-info "<engine> creating polygon opaque color pass program")
-  (make-gl-program
-   "polygon-opaq-program"
-   (list (cons "view" 'view)
-         (cons "proj" 'proj)
-         (cons "ambient" 'ambient)
-         (cons "diffuse" 'diffuse)
-         (cons "specular" 'specular))
-   (make-vao-struct
-    (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_position" 3 GL_FLOAT))
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER polygon-opaq-fragment-code))))
+  (program-code->gl-program polygon-opaq-program-code))
 
 (define-singleton/context (polygon-tran-program)
   (log-pict3d-info "<engine> creating polygon transparent color pass program")
-  (make-gl-program
-   "polygon-tran-program"
-   (list (cons "view" 'view)
-         (cons "proj" 'proj)
-         (cons "ambient" 'ambient)
-         (cons "diffuse" 'diffuse)
-         (cons "specular" 'specular))
-   (make-vao-struct
-    (make-vao-field "vert_rcolor" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_ecolor" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_material" 4 GL_UNSIGNED_BYTE)
-    (make-vao-field "vert_position" 3 GL_FLOAT))
-   (list "out_color" "out_weight")
-   (list (make-gl-shader GL_VERTEX_SHADER polygon-draw-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER polygon-tran-fragment-code))))
+  (program-code->gl-program polygon-tran-program-code))
 
 ;; ===================================================================================================
 ;; Triangle shape passes
 
 (: make-triangle-shape-passes (-> triangle-shape passes))
 (define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ fs vs ns orig-cs orig-es ms back?) a)
+  (match-define (triangle-shape _ fs vs ns cs es ms back?) a)
   (define-values (start stop step)
     (if back?
         (values 2 -1 -1)
         (values 0 3 1)))
   
-  (define cs (if (vector? orig-cs) orig-cs (make-vector 3 orig-cs)))
-  (define es (if (vector? orig-es) orig-es (make-vector 3 orig-es)))
-  
-  (define mat-struct-size
-    (vao-struct-size (gl-program-struct (polygon-mat-program))))
-  (define mat-data-size (* 3 mat-struct-size))
-  (define mat-data (make-bytes mat-data-size))
-  (define mat-ptr (u8vector->cpointer mat-data))
+  (define mat-struct-size (program-code-vao-size polygon-mat-program-code))
+  (define mat-data (make-bytes (* 3 mat-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
     (define v (vector-ref vs j))
     (define n (if (vector? ns) (vector-ref ns j) ns))
     (define m (if (vector? ms) (vector-ref ms j) ms))
-    (let* ([i  (begin (bytes-copy! mat-data i (normal->rgb-bytes (if back? (flv3neg n) n)) 0 3)
-                      (unsafe-fx+ i 3))]
-           [i  (begin (bytes-set! mat-data i (flonum->byte (material-roughness m)))
-                      (unsafe-fx+ i 1))]
-           [i  (begin (memcpy mat-ptr i (f32vector->cpointer (flvector->f32vector v)) 12 _byte)
-                      (unsafe-fx+ i 12))])
+    (let* ([i  (serialize-normal/bytes mat-data i n back?)]
+           [i  (serialize-float/byte mat-data i (material-roughness m))]
+           [i  (serialize-vec3 mat-data i v)])
       i))
   
-  (define opaq-struct-size
-    (vao-struct-size (gl-program-struct (polygon-opaq-program))))
-  (define draw-data-size (* 3 opaq-struct-size))
-  (define draw-data (make-bytes draw-data-size))
-  (define draw-ptr (u8vector->cpointer draw-data))
+  (define opaq-struct-size (program-code-vao-size polygon-opaq-program-code))
+  (define draw-data (make-bytes (* 3 opaq-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
     (define v (vector-ref vs j))
     (define c (if (vector? cs) (vector-ref cs j) cs))
     (define e (if (vector? es) (vector-ref es j) es))
     (define m (if (vector? ms) (vector-ref ms j) ms))
-    (define-values (ecolor i.lo) (pack-emitted e))
-    (let* ([i  (begin (bytes-copy! draw-data i (pack-color c) 0 4)
-                      (unsafe-fx+ i 4))]
-           [i  (begin (bytes-copy! draw-data i ecolor 0 4)
-                      (unsafe-fx+ i 4))]
-           [i  (begin (bytes-set! draw-data i (flonum->byte (material-ambient m)))
-                      (unsafe-fx+ i 1))]
-           [i  (begin (bytes-set! draw-data i (flonum->byte (material-diffuse m)))
-                      (unsafe-fx+ i 1))]
-           [i  (begin (bytes-set! draw-data i (flonum->byte (material-specular m)))
-                      (unsafe-fx+ i 1))]
-           [i  (begin (bytes-set! draw-data i i.lo)
-                      (unsafe-fx+ i 1))]
-           [i  (begin (memcpy draw-ptr i (f32vector->cpointer (flvector->f32vector v)) 12 _byte)
-                      (unsafe-fx+ i 12))])
+    (let* ([i  (serialize-vec3 draw-data i v)]
+           [i  (serialize-vec4/bytes draw-data i c)]
+           [i  (serialize-emitted/bytes draw-data i e)]
+           [i  (serialize-material-reflectances/bytes draw-data i m)])
       i))
   
   (if (flags-subset? transparent-flag fs)

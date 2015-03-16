@@ -25,7 +25,9 @@
 
 (: flonum->byte (-> Flonum Byte))
 (define (flonum->byte x)
-  (assert (max 0 (min 255 (exact-floor (* x 256.0)))) byte?))
+  (if (< -inf.0 x +inf.0)
+      (assert (max 0 (min 255 (exact-floor (* x 256.0)))) byte?)
+      0))
 
 (: pack-color (-> FlVector Bytes))
 (define (pack-color v)
@@ -85,7 +87,7 @@
   (+ (* x (- 1.0 α)) (* y α)))
 
 (: rgb->hsv (-> FlVector FlVector))
-;; Translated from the branchless GLSL code in "shader-lib.rkt"
+;; Translated from the branchless GLSL code in "shader-code.rkt"
 (define (rgb->hsv c)
   (define-values (c.r c.g c.b) (flv3-values c))
   (define-values (p.x p.y p.z p.w)
@@ -103,7 +105,7 @@
             q.x))
 
 (: hsv->rgb (-> FlVector FlVector))
-;; Translated from the branchless GLSL code in "shader-lib.rkt"
+;; Translated from the branchless GLSL code in "shader-code.rkt"
 (define (hsv->rgb c)
   (define-values (c.x c.y c.z) (flv3-values c))
   (define-values (p.x p.y p.z)

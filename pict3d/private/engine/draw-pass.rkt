@@ -399,20 +399,10 @@
     (define program (k))
     (define program-uniforms (gl-program-standard-uniforms program))
     (with-gl-program program
-      (gl-program-send-uniforms program
-                                (list* (cons "zfar" 'zfar)
-                                       (cons "log2_znear_zfar" 'log2_znear_zfar)
-                                       program-uniforms)
-                                standard-uniforms)
+      (gl-program-send-uniforms program program-uniforms standard-uniforms)
       ;; For each set of shape uniforms...
       (for ([ks  (in-list (group-by-key! ps (span-start s) (span-end s)
                                          (λ ([ts : draw-params])
-                                           #;
-                                           (list-hasheq-set
-                                            (shape-params-uniforms (draw-params-shape-params ts))
-                                            "_model"
-                                            (uniform-affine (draw-params-transform ts)))
-                                           
                                            (shape-params-uniforms (draw-params-shape-params ts)))))])
         (match-define (cons shape-uniforms s) ks)
         (gl-program-send-uniforms program shape-uniforms standard-uniforms)

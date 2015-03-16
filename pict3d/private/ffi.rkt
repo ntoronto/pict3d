@@ -13,7 +13,9 @@
 (provide CVector cvector?)
 
 (type-environment
- [ptr-set!  (parse-type #'(-> CPointer CType Integer Any Void))]
+ [ptr-set!  (parse-type #'(case-> (-> CPointer CType Any Void)
+                                  (-> CPointer CType Integer Any Void)
+                                  (-> CPointer CType 'abs Integer Any Void)))]
  [make-cvector*  (parse-type #'(-> CPointer CType Integer CVector))]
  [cvector-set!  (parse-type #'(-> CVector Integer Any Void))]
  [unsafe-u16vector-set!  (parse-type #'(-> U16Vector Fixnum Fixnum Void))]

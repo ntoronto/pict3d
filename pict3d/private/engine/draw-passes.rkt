@@ -11,8 +11,7 @@
          "../gl.rkt"
          "../utils.rkt"
          "utils.rkt"
-         "shader-lib.rkt"
-         "scene/shader-lib.rkt"
+         "shader-code.rkt"
          "draw-pass.rkt")
 
 (provide Engine-Debug-Pass
@@ -72,72 +71,84 @@
 
 ;; ===================================================================================================
 
+(define fullscreen-vertex-attributes
+  (list (attribute "" 'vec2 "vert_position")
+        (attribute "" 'vec2 "vert_texcoord")))
+
+(define fullscreen-fragment-attributes
+  (list (attribute "smooth" 'vec2 "frag_texcoord")))
+
+(define fullscreen-out-attributes
+  (list (attribute "" 'vec4 "out_color")))
+
 (define fullscreen-vertex-code
-  #<<code
-in vec2 vert_position;
-in vec2 vert_texcoord;
-
-smooth out vec2 frag_texcoord;
-
-void main() {
-  gl_Position = vec4(vert_position, 0, 1);
-  frag_texcoord = vert_texcoord;
-}
+  (make-vertex-code
+   "fullscreen-vertex"
+   #:in-attributes  fullscreen-vertex-attributes
+   #:out-attributes fullscreen-fragment-attributes
+   #<<code
+gl_Position = vec4(vert_position, 0, 1);
+frag_texcoord = vert_texcoord;
 code
-  )
+   ))
 
 (define fullscreen-fragment-code
+  (make-fragment-code
+   "fullscreen-fragment"
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
   #<<code
-uniform sampler2D rgba;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-  out_color = texture(rgba, frag_texcoord);
-}
+out_color = texture(rgba, frag_texcoord);
 code
-  )
+  ))
 
 (define fullscreen-depth-fragment-code
-  (string-append
-   depth-fragment-code
+  (make-fragment-code
+   "fullscreen-depth-fragment"
+   #:includes          (list depth-fragment-code)
+   #:standard-uniforms (list (standard-uniform "" 'float "znear" 'znear))
+   #:program-uniforms  (list (attribute "" 'sampler2D "rgba"))
+   #:in-attributes     fullscreen-fragment-attributes
+   #:out-attributes    fullscreen-out-attributes
    #<<code
-uniform sampler2D rgba;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-  float d = -get_view_depth(texture(rgba, frag_texcoord).r);
-  d = (zfar - d) / (zfar - znear);
-  out_color = vec4(vec3(d),1);
-}
+float d = -get_view_depth(texture(rgba, frag_texcoord).r);
+d = (zfar - d) / (zfar - znear);
+out_color = vec4(vec3(d),1);
 code
    ))
 
 (define fullscreen-alpha-fragment-code
-  (string-append
-   depth-fragment-code
+  (make-fragment-code
+   "fullscreen-alpha-fragment"
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
    #<<code
-uniform sampler2D rgba;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-  out_color = vec4(vec3(texture(rgba, frag_texcoord).r),1);
-}
+out_color = vec4(vec3(texture(rgba, frag_texcoord).r),1);
 code
    ))
 
+(define fullscreen-program-code
+  (make-program-code
+   "fullscreen-program"
+   fullscreen-vertex-code
+   fullscreen-fragment-code))
+
+(define fullscreen-depth-program-code
+  (make-program-code
+   "fullscreen-depth-program"
+   fullscreen-vertex-code
+   fullscreen-depth-fragment-code))
+
+(define fullscreen-alpha-program-code
+  (make-program-code
+   "fullscreen-alpha-program"
+   fullscreen-vertex-code
+   fullscreen-alpha-fragment-code))
+
 (define fullscreen-vertex-struct
-  (make-vao-struct
-   (make-vao-field "vert_position" 2 GL_FLOAT)
-   (make-vao-field "vert_texcoord" 2 GL_FLOAT)))
+  (program-code-vao-struct fullscreen-program-code))
 
 (define fullscreen-vertex-data
   (f32vector -1.0 -1.0 0.0 0.0
@@ -149,35 +160,15 @@ code
 
 (define-singleton/context (fullscreen-program)
   (log-pict3d-info "<engine> creating fullscreen program")
-  (make-gl-program
-   "fullscreen-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-fragment-code))))
+  (program-code->gl-program fullscreen-program-code))
 
 (define-singleton/context (fullscreen-depth-program)
   (log-pict3d-info "<engine> creating fullscreen depth debug program")
-  (make-gl-program
-   "fullscreen-depth-program"
-   (list (cons "zfar" 'zfar)
-         (cons "znear" 'znear)
-         (cons "log2_znear_zfar" 'log2_znear_zfar))
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-depth-fragment-code))))
+  (program-code->gl-program fullscreen-depth-program-code))
 
 (define-singleton/context (fullscreen-alpha-program)
   (log-pict3d-info "<engine> creating fullscreen alpha debug program")
-  (make-gl-program
-   "fullscreen-alpha-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER fullscreen-alpha-fragment-code))))
+  (program-code->gl-program fullscreen-alpha-program-code))
 
 (define-singleton/context (fullscreen-vao)
   (log-pict3d-info "<engine> creating vao for fullscreen compositing passes")
@@ -206,165 +197,152 @@ code
 ;; Fragment shaders for transparency blending and bloom
 
 (define blend-fragment-code
-  #<<code
-uniform sampler2D rgba;
-uniform sampler2D weight;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-  float w = texture(weight, frag_texcoord).r;
-  if (w == 0.0) discard;
-  vec4 accum = texture(rgba, frag_texcoord);
-  out_color = accum / w;
-}
-code
-  )
-
-(define-singleton/context (blend-program)
-  (log-pict3d-info "<engine> creating weighted transparency blend program")
-  (make-gl-program
-   "blend-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER blend-fragment-code))))
-
-(define bloom-extract-fragment-code
-  (string-append
-   rgb-hsv-code
+  (make-fragment-code
+   "blend-fragment"
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba")
+                            (attribute "" 'sampler2D "weight"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
    #<<code
-uniform sampler2D rgba;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-  vec4 color = texture(rgba, frag_texcoord);
-  vec3 hsv = rgb_to_hsv(color.rgb);
-  vec3 bloom = vec3(hsv.xy, max(hsv.z - color.a, 0));  // keep intensity >= alpha
-  out_color = vec4(hsv_to_rgb(bloom), 0.0);
-}
-code
-  ))
-
-(define-singleton/context (bloom-extract-program)
-  (log-pict3d-info "<engine> creating overbright extraction program")
-  (make-gl-program
-   "bloom-extract-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER bloom-extract-fragment-code))))
-
-(define bloom-combine-fragment-code
-  (string-append
-   rgb-hsv-code
-   #<<code
-uniform sampler2D color_tex;
-uniform sampler2D bloom_tex;
-uniform float bloom_frac;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-vec3 tone_map(vec3 color) {
-  return pow(color, vec3(1/2.2));
-}
-
-void main() {
-  vec4 color = texture(color_tex, frag_texcoord);
-  vec3 hsv = rgb_to_hsv(color.rgb);
-  vec3 rgb = hsv_to_rgb(vec3(hsv.xy, min(color.a, hsv.z)));
-  vec4 bloom = texture(bloom_tex, frag_texcoord) * bloom_frac;
-  color = vec4(rgb + bloom.rgb, color.a);
-  color = clamp(color, vec4(0), vec4(1));
-  color = vec4(tone_map(color.rgb), color.a);
-  color = vec4(color.rgb, max(max(color.a, color.r), max(color.g, color.b)));
-  out_color = color;
-}
+float w = texture(weight, frag_texcoord).r;
+if (w == 0.0) discard;
+vec4 accum = texture(rgba, frag_texcoord);
+out_color = accum / w;
 code
    ))
 
-(define-singleton/context (bloom-combine-program)
-  (log-pict3d-info "<engine> creating bloom compositing program")
-  (make-gl-program
-   "bloom-combine-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER bloom-combine-fragment-code))))
+(define blend-program-code
+  (make-program-code
+   "blend-program"
+   fullscreen-vertex-code
+   blend-fragment-code))
 
-(define blur-vert-fragment-code
-  #<<code
-uniform sampler2D rgba;
-uniform int height;
+(define-singleton/context (blend-program)
+  (log-pict3d-info "<engine> creating weighted transparency blend program")
+  (program-code->gl-program blend-program-code))
 
-smooth in vec2 frag_texcoord;
+(define bloom-extract-fragment-code
+  (make-fragment-code
+   "bloom-extract-fragment"
+   #:includes         (list rgb-hsv-code)
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
+   #<<code
+vec4 color = texture(rgba, frag_texcoord);
+vec3 hsv = rgb_to_hsv(color.rgb);
+vec3 bloom = vec3(hsv.xy, max(hsv.z - color.a, 0));  // keep intensity >= alpha
+out_color = vec4(hsv_to_rgb(bloom), 0.0);
+code
+   ))
 
-out vec4 out_color;
+(define bloom-extract-program-code
+  (make-program-code
+   "bloom-extract-program"
+   fullscreen-vertex-code
+   bloom-extract-fragment-code))
 
-void main() {
-    float s = 1.0/height;
-    vec4 color = texture(rgba, frag_texcoord)*1.5
-               + texture(rgba, frag_texcoord + vec2(0,-1.5*s))*2.0
-               + texture(rgba, frag_texcoord + vec2(0,+1.5*s))*2.0
-               + texture(rgba, frag_texcoord + vec2(0,-3.5*s))*1.0
-               + texture(rgba, frag_texcoord + vec2(0,+3.5*s))*1.0
-               ;
-    out_color = color / 7.5;
+(define-singleton/context (bloom-extract-program)
+  (log-pict3d-info "<engine> creating overbright extraction program")
+  (program-code->gl-program bloom-extract-program-code))
+
+(define bloom-combine-fragment-code
+  (make-fragment-code
+   "bloom-combine-fragment"
+   #:includes         (list rgb-hsv-code)
+   #:program-uniforms (list (attribute "" 'sampler2D "color_tex")
+                            (attribute "" 'sampler2D "bloom_tex")
+                            (attribute "" 'float "bloom_frac"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
+   #:definitions
+   (list
+    #<<code
+vec3 tone_map(vec3 color) {
+  return pow(color, vec3(1/2.2));
 }
 code
-  )
+    )
+   #<<code
+vec4 color = texture(color_tex, frag_texcoord);
+vec3 hsv = rgb_to_hsv(color.rgb);
+vec3 rgb = hsv_to_rgb(vec3(hsv.xy, min(color.a, hsv.z)));
+vec4 bloom = texture(bloom_tex, frag_texcoord) * bloom_frac;
+color = vec4(rgb + bloom.rgb, color.a);
+color = clamp(color, vec4(0), vec4(1));
+color = vec4(tone_map(color.rgb), color.a);
+color = vec4(color.rgb, max(max(color.a, color.r), max(color.g, color.b)));
+out_color = color;
+code
+   ))
+
+(define bloom-combine-program-code
+  (make-program-code
+   "bloom-combine-program"
+   fullscreen-vertex-code
+   bloom-combine-fragment-code))
+
+(define-singleton/context (bloom-combine-program)
+  (log-pict3d-info "<engine> creating bloom compositing program")
+  (program-code->gl-program bloom-combine-program-code))
+
+(define blur-vert-fragment-code
+  (make-fragment-code
+   "blur-vert-fragment"
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba")
+                            (attribute "" 'int "height"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
+   #<<code
+float s = 1.0/height;
+vec4 color = texture(rgba, frag_texcoord)*1.5
+           + texture(rgba, frag_texcoord + vec2(0,-1.5*s))*2.0
+           + texture(rgba, frag_texcoord + vec2(0,+1.5*s))*2.0
+           + texture(rgba, frag_texcoord + vec2(0,-3.5*s))*1.0
+           + texture(rgba, frag_texcoord + vec2(0,+3.5*s))*1.0
+           ;
+out_color = color / 7.5;
+code
+   ))
+
+(define blur-vert-program-code
+  (make-program-code
+   "blur-vert-program"
+   fullscreen-vertex-code
+   blur-vert-fragment-code))
 
 (define-singleton/context (blur-vert-program)
   (log-pict3d-info "<engine> creating vertical blur program")
-  (make-gl-program
-   "blur-vert-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER blur-vert-fragment-code))))
+  (program-code->gl-program blur-vert-program-code))
 
 (define blur-horz-fragment-code
+  (make-fragment-code
+   "blur-horz-fragment"
+   #:program-uniforms (list (attribute "" 'sampler2D "rgba")
+                            (attribute "" 'int "width"))
+   #:in-attributes    fullscreen-fragment-attributes
+   #:out-attributes   fullscreen-out-attributes
   #<<code
-uniform sampler2D rgba;
-uniform int width;
-
-smooth in vec2 frag_texcoord;
-
-out vec4 out_color;
-
-void main() {
-    float s = 1.0/width;
-    vec4 color = texture(rgba, frag_texcoord)*1.5
-               + texture(rgba, frag_texcoord + vec2(-1.5*s,0))*2.0
-               + texture(rgba, frag_texcoord + vec2(+1.5*s,0))*2.0
-               + texture(rgba, frag_texcoord + vec2(-3.5*s,0))*1.0
-               + texture(rgba, frag_texcoord + vec2(+3.5*s,0))*1.0
-               ;
-    out_color = color / 7.5;
-}
+float s = 1.0/width;
+vec4 color = texture(rgba, frag_texcoord)*1.5
+           + texture(rgba, frag_texcoord + vec2(-1.5*s,0))*2.0
+           + texture(rgba, frag_texcoord + vec2(+1.5*s,0))*2.0
+           + texture(rgba, frag_texcoord + vec2(-3.5*s,0))*1.0
+           + texture(rgba, frag_texcoord + vec2(+3.5*s,0))*1.0
+           ;
+out_color = color / 7.5;
 code
-  )
+  ))
+
+(define blur-horz-program-code
+  (make-program-code
+   "blur-horz-program"
+   fullscreen-vertex-code
+   blur-horz-fragment-code))
 
 (define-singleton/context (blur-horz-program)
   (log-pict3d-info "<engine> creating horizontal blur program")
-  (make-gl-program
-   "blur-horz-program"
-   empty
-   (make-vao-struct)
-   (list "out_color")
-   (list (make-gl-shader GL_VERTEX_SHADER fullscreen-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER blur-horz-fragment-code))))
+  (program-code->gl-program blur-horz-program-code))
 
 ;; ===================================================================================================
 ;; Framebuffers

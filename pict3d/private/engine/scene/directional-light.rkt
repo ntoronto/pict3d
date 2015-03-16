@@ -12,11 +12,10 @@
          "../../utils.rkt"
          "../types.rkt"
          "../utils.rkt"
-         "../shader-lib.rkt"
+         "../shader-code.rkt"
          "../draw-pass.rkt"
          "types.rkt"
-         "flags.rkt"
-         "shader-lib.rkt")
+         "flags.rkt")
 
 (provide make-directional-light-shape
          make-directional-light-shape-passes
@@ -60,80 +59,74 @@
 ;; ===================================================================================================
 ;; Program for pass 0: light
 
+(define directional-light-vertex-attributes
+  (list (attribute "" 'float/byte "vert_id")))
+
+(define directional-light-fragment-attributes
+  (list (attribute "smooth" 'vec3 "frag_dir")))
+
 (define directional-light-vertex-code
-  (string-append
+  (make-vertex-code
+   "directional-light-vertex"
+   #:standard-uniforms (list (standard-uniform "" 'mat4 "unproj" 'unproj))
+   #:in-attributes directional-light-vertex-attributes
+   #:out-attributes directional-light-fragment-attributes
    #<<code
-uniform mat4 unproj;
-
-in float vert_id;
-
-smooth out vec3 frag_dir;
-
-void main() {
-    // output the right vertices for a triangle strip
-  switch (int(vert_id)) {
-  case 0:
-    gl_Position = vec4(-1.0, -1.0, 0.0, 1.0);
-    break;
-  case 1:
-    gl_Position = vec4(+1.0, -1.0, 0.0, 1.0);
-    break;
-  case 2:
-    gl_Position = vec4(-1.0, +1.0, 0.0, 1.0);
-    break;
-  default:
-    gl_Position = vec4(+1.0, +1.0, 0.0, 1.0);
-    break;
-  }
-
-  vec4 dir = unproj * gl_Position;
-  frag_dir = vec3(dir.xy / dir.z, 1.0);
+// output the right vertices for a triangle strip
+switch (int(vert_id)) {
+case 0:
+  gl_Position = vec4(-1.0, -1.0, 0.0, 1.0);
+  break;
+case 1:
+  gl_Position = vec4(+1.0, -1.0, 0.0, 1.0);
+  break;
+case 2:
+  gl_Position = vec4(-1.0, +1.0, 0.0, 1.0);
+  break;
+default:
+  gl_Position = vec4(+1.0, +1.0, 0.0, 1.0);
+  break;
 }
+
+vec4 dir = unproj * gl_Position;
+frag_dir = vec3(dir.xy / dir.z, 1.0);
 code
    ))
 
 (define directional-light-fragment-code
-  (string-append
-   light-fragment-code
+  (make-fragment-code
+   "directional-light-fragment"
+   #:includes (list light-fragment-code)
+   #:standard-uniforms
+   (list (standard-uniform "" 'mat4 "unview" 'unview)
+         (standard-uniform "" 'sampler2D "depth" 'depth)
+         (standard-uniform "" 'sampler2D "material" 'material))
+   #:program-uniforms
+   (list (attribute "" 'vec3 "light_dir")
+         (attribute "" 'vec3 "light_color")
+         (attribute "" 'float "light_intensity"))
+   #:in-attributes directional-light-fragment-attributes
    #<<code
-uniform mat4 unview;
+float d = texelFetch(depth, ivec2(gl_FragCoord.xy), 0).r;
+if (d == 0.0) discard;
+float z = get_view_depth(d);
+vec3 pos = frag_dir * z;
 
-uniform sampler2D depth;
-uniform sampler2D material;
-
-// Per-light attributes
-uniform vec3 light_dir;
-uniform vec3 light_color;
-uniform float light_intensity;
-
-smooth in vec3 frag_dir;
-
-void main() {
-  float d = texelFetch(depth, ivec2(gl_FragCoord.xy), 0).r;
-  if (d == 0.0) discard;
-  float z = get_view_depth(d);
-  vec3 pos = frag_dir * z;
-
-  vec3 L = normalize(-light_dir * mat3(unview));
-  vec3 V = normalize(-pos);
-  output_light(pow(light_color, vec3(2.2)) * light_intensity, get_surface(material), L, V);
-}
+vec3 L = normalize(-light_dir * mat3(unview));
+vec3 V = normalize(-pos);
+output_light(pow(light_color, vec3(2.2)) * light_intensity, get_surface(material), L, V);
 code
    ))
 
+(define directional-light-program-code
+  (make-program-code
+   "directional-light-program"
+   directional-light-vertex-code
+   directional-light-fragment-code))
+
 (define-singleton/context (directional-light-program)
   (log-pict3d-info "<engine> creating directional light program")
-  (make-gl-program
-   "directional-light-program"
-   (list (cons "unview" 'unview)
-         (cons "unproj" 'unproj)
-         (cons "depth" 'depth)
-         (cons "material" 'material))
-   (make-vao-struct
-    (make-vao-field "vert_id" 1 GL_UNSIGNED_BYTE))
-   (list "out_diffuse" "out_specular")
-   (list (make-gl-shader GL_VERTEX_SHADER directional-light-vertex-code)
-         (make-gl-shader GL_FRAGMENT_SHADER directional-light-fragment-code))))
+  (program-code->gl-program directional-light-program-code))
 
 ;; ===================================================================================================
 ;; Directional light shape passes
