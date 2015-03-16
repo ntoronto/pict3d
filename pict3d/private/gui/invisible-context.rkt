@@ -23,7 +23,8 @@
   (define ctxt (send dc get-gl-context))
   (cond
     [(or (not ctxt) (not (send ctxt ok?)))
-     (log-pict3d-warning "<engine> could not get bitmap OpenGL context (legacy? = ~a)" legacy?)]
+     (log-pict3d-warning "<engine> could not get bitmap OpenGL context (legacy? = ~a)" legacy?)
+     #f]
     [else
      (define version-ok
        (send ctxt call-as-current (λ () (with-handlers ([exn?  (λ (e) e)])
@@ -63,7 +64,8 @@
   (define ctxt (send (send canvas get-dc) get-gl-context))
   (cond
     [(or (not ctxt) (not (send ctxt ok?)))
-     (log-pict3d-warning "<engine> could not get canvas OpenGL context (legacy? = ~a)" legacy?)]
+     (log-pict3d-warning "<engine> could not get canvas OpenGL context (legacy? = ~a)" legacy?)
+     #f]
     [else
      (define version-ok
        (send ctxt call-as-current (λ () (with-handlers ([exn?  (λ (e) e)])
