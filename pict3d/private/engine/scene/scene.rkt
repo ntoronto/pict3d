@@ -113,7 +113,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
           (make-nonempty-trans-scene t (node-scene-neg s))
           (make-nonempty-trans-scene t (node-scene-pos s)))]
         [(trans-scene? s)
-         (make-nonempty-trans-scene (affine-compose t (trans-scene-affine s))
+         (make-nonempty-trans-scene (affine-compose2 t (trans-scene-affine s))
                                     (trans-scene-scene s))]
         [else
          (make-simple-trans-scene t s)]))
@@ -187,7 +187,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (loop (affine-compose t t0) s0)]
+       (loop (affine-compose2 t t0) s0)]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (cond [(empty-scene? s0)
@@ -432,7 +432,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (loop t (node-scene-pos s) ns
              (loop t (node-scene-neg s) ns as))]
       [(trans-scene? s)
-       (loop (affine-compose t (trans-scene-affine s)) (trans-scene-scene s) ns as)]
+       (loop (affine-compose2 t (trans-scene-affine s)) (trans-scene-scene s) ns as)]
       [(group-scene? s)
        (cond [(equal? (group-scene-tag s) (first ns))
               (let ([ns  (rest ns)])
@@ -477,7 +477,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (loop (affine-compose t t0) s0)]
+       (loop (affine-compose2 t t0) s0)]
       [(group-scene? s)
        (define n0 (group-scene-tag s))
        (define s0 (group-scene-scene s))
@@ -628,7 +628,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (define s0 (trans-scene-scene s))
        (define t0 (trans-scene-affine s))
        (loop s0
-             (affine-compose t t0)
+             (affine-compose2 t t0)
              (transform-planes t0 planes)
              i)]
       [(group-scene? s)
@@ -716,7 +716,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (define new-t (affine-compose (affine-inverse t0) t))
+       (define new-t (affine-compose2 (affine-inverse t0) t))
        (define new-b (flrect3-transform orig-b (affine-transform new-t)))
        (define new-s0 (loop s0 new-t new-b))
        (cond [(eq? new-s0 s0)  s]
@@ -802,7 +802,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
     [(trans-scene? s)
      (define t0 (trans-scene-affine s))
      (define s0 (trans-scene-scene s))
-     (scene-transform-shapes s0 (affine-compose t t0))]
+     (scene-transform-shapes s0 (affine-compose2 t t0))]
     [(group-scene? s)
      (define s0 (group-scene-scene s))
      (scene-transform-shapes s0 t)]))

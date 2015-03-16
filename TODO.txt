@@ -3,6 +3,16 @@ Easy
 
 Clamp pict3d constructor arguments to reasonable values
 
+Add `rotate/center`
+
+Add note in the docs that `rotate` rotates around the origin ("you probably want `rotate/center`")
+
+Add a "How Do I" section
+
+Add doc notes about performance characteristics
+
+Add a change-of-basis transform combiner, use it
+
 Add triangle mesh shape
 
 OpenGL >= 3.2 render paths

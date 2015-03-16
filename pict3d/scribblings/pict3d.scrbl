@@ -1239,9 +1239,9 @@ It's best used to place basis groups and cameras.
 Convert an @tech{affine transformation} into its basis vectors and back.
 }
 
-@defproc[(affine-compose [t2 Affine] [t1 Affine]) Affine]{
-Compose two @tech{affine transformations}. Applying the result applies @racket[t1] first, then
-@racket[t2].
+@defproc[(affine-compose [t Affine] ...) Affine]{
+Compose any number of @tech{affine transformations}.
+Applying the result applies each @racket[t] once, in reverse order (just like function composition).
 }
 
 @deftogether[(@defproc[(transform-pos [v Pos] [t Affine]) Pos]

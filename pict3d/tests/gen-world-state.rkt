@@ -92,7 +92,7 @@
              identity-affine
              (rotate (dir-scale d (/ m)) (radians->degrees (* dt m))))))
      
-     (define new-tr (affine-compose move-tr (affine-compose tr rotate-tr)))
+     (define new-tr (affine-compose move-tr tr rotate-tr))
      (define new-dv (dir+ dv (dir-scale ddv dt)))
      (define new-da (dir+ da (dir-scale dda dt)))
      

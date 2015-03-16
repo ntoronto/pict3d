@@ -104,7 +104,7 @@
 (: sphere-shape-easy-transform (-> sphere-shape Affine sphere-shape))
 (define (sphere-shape-easy-transform a t)
   (match-define (sphere-shape passes fs t0 c e m inside?) a)
-  (sphere-shape (lazy-passes) fs (affine-compose t t0) c e m inside?))
+  (sphere-shape (lazy-passes) fs (affine-compose2 t t0) c e m inside?))
 
 ;; ===================================================================================================
 ;; Ray intersection

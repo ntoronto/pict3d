@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
-(require racket/pretty
+(require racket/list
+         racket/pretty
          racket/match
          mzlib/pconvert-prop
          (except-in typed/opengl/ffi cast ->)
@@ -18,6 +19,7 @@
  affine-transform
  identity-affine
  affine-compose
+ affine-compose2
  affine-inverse
  affine-data
  affine-consistent?
@@ -106,10 +108,23 @@
       identity-affine
       (Affine t (box 'lazy))))
 
-(: affine-compose (-> Affine Affine Affine))
-(define (affine-compose t1 t2)
+(: affine-compose2 (-> Affine Affine Affine))
+(define (affine-compose2 t1 t2)
   (affine (flt3compose (affine-transform t1)
                        (affine-transform t2))))
+
+(: affine-compose (-> Affine * Affine))
+(define (affine-compose . ts)
+  (if (empty? ts)
+      identity-affine
+      (let ([t1  (first ts)]
+            [ts  (rest ts)])
+        (if (empty? ts)
+            t1
+            (let loop ([t1 t1] [t2  (first ts)] [ts  (rest ts)])
+              (if (empty? ts)
+                  (affine-compose2 t1 t2)
+                  (loop (affine-compose2 t1 t2) (first ts) (rest ts))))))))
 
 (: affine-inverse (-> Affine Affine))
 (define (affine-inverse t)

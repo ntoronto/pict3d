@@ -60,11 +60,11 @@
      empty  ; no planes
      (λ ([a : Shape] [b : FlRect3] [t0 : Affine] [c : Nonnegative-Fixnum])
        (cond [(point-light-shape? a)
-              (let ([a  (point-light-shape-easy-transform a (affine-compose t t0))])
+              (let ([a  (point-light-shape-easy-transform a (affine-compose2 t t0))])
                 (set! lights (cons a lights)))]
              [(frozen-scene-shape? a)
               (let ([frozen-lights (loop (frozen-scene-shape-scene a)
-                                         (affine-compose t t0))])
+                                         (affine-compose2 t t0))])
                 (set! lights (append frozen-lights lights)))]))
      0)  ; don't care about starting index
     lights))
@@ -193,5 +193,5 @@
 (define (scene-basis-indicators s scale)
   (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
   (map (λ ([nt : (Pair Tag Affine)])
-         (make-trans-scene (affine-compose (cdr nt) scale-t) basis-scene))
+         (make-trans-scene (affine-compose2 (cdr nt) scale-t) basis-scene))
        (scene-group-transforms s 'all)))
