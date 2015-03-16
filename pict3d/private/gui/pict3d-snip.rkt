@@ -102,7 +102,8 @@
       (time-apply
        (λ ()
          (define-values
-           (legacy? width height z-near z-far fov background ambient
+           (legacy? check-version?
+                    width height z-near z-far fov background ambient
                     add-sunlight? add-indicators? auto-camera)
            (send gui get-render-params))
          ;; Compute a projection matrix
@@ -113,7 +114,7 @@
          (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
          
          ;; Lock everything up for drawing
-         (with-gl-context (get-master-gl-context legacy?)
+         (with-gl-context (get-master-gl-context legacy? check-version?)
            ;; Draw the scene, a couple of lights, the origin basis, group bases
            (define s (send gui get-scene))
            
@@ -319,7 +320,8 @@
         (define snip-y last-snip-y)
         
         (define-values
-          (legacy? width height z-near z-far fov background ambient
+          (legacy? check-version?
+                   width height z-near z-far fov background ambient
                    add-sunlight? add-indicators? auto-camera)
           (send pict get-init-params))
         
@@ -824,6 +826,7 @@
   (class snip%
     (init-field scene
                 legacy?
+                check-version?
                 width
                 height
                 z-near
@@ -854,7 +857,7 @@
     
     ;(: copy (-> (Instance Pict3D%)))
     (define/override (copy)
-      (make-object pict3d% scene legacy?
+      (make-object pict3d% scene legacy? check-version?
         width height z-near z-far fov background ambient
         add-sunlight? add-indicators? auto-camera))
     
@@ -902,7 +905,8 @@
             the-bitmap-val)))
     
     (define/public (get-init-params)
-      (values legacy? width height z-near z-far fov background ambient
+      (values legacy? check-version?
+              width height z-near z-far fov background ambient
               add-sunlight? add-indicators? auto-camera))
     
     (define/public (refresh)
@@ -987,6 +991,7 @@
   (make-object pict3d%
     s
     (current-pict3d-legacy?)
+    (current-pict3d-check-version?)
     (current-pict3d-width)
     (current-pict3d-height)
     (current-pict3d-z-near)

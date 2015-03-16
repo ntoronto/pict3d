@@ -15,19 +15,20 @@
 (define master-gl-context-mutex (make-semaphore 1))
 (define context-hash (make-hash))
 
-(define (get-master-gl-context legacy?)
+(define (get-master-gl-context legacy? check-version?)
   (call-with-semaphore
    master-gl-context-mutex
    (λ ()
      (hash-ref!
-      context-hash legacy?
+      context-hash
+      (list legacy? check-version?)
       (λ ()
         ;; Don't try for bitmap contexts for now - they're too broken on Windows and possibly Mac
-        (define ctxt #f #;(get-bitmap-context legacy?))
+        (define ctxt #f #;(get-bitmap-context legacy? check-version?))
         (cond
           [ctxt  (managed-gl-context ctxt)]
           [else
-           (define ctxt (get-invisible-canvas-context legacy?))
+           (define ctxt (get-invisible-canvas-context legacy? check-version?))
            (cond [ctxt  (managed-gl-context ctxt)]
                  [else
                   (error 'get-master-gl-context

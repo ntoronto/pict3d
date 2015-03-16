@@ -1521,6 +1521,32 @@ the graphics driver.
 On Windows, this parameter is currently ignored.
 }
 
+@deftypedparam[current-pict3d-check-version? check-version? Boolean Boolean (#:value #t)]{
+Determines whether Pict3D checks the OpenGL version.
+
+When @racket[current-pict3d-check-version?] is @racket[#t], it raises an error when the OpenGL
+version is less than 3.0.
+Otherwise, it doesn't check, and counts on hardware and drivers implementing equivalent extensions.
+
+@bold{Use this at your own risk.}
+Pict3D will work on standards-compliant implementations of OpenGL 3.0 or higher, but there is
+no such guarantee for lower versions, even when they implement all the required extensions.
+Further, if Pict3D works on a lower version, don't expect it to keep doing so.
+In the future, Pict3D might use a 3.0 feature that your hardware or driver doesn't implement an
+extension for.
+If Pict3D doesn't work when @racket[current-pict3d-check-version?] is @racket[#f], it may raise
+errors, render garbage, or cause segfaults.
+
+Currently, @hyperlink["http://www.mesa3d.org/"]{Mesa 3D}'s software rendering implements all the
+required extensions.
+On Linux, if your graphics driver uses Mesa's infrastructure, you can use its software renderer by
+starting DrRacket with
+
+@tt{     LIBGL_ALWAYS_SOFTWARE=TRUE <racket-binary-path>/drracket}
+
+and putting @racket[(current-pict3d-check-version? #f)] at the top of your programs.
+}
+
 @deftogether[(@defthing[default-pict3d-width Positive-Index #:value 256]
               @defthing[default-pict3d-height Positive-Index #:value 256]
               @defthing[default-pict3d-auto-camera (-> Pict3D Affine)]
@@ -1529,7 +1555,7 @@ On Windows, this parameter is currently ignored.
               @defthing[default-pict3d-fov Positive-Flonum #:value 90.0]
               @defthing[default-pict3d-z-near Positive-Flonum #:value (expt 2.0 -20.0)]
               @defthing[default-pict3d-z-far Positive-Flonum #:value (expt 2.0 32.0)])]{
-Nontrivial view parameter default values.
+Nontrivial rendering parameter default values.
 }
 
 @subsection[#:tag "targets"]{Rendering Targets}

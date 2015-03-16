@@ -46,7 +46,8 @@
        (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
        (define bm (make-bitmap width height))
        ;; Lock everything up for drawing
-       (with-gl-context (get-master-gl-context (current-pict3d-legacy?))
+       (with-gl-context (get-master-gl-context (current-pict3d-legacy?)
+                                               (current-pict3d-check-version?))
          ;; Draw the scene
          (draw-scene (pict3d-scene pict) width height
                      view proj

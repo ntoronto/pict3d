@@ -14,6 +14,9 @@
 (: current-pict3d-legacy? (Parameterof Boolean))
 (define current-pict3d-legacy? (make-parameter #f))
 
+(: current-pict3d-check-version? (Parameterof Boolean))
+(define current-pict3d-check-version? (make-parameter #t))
+
 (define default-pict3d-width 256)
 (define default-pict3d-height 256)
 (define default-pict3d-z-near (assert (flexpt 2.0 -20.0) positive?))

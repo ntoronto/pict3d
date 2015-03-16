@@ -107,6 +107,7 @@
     (init-field [pict3d  empty-pict3d])
     
     (define legacy? (current-pict3d-legacy?))
+    (define check-version? (current-pict3d-check-version?))
     
     (define config (new gl-config%))
     (send config set-legacy? legacy?)
@@ -192,7 +193,7 @@
            [(or (not ctxt) (not (send ctxt ok?)))
             (log-pict3d-warning "<canvas> could not get canvas OpenGL context (legacy? = ~a)" legacy?)
             (error 'pict3d-canvas% "could not get canvas OpenGL context (legacy? = ~a)" legacy?)]
-           [(send ctxt call-as-current (λ () (gl-version-at-least? 30)))
+           [(or (not check-version?) (send ctxt call-as-current (λ () (gl-version-at-least? 30))))
             (define version (send ctxt call-as-current gl-version))
             (log-pict3d-info "<canvas> got canvas OpenGL ~a context (legacy? = ~a)" version legacy?)
             (let ([mctxt  (managed-gl-context ctxt)])

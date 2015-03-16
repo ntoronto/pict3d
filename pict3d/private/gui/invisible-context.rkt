@@ -15,7 +15,7 @@
 ;; Contains handles to objects necessary to keep OpenGL contexts alive (e.g. frames)
 (define keep-alives (make-weak-hasheq))
 
-(define (get-bitmap-context legacy?)
+(define (get-bitmap-context legacy? check-version?)
   (define config (new gl-config%))
   (send config set-legacy? legacy?)
   (define bm (make-gl-bitmap invisible-context-max-width invisible-context-max-height config))
@@ -35,7 +35,7 @@
          "<engine> exception querying bitmap OpenGL context version (legacy? = ~a): ~e"
          legacy? version-ok)
         #f]
-       [version-ok
+       [(or (not check-version?) version-ok)
         (define version (send ctxt call-as-current gl-version))
         (log-pict3d-info "<engine> got bitmap OpenGL ~a context (legacy? = ~a)" version legacy?)
         ;; Keep the bitmap and dc alive
@@ -46,7 +46,7 @@
         (log-pict3d-warning "<engine> got bitmap OpenGL ~a context (legacy? = ~a)" version legacy?)
         #f])]))
 
-(define (get-invisible-canvas-context legacy?)
+(define (get-invisible-canvas-context legacy? check-version?)
   (define config (new gl-config%))
   (send config set-legacy? legacy?)
   (define frame (new frame%
@@ -76,7 +76,7 @@
          "<engine> exception querying canvas OpenGL context version (legacy? = ~a): ~e"
          legacy? version-ok)
         #f]
-       [version-ok
+       [(or (not check-version?) version-ok)
         (define version (send ctxt call-as-current gl-version))
         (log-pict3d-info "<engine> got canvas OpenGL ~a context (legacy? = ~a)" version legacy?)
         ;; Keep the frame and (just in case) the canvas alive
