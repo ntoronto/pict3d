@@ -121,7 +121,7 @@
   (scene-union
    (shape->scene
     (make-rectangle-shape
-     (assert (flrect3 (flvector #i-1/64 #i-1/64 #i-1/64)
+     (assert (flrect3 (flvector #i-1/64 #i-1/64 0.0)
                       (flvector #i1/64 #i1/64 #i60/64))
              nonempty-flrect3?)
      c e m #f))
@@ -157,32 +157,67 @@
    (flvector 0.1 0.1 1.0 2.5)
    axis-material))
 
-(define unfrozen-axes-scene
-  (assert
-   (scene-union*
-    (list (shape->scene
-           (make-sphere-shape
-            (affine (scale-flt3 (flvector 0.03 0.03 0.03)))
-            (flvector 0.0 0.0 0.0 1.0)
-            (flvector 1.0 1.0 1.0 2.0)
-            axis-material
-            #f))
-          x-axis-scene
-          y-axis-scene
-          z-axis-scene))
-   nonempty-scene?))
+(define axes-scene
+  (shape->scene
+   (make-frozen-scene-shape
+    (assert
+     (scene-union*
+      (list (shape->scene
+             (make-sphere-shape
+              (affine (scale-flt3 (flvector 0.03 0.03 0.03)))
+              (flvector 0.0 0.0 0.0 1.0)
+              (flvector 1.0 1.0 1.0 2.0)
+              axis-material
+              #f))
+            x-axis-scene
+            y-axis-scene
+            z-axis-scene))
+     nonempty-scene?))))
 
-(define axes-shape (make-frozen-scene-shape unfrozen-axes-scene))
-(define axes-scene (shape->scene axes-shape))
+(define basis-dim 0.5)
 
-(define basis-shape
-  (make-frozen-scene-shape
-   (assert (scene-transform-shapes
-            unfrozen-axes-scene
-            (affine (scale-flt3 (flvector 0.25 0.25 0.25))))
-           nonempty-scene?)))
+(define x-basis-scene
+  (scene-transform-shapes
+   (make-unit-arrow-scene
+    (flvector 0.0 0.0 0.0 1.0)
+    (flvector basis-dim (* basis-dim 0.05) (* basis-dim 0.05) 1.0)
+    axis-material)
+   (affine (flt3compose (rotate-y-flt3 (degrees->radians +90.0))
+                        (scale-flt3 (flvector 0.5 0.5 1.0))))))
 
-(define basis-scene (shape->scene basis-shape))
+(define y-basis-scene
+  (scene-transform-shapes
+   (make-unit-arrow-scene
+    (flvector 0.0 0.0 0.0 1.0)
+    (flvector 0.0 basis-dim 0.0 1.0)
+    axis-material)
+   (affine (flt3compose (rotate-x-flt3 (degrees->radians -90.0))
+                        (scale-flt3 (flvector 0.5 0.5 1.0))))))
+
+(define z-basis-scene
+  (scene-transform-shapes
+   (make-unit-arrow-scene
+    (flvector 0.0 0.0 0.0 1.0)
+    (flvector (* basis-dim 0.1) (* basis-dim 0.1) basis-dim 1.0)
+    axis-material)
+   (affine (scale-flt3 (flvector 0.5 0.5 1.0)))))
+
+(define basis-scene
+  (shape->scene
+   (make-frozen-scene-shape
+    (assert
+     (scene-union*
+      (list (shape->scene
+             (make-sphere-shape
+              (affine (scale-flt3 (flvector 0.015 0.015 0.015)))
+              (flvector 0.0 0.0 0.0 1.0)
+              (flvector 1.0 1.0 1.0 1.0)
+              axis-material
+              #f))
+            x-basis-scene
+            y-basis-scene
+            z-basis-scene))
+     nonempty-scene?))))
 
 (: scene-origin-indicator (-> Flonum Scene))
 (define (scene-origin-indicator scale)
