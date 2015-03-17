@@ -64,6 +64,16 @@
  move-y
  move-z
  move
+ relocate
+ local-transform
+ rotate-x/center
+ rotate-y/center
+ rotate-z/center
+ rotate/center
+ scale-x/center
+ scale-y/center
+ scale-z/center
+ scale/center
  set-origin
  point-at
  ;; Information
@@ -431,6 +441,60 @@
   (case-lambda
     [(v a)  (affine (rotate-flt3 (check-axis 'rotate v) (degrees->radians (fl a))))]
     [(p v a)  (transform p (rotate v a))]))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Change of basis
+
+(: relocate (case-> (-> Affine Affine Affine)
+                    (-> Pict3D Affine Affine Pict3D)))
+(define relocate
+  (case-lambda
+    [(t1 t2)  (affine-compose t2 (affine-inverse t1))]
+    [(pict t1 t2)  (transform pict (relocate t1 t2))]))
+
+(: local-transform (case-> (-> Affine Affine Affine)
+                           (-> Pict3D Affine Affine Pict3D)))
+(define local-transform
+  (case-lambda
+    [(t local-t)  (affine-compose local-t (relocate local-t t))]
+    [(pict t local-t)  (transform pict (local-transform t local-t))]))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Local scaling
+
+(: center-or-origin (-> Pict3D Pos))
+(define (center-or-origin pict)
+  (define v (center pict))
+  (if v v origin))
+
+(: scale/center (->* [Pict3D (U Real Dir)] [Pos] Pict3D))
+(define (scale/center pict dv [v (center-or-origin pict)])
+  (local-transform pict (scale dv) (move (pos- v origin))))
+
+(: scale-x/center (->* [Pict3D Real] [Pos] Pict3D))
+(define (scale-x/center pict dx [v (center-or-origin pict)]) (scale/center pict (dir dx 1 1) v))
+
+(: scale-y/center (->* [Pict3D Real] [Pos] Pict3D))
+(define (scale-y/center pict dy [v (center-or-origin pict)]) (scale/center pict (dir 1 dy 1) v))
+
+(: scale-z/center (->* [Pict3D Real] [Pos] Pict3D))
+(define (scale-z/center pict dz [v (center-or-origin pict)]) (scale/center pict (dir 1 1 dz) v))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Local rotation
+
+(: rotate/center (->* [Pict3D Dir Real] [Pos] Pict3D))
+(define (rotate/center pict axis angle [v (center-or-origin pict)])
+  (local-transform pict (rotate axis angle) (move (pos- v origin))))
+
+(: rotate-x/center (->* [Pict3D Real] [Pos] Pict3D))
+(define (rotate-x/center pict angle [v (center-or-origin pict)]) (rotate/center pict +x angle v))
+
+(: rotate-y/center (->* [Pict3D Real] [Pos] Pict3D))
+(define (rotate-y/center pict angle [v (center-or-origin pict)]) (rotate/center pict +y angle v))
+
+(: rotate-z/center (-> Pict3D Real Pict3D))
+(define (rotate-z/center pict angle [v (center-or-origin pict)]) (rotate/center pict +z angle v))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point at/to

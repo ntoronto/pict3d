@@ -1178,6 +1178,10 @@ Scales @racket[pict] by @racket[dv], or by @racket[dx], @racket[dy] or @racket[d
 axis.
 If @racket[dv] is a real number @racket[d], it's equivalent to @racket[(dir d d d)] (i.e. uniform
 scaling).
+
+The center of scaling---i.e. the only point that does not move---is the @racket[origin].
+This is often not what you want.
+To scale @racket[pict] with a different center, see @racket[scale/center].
 }
 
 @deftogether[(@defproc[#:link-target? #f (scale [dv (U Real Dir)]) Affine]
@@ -1194,6 +1198,10 @@ Any @racket[(scale pict ...)] is equivalent to @racket[(transform pict (scale ..
               @defproc[(rotate-z [pict Pict3D] [angle Real]) Pict3D])]{
 Rotate @racket[pict], @racket[angle] degrees counterclockwise around @racket[axis], or around the
 @racket[+x], @racket[+y] or @racket[+z] axis.
+
+The center of rotation is the @racket[origin].
+This is often not what you want.
+To rotate @racket[pict] around a different center, see @racket[rotate/center].
 }
 
 @deftogether[(@defproc[#:link-target? #f (rotate [axis Dir] [angle Real]) Affine]
@@ -1202,6 +1210,41 @@ Rotate @racket[pict], @racket[angle] degrees counterclockwise around @racket[axi
               @defproc[#:link-target? #f (rotate-z [angle Real]) Affine])]{
 Transformation-returning versions of the above.
 Any @racket[(rotate pict ...)] is equivalent to @racket[(transform pict (rotate ...))].
+}
+
+@deftogether[(@defproc[(scale/center [pict Pict3D] [dv (U Real Dir)] [v Pos (center pict)]) Pict3D]
+              @defproc[(scale-x/center [pict Pict3D] [dx Real] [v Pos (center pict)]) Pict3D]
+              @defproc[(scale-y/center [pict Pict3D] [dy Real] [v Pos (center pict)]) Pict3D]
+              @defproc[(scale-z/center [pict Pict3D] [dz Real] [v Pos (center pict)]) Pict3D])]{
+Scales @racket[pict] by @racket[dv], or by @racket[dx], @racket[dy] or @racket[dz] units along an
+axis, with center @racket[v].
+
+By default, @racket[v] is the center of @racket[pict]'s bounding box.
+If @racket[pict] doesn't have a bounding box (for example, it's the @racket[empty-pict3d]), the
+@racket[origin] is the default center.
+
+@racket[(scale/center pict dv v)] is implemented as
+@racketblock[(local-transform pict (scale dv) (move (pos- v origin)))]
+In other words, @racket[pict] is scaled in the local coordinate space of an axis-aligned basis
+with center @racket[v].
+}
+
+@deftogether[(@defproc[(rotate/center [pict Pict3D] [axis Dir] [angle Real]
+                                      [v Pos (center pict)]) Pict3D]
+              @defproc[(rotate-x/center [pict Pict3D] [angle Real] [v Pos (center pict)]) Pict3D]
+              @defproc[(rotate-y/center [pict Pict3D] [angle Real] [v Pos (center pict)]) Pict3D]
+              @defproc[(rotate-z/center [pict Pict3D] [angle Real] [v Pos (center pict)]) Pict3D])]{
+Rotate @racket[pict], @racket[angle] degrees counterclockwise around @racket[axis], or around the
+@racket[+x], @racket[+y] or @racket[+z] axis, with center @racket[v].
+
+By default, @racket[v] is the center of @racket[pict]'s bounding box.
+If @racket[pict] doesn't have a bounding box (for example, it's the @racket[empty-pict3d]), the
+@racket[origin] is the default center.
+
+@racket[(rotate/center pict axis angle v)] is implemented as
+@racketblock[(local-transform pict (rotate axis angle) (move (pos- v origin)))]
+In other words, @racket[pict] is rotated in the local coordinate space of an axis-aligned basis
+with center @racket[v].
 }
 
 @defproc*[([(point-at [v Pos]
@@ -1231,7 +1274,8 @@ and the @italic{x} axis points rightward.
 When the @italic{z} axis is parallel to @racket[up], the rotation is arbitrary but always defined.
 
 This function is really more intuitive than the above discription might suggest.
-It's best used to place basis groups and cameras.
+It's best used to place basis groups and cameras, and to stretch shapes between two points
+(see @racket[relocate]).
 }
 
 @deftogether[(@defproc[(affine->cols [t Affine]) (Values Dir Dir Dir Pos)]
@@ -1241,7 +1285,61 @@ Convert an @tech{affine transformation} into its basis vectors and back.
 
 @defproc[(affine-compose [t Affine] ...) Affine]{
 Compose any number of @tech{affine transformations}.
-Applying the result applies each @racket[t] once, in reverse order (just like function composition).
+Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
+}
+
+@defproc[(affine-inverse [t Affine]) Affine]{
+Returns the inverse of the transformation @racket[t].
+Because @racket[Affine] instances store their inverses, this operation is cheap.
+}
+
+@defproc*[([(relocate [t1 Affine] [t2 Affine]) Affine]
+           [(relocate [pict Pict3D] [t1 Affine] [t2 Affine]) Pict3D])]{
+Transforms @racket[pict] from the local coordinate space defined by @racket[t1] into the local
+coordinate space defined by @racket[t2], or returns an @racket[Affine] that does so.
+
+For example, suppose we define a cylinder centered on the origin, and we want to stretch it between
+two arbitrary points.
+@interaction[#:eval pict3d-eval
+                    (define pict (with-color (rgba "red" 0.9)
+                                   (cylinder origin (dir 1/4 1/4 1/2))))
+                    (define pict-t (point-at (pos 0 0 -1/2) +z))
+                    (combine pict
+                             (basis 'pict-t pict-t))]
+(We're only using @racket[basis] to visualize the transformation @racket[pict-t].)
+To stretch it between @racket[v1] and @racket[v2], we define a @racket[point-at] transformation:
+@interaction[#:eval pict3d-eval
+                    (define v1 (pos 1 0 1))
+                    (define v2 (pos 0 1 1))
+                    (define new-t (point-at v1 v2 #:normalize? #f))
+                    (combine (sphere v1 0.2)
+                             (sphere v2 0.2)
+                             (basis 'new-t new-t))]
+Then we can use @racket[relocate] to move @racket[pict] into the new coordinate space:
+@interaction[#:eval pict3d-eval
+                    (combine (sphere v1 0.2)
+                             (sphere v2 0.2)
+                             (relocate pict pict-t new-t))]
+@racket[(relocate t1 t2)] is implemented as
+@racketblock[(affine-compose t2 (affine-inverse t1))]
+In other words, undo transformation @racket[t1], then do transformation @racket[t2].
+}
+
+@defproc*[([(local-transform [t Affine] [local-t Affine]) Affine]
+           [(local-transform [pict Pict3D] [t Affine] [local-t Affine]) Pict3D])]{
+Applies @racket[t] to @racket[pict] in the local coordinate space defined by @racket[local-t], or
+returns an @racket[Affine] that does so.
+
+@racket[(local-transform t local-t)] is implemented as
+@racketblock[(affine-compose local-t (relocate local-t t))]
+which is equivalent to
+@racketblock[(affine-compose local-t t (affine-inverse local-t))]
+This operation is also known as a
+@hyperlink["http://en.wikipedia.org/wiki/Change_of_basis"]{change of basis}.
+
+The @racket[scale/center] and @racket[rotate/center] functions are defined using
+@racket[local-transform], to apply scaling and rotating transformations in a local coordinate space
+with a center other than the @racket[origin].
 }
 
 @deftogether[(@defproc[(transform-pos [v Pos] [t Affine]) Pos]
@@ -1281,11 +1379,6 @@ with an extended example.
                            (dir-scale (transform-norm dv t) 0.5))))]
 In the second @racket[Pict3D], the directions have been flattened along with the sphere.
 In the third, they maintain their orthogonality to the surface.
-}
-
-@defproc[(affine-inverse [t Affine]) Affine]{
-Returns the inverse of the transformation @racket[t].
-Because @racket[Affine] instances store their inverses, this operation is cheap.
 }
 
 @defproc[(affine-consistent? [t Affine]) Affine]{
