@@ -1,7 +1,6 @@
 #lang racket/base
 
 (require racket/class
-         racket/lazy-require
          racket/list
          racket/match)
 
