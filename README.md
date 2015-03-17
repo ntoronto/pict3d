@@ -18,4 +18,4 @@ To use:
 
 The documentation is complete. Press F1 in DrRacket and search for "pict3d" to find it.
 
-If you'd like to browse through the test programs, in DrRacket, click the `File -> Open Require Path...` menu item. Type `pict3d/tests`, click `Enter subcollection`, choose a Racket source file, and click `OK`.
+If you'd like to browse through the test programs, in DrRacket, click the `File -> Open Require Path...` menu item. Type `pict3d/tests`, click `Enter subcollection`, choose a Racket source file, and click `OK`. You'll have to either uncheck `Populate compiled directories` in the language dialog (`Ctrl-L` or `Langauge -> Choose Language...`) or copy the text of the test files into a fresh buffer to run them.
