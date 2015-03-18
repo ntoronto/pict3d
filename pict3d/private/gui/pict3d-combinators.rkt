@@ -339,12 +339,11 @@
                [e  (emitted 1.0 1.0 1.0 1.0)]
                #:min-radius [r0 0.0]
                #:max-radius [r1 (flsqrt (* 20.0 (emitted-intensity e)))])
-  (let* ([v  (vec-flvector v)]
-         [e  (col-flvector e)]
+  (let* ([e  (col-flvector e)]
          [r0  (abs (fl r0))]
          [r1  (abs (fl r1))])
     (if (< r0 r1)
-        (pict3d (shape->scene (make-point-light-shape e v r0 r1)))
+        (pict3d (shape->scene (make-point-light-shape e (move (pos- v origin)) r0 r1)))
         empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------

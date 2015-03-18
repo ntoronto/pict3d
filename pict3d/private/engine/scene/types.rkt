@@ -52,7 +52,7 @@
 
 (struct light-shape shape ([flags : Flags] [emitted : FlVector]) #:transparent)
 (struct directional-light-shape light-shape ([direction : FlVector]) #:transparent)
-(struct point-light-shape light-shape ([position : FlVector]
+(struct point-light-shape light-shape ([affine : Affine]
                                        [min-radius : Flonum]
                                        [max-radius : Flonum])
   #:transparent)
@@ -60,7 +60,7 @@
 (struct indicator-shape shape ([flags : Flags]) #:transparent)
 (struct point-light-shell-shape indicator-shape
   ([emitted : FlVector]
-   [position : FlVector]
+   [affine : Affine]
    [min-radius : Flonum]
    [max-radius : Flonum])
   #:transparent)
@@ -69,13 +69,14 @@
   ([scene : Nonempty-Scene])
   #:transparent)
 
-(define-type Shape (U triangle-shape
-                      rectangle-shape
-                      sphere-shape
-                      directional-light-shape
-                      point-light-shape
-                      point-light-shell-shape
-                      frozen-scene-shape))
+(define-type Shape
+  (U triangle-shape
+     rectangle-shape
+     sphere-shape
+     directional-light-shape
+     point-light-shape
+     point-light-shell-shape
+     frozen-scene-shape))
 
 ;; ===================================================================================================
 ;; Scene types

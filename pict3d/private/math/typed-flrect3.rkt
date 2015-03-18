@@ -25,6 +25,7 @@
  nonempty-flrect3
  (rename-out [make-flrect3  flrect3])
  flv3rect
+ transformed-sphere-flrect3
  ;; Accessors
  nonempty-flrect3-min
  nonempty-flrect3-max
@@ -99,6 +100,16 @@
         [else  (define-values (xmin ymin zmin xmax ymax zmax) (flv3rect-values vs))
                (Nonempty-FlRect3 (flvector xmin ymin zmin)
                                  (flvector xmax ymax zmax))]))
+
+(: transformed-sphere-flrect3 (-> FlAffine3- Nonempty-FlRect3))
+(define (transformed-sphere-flrect3 t)
+  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+    (flvector-values (fltransform3-forward (->flaffine3 t)) 12))
+  (define dx (flsqrt (+ (* m00 m00) (* m01 m01) (* m02 m02))))
+  (define dy (flsqrt (+ (* m10 m10) (* m11 m11) (* m12 m12))))
+  (define dz (flsqrt (+ (* m20 m20) (* m21 m21) (* m22 m22))))
+  (nonempty-flrect3 (flvector (- m03 dx) (- m13 dy) (- m23 dz))
+                    (flvector (+ m03 dx) (+ m13 dy) (+ m23 dz))))
 
 (: flrect3-min (-> FlRect3 FlVector))
 (define (flrect3-min bb)

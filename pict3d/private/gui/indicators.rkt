@@ -72,9 +72,19 @@
 (define flv4-black (flvector 0.0 0.0 0.0 1.0))
 (define ambient-material (material 1.0 0.0 0.0 1.0))
 
+(: affine-position (-> Affine FlVector))
+(define (affine-position t)
+  (let ([t  (affine-transform t)])
+    (cond [(flidentity3? t)  zero-flv3]
+          [(fllinear3? t)    zero-flv3]
+          [else  (define ms (fltransform3-forward t))
+                 (flvector (flvector-ref ms 3)
+                           (flvector-ref ms 7)
+                           (flvector-ref ms 11))])))
+
 (: point-light-indicator (-> point-light-shape Scene))
 (define (point-light-indicator a)
-  (match-define (point-light-shape _ fs e v r0 r1) a)
+  (match-define (point-light-shape _ fs e t r0 r1) a)
   ;; i = intensity
   (define i (flvector-ref e 3))
   ;; e1 = emitted color of octahedron
@@ -83,12 +93,12 @@
   ;; s = radius of a ball that would give off that much light...
   (define s (* (flsqrt (/ i 2.0)) #i1/8))  ; but reduced in size - it would look too big
   ;; ts = transform to put octahedron in place
-  (define ts (affine (flt3compose (translate-flt3 v) (scale-flt3 (flvector s s s)))))
+  (define ts (affine (flt3compose (affine-transform t) (scale-flt3 (flvector s s s)))))
   (shape->scene
    (make-frozen-scene-shape
     (assert
      (scene-union
-       (shape->scene (make-point-light-shell-shape e v (* 0.99 r0) (* 1.01 r1)))
+       (shape->scene (make-point-light-shell-shape e t (* 0.99 r0) (* 1.01 r1)))
        (make-trans-scene ts (unit-octahedron-scene flv4-black e1 ambient-material #f)))
      nonempty-scene?))))
 

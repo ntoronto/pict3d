@@ -84,19 +84,9 @@
 ;; ===================================================================================================
 ;; Bounding box
 
-(: transformed-sphere-rect (-> Affine Nonempty-FlRect3))
-(define (transformed-sphere-rect t)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-    (flvector-values (fltransform3-forward (->flaffine3 (affine-transform t))) 12))
-  (define dx (flsqrt (+ (* m00 m00) (* m01 m01) (* m02 m02))))
-  (define dy (flsqrt (+ (* m10 m10) (* m11 m11) (* m12 m12))))
-  (define dz (flsqrt (+ (* m20 m20) (* m21 m21) (* m22 m22))))
-  (nonempty-flrect3 (flvector (- m03 dx) (- m13 dy) (- m23 dz))
-                    (flvector (+ m03 dx) (+ m13 dy) (+ m23 dz))))
-
 (: sphere-shape-rect (-> sphere-shape Nonempty-FlRect3))
 (define (sphere-shape-rect a)
-  (transformed-sphere-rect (sphere-shape-affine a)))
+  (transformed-sphere-flrect3 (affine-transform (sphere-shape-affine a))))
 
 ;; ===================================================================================================
 ;; Transform
@@ -124,16 +114,6 @@
         (values #f #f)  ; Missed sphere
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
-
-(: sphere-shape-center (-> sphere-shape FlVector))
-(define (sphere-shape-center a)
-  (define t (affine-transform (sphere-shape-affine a)))
-  (cond [(flidentity3? t)  zero-flv3]
-        [(fllinear3? t)    zero-flv3]
-        [else  (define ms (fltransform3-forward t))
-               (flvector (flvector-ref ms 3)
-                         (flvector-ref ms 7)
-                         (flvector-ref ms 11))]))
 
 (: sphere-shape-line-intersect (-> sphere-shape FlVector FlVector (U #f line-hit)))
 (define (sphere-shape-line-intersect a v dv)

@@ -30,23 +30,22 @@
 ;; ===================================================================================================
 ;; Constructor
 
-(: make-point-light-shell-shape (-> FlVector FlVector Flonum Flonum point-light-shell-shape))
-(define (make-point-light-shell-shape e v r0 r1)
+(: make-point-light-shell-shape (-> FlVector Affine Flonum Flonum point-light-shell-shape))
+(define (make-point-light-shell-shape e t r0 r1)
   (cond [(not (= 4 (flvector-length e)))
          (raise-argument-error 'make-point-light-shell-shape "length-4 flvector"
-                               0 e v r0 r1)]
-        [(not (= 3 (flvector-length v)))
-         (raise-argument-error 'make-point-light-shell-shape "length-3 flvector"
-                               1 e v r0 r1)]
+                               0 e t r0 r1)]
         [else
          (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
-         (point-light-shell-shape (lazy-passes) fs e v r0 r1)]))
+         (point-light-shell-shape (lazy-passes) fs e t r0 r1)]))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
 
 (define point-light-shell-fragment-attributes
   (list (attribute "flat" 'vec3 "frag_position")
+        (attribute "flat" 'mat4 "frag_trans")
+        (attribute "flat" 'mat4 "frag_untrans")
         (attribute "flat" 'float "frag_min_radius")
         (attribute "flat" 'float "frag_max_radius")
         (attribute "flat" 'vec3 "frag_color")
@@ -62,30 +61,37 @@
          model-vertex-code)
    #:standard-uniforms
    (list (standard-uniform "" 'mat4 "view" 'view)
+         (standard-uniform "" 'mat4 "unview" 'unview)
          (standard-uniform "" 'mat4 "proj" 'proj)
          (standard-uniform "" 'mat4 "unproj" 'unproj))
    #:in-attributes
-   (list (attribute "" 'vec3 "vert_position")
+   (list (attribute "" 'vec4 "sphere0")
+         (attribute "" 'vec4 "sphere1")
+         (attribute "" 'vec4 "sphere2")
          (attribute "" 'vec3 "vert_intensity_radii")
-         (attribute "" 'vec3/bytes "vert_color")
-         (attribute "" 'float/byte "vert_id"))
+         (attribute "" 'vec4/bytes "vert_color_id"))
    #:out-attributes
    point-light-shell-fragment-attributes
    #<<code
-mat4x3 model = get_model_transform();
+mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
+mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
+mat4x3 unmodel = affine_inverse(model);
 mat4 trans = view * a2p(model);
+mat4 untrans = a2p(unmodel) * unview;
 
 float intensity = vert_intensity_radii.x;
 float min_radius = vert_intensity_radii.y;
 float max_radius = vert_intensity_radii.z;
-vec3 wmin = vert_position - vec3(max_radius);
-vec3 wmax = vert_position + vec3(max_radius);
-frag_position = (trans * vec4(vert_position,1)).xyz;
+vec3 color = vert_color_id.rgb;
+int id = int(vert_color_id.a);
+frag_position = trans[3].xyz;
+frag_trans = trans;
+frag_untrans = untrans;
 frag_min_radius = min_radius;
 frag_max_radius = max_radius;
-frag_color = pow(vert_color / 255, vec3(2.2)); // * intensity;
+frag_color = pow(color / 255, vec3(2.2)); // * intensity;
 frag_intensity = intensity;
-frag_is_degenerate = output_impostor_vertex(trans, proj, wmin, wmax, int(vert_id));
+frag_is_degenerate = output_impostor_vertex(trans, proj, vec3(-max_radius), vec3(max_radius), id);
 
 vec4 dir = unproj * gl_Position;
 frag_dir = vec3(dir.xy / dir.z, 1.0);
@@ -131,16 +137,16 @@ float d = texelFetch(depth, ivec2(gl_FragCoord.xy), 0).r;
 if (d == 0.0) discard;
 float z = get_view_depth(d);
 vec3 vpos = frag_dir * z;
+vec3 mpos = (frag_untrans * vec4(vpos,1)).xyz;
 
-vec3 D = frag_position - vpos;
-float dist = length(D);
+float dist = length(mpos);
 if (dist < frag_min_radius) discard;
 if (dist > frag_max_radius) discard;
 
 vec3 N = get_surface(material).normal;
-vec3 L = D/dist;
+vec3 L = normalize(frag_position - vpos);
 float cs = dot(L,N);
-  
+
 // cosine of angle between surface and L
 float sn = sqrt(1.0-cs*cs);
 // some other arbitrary value needed for computing radius bounds
@@ -154,13 +160,16 @@ float b = c+c*c;
 float a = -c-b/(cs-c);
 float dash = cs <= 0.0 ? mix(dash_multiplier(cross(N,L), vpos, h*4.0), 1.0, a) : 1.0;
 
+// This doesn't fix line widths for arbitrary transformations, just uniform scaling
+float mag = length((frag_untrans * vec4(-L,0)).xyz);
+
 float e = 0.05;
 for (int j = 0; j < 4; j++) {
   // compute radius bounds
   float r = sqrt(frag_intensity/e);
   float r1, r2;
   radius_bounds(r, h, s, r1, r2);
-  float max_delta = abs(0.5*(r1-r2));
+  float max_delta = abs(0.5*(r1-r2)*mag);
   float delta = abs(dist - 0.5*(r1+r2));
   if (delta <= max_delta) {
     float aa = 1.0 - delta / max_delta;  // linear falloff to simulate antialiasing
@@ -194,14 +203,14 @@ code
 
 (: make-point-light-shell-shape-passes (-> point-light-shell-shape passes))
 (define (make-point-light-shell-shape-passes a)
-  (match-define (point-light-shell-shape _ fs e v r0 r1) a)
+  (match-define (point-light-shell-shape _ fs e t r0 r1) a)
   
   (cond
     [(flags-subset? emitting-flag fs)
      (define size (program-code-vao-size point-light-shell-program-code))
      (define data (make-bytes (* 4 size)))
      (define data-ptr (u8vector->cpointer data))
-     (let* ([i  (serialize-vec3 data 0 v)]
+     (let* ([i  (serialize-affine data 0 t)]
             [i  (serialize-float data i (flvector-ref e 3))]
             [i  (serialize-float data i r0)]
             [i  (serialize-float data i r1)]
@@ -224,16 +233,15 @@ code
 
 (: point-light-shell-shape-rect (-> point-light-shell-shape Nonempty-FlRect3))
 (define (point-light-shell-shape-rect a)
-  (define p (point-light-shell-shape-position a))
-  (define radius (point-light-shell-shape-max-radius a))
-  (define r (flvector radius radius radius))
-  (nonempty-flrect3 (flv3- p r) (flv3+ p r)))
+  (define t (affine-transform (point-light-shell-shape-affine a)))
+  (define r1 (point-light-shell-shape-max-radius a))
+  (transformed-sphere-flrect3 (flt3compose t (scale-flt3 (flvector r1 r1 r1)))))
 
 ;; ===================================================================================================
 ;; Transform
 
 (: point-light-shell-shape-easy-transform (-> point-light-shell-shape Affine point-light-shell-shape))
 (define (point-light-shell-shape-easy-transform a t)
-  (match-define (point-light-shell-shape _ fs e v r0 r1) a)
-  (define new-v (flt3apply/pos (affine-transform t) v))
-  (point-light-shell-shape (lazy-passes) fs e new-v r0 r1))
+  (match-define (point-light-shell-shape passes fs e t0 r0 r1) a)
+  (point-light-shell-shape (lazy-passes) fs e (affine-compose t t0) r0 r1))
+
