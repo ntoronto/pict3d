@@ -3,8 +3,7 @@
 (require typed/racket/private/gui-types
          typed/racket/class
          "../gl.rkt"
-         "pict3d-struct.rkt"
-         )
+         "pict3d-struct.rkt")
 
 (provide Pict3D-Canvas%)
 

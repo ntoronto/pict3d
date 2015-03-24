@@ -3,21 +3,7 @@
 (require typed/racket/gui
          pict3d
          math/flonum
-         math/base
-         pict3d/private/math/flv3)
-
-(: 3d-polar->cartesian (-> Flonum Flonum Flonum FlVector))
-(define (3d-polar->cartesian θ ρ r)
-  (let ([cos-ρ  (cos ρ)])
-    (flvector (* r (* (cos θ) cos-ρ))
-              (* r (* (sin θ) cos-ρ))
-              (* r (sin ρ)))))
-
-(: cartesian->3d-polar (-> FlVector (Values Flonum Flonum Flonum)))
-(define (cartesian->3d-polar v)
-  (define-values (x y z) (flv3-values v))
-  (define r (flsqrt (+ (sqr x) (sqr y) (sqr z))))
-  (values (atan y x) (asin (/ z r)) r))
+         math/base)
 
 (: retesselate (-> (-> Pos Pos)
                    (-> (List Pos Pos Pos)

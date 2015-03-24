@@ -1,0 +1,46 @@
+#lang typed/racket/base
+
+(require racket/list
+         "../engine.rkt"
+         "pict3d-struct.rkt"
+         "pict3d-combinators.rkt"
+         "parameters.rkt"
+         "typed-user-types.rkt")
+
+(provide draw-pict3ds)
+
+(: draw-pict3ds (->* [(Listof Pict3D)]
+                     [Integer
+                      Integer
+                      #:camera (U Affine (-> Pict3D Affine))
+                      #:z-near Real
+                      #:z-far Real
+                      #:fov Real
+                      #:background RGBA
+                      #:ambient Emitted
+                      #:bitmap? Any]
+                     Void))
+(define (draw-pict3ds picts
+                      [width (current-pict3d-width)]
+                      [height (current-pict3d-height)]
+                      #:camera [camera (current-pict3d-auto-camera)]
+                      #:z-near [z-near (current-pict3d-z-near)]
+                      #:z-far [z-far (current-pict3d-z-far)]
+                      #:fov [fov (current-pict3d-fov)]
+                      #:background [background (current-pict3d-background)]
+                      #:ambient [ambient (current-pict3d-ambient)]
+                      #:bitmap? [bitmap? #f])
+  (unless (empty? picts)
+    (let ([width  (assert (max 1 width) index?)]
+          [height  (assert (max 1 height) index?)])
+      
+      (define view
+        (camera->view
+         (cond [(affine? camera)  camera]
+               [else  (let ([t  (camera-transform (first picts))])
+                        (if t t (camera (first picts))))])))
+      
+      (define make-proj (if bitmap? bitmap-projection canvas-projection))
+      (define proj (make-proj width height #:z-near z-near #:z-far z-far #:fov fov))
+      
+      (draw-scenes (map pict3d-scene picts) width height view proj background ambient))))

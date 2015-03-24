@@ -1,13 +1,10 @@
 #lang typed/racket/base
 
 (require math/flonum
-         "../math/flv3.rkt"
-         "../math/flt3.rkt"
-         "../math/flrect3.rkt"
-         "../engine/scene.rkt"
-         (only-in "../engine/types.rkt" affine)
+         "../math.rkt"
+         "../engine.rkt"
          "pict3d-struct.rkt"
-         "user-types.rkt")
+         "typed-user-types.rkt")
 
 (provide (all-defined-out))
 
@@ -27,24 +24,25 @@
 
 (: default-pict3d-auto-camera (-> Pict3D Affine))
 (define (default-pict3d-auto-camera p)
-  (let* ([b  (scene-visible-rect (pict3d-scene p))])
+  (let ([b : (U #f FlRect3)  (maybe-bbox-rect (scene-visible-tight-bbox (pict3d-scene p)))])
     (define-values (v dv)
       (cond
-       [(empty-flrect3? b)
+       [(not b)
         (values +x+y+z-flv3 -x-y-z-flv3)]
        [else
         (define mn (flrect3-min b))
         (define mx (flrect3-max b))
-        (define dv (flv3- mn mx))
-        (define norm (flv3normalize dv))
-        (cond
-          [norm
-           (define-values (dx dy dz) (flv3-values dv))
-           (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
-           (values (flv3fma norm (- r) mx) dv)]
-          [else
-           (values +x+y+z-flv3 -x-y-z-flv3)])]))
-    (affine (point-at-flt3 v dv))))
+        (let* ([dv : FlV3  (flv3- mn mx)]
+               [norm : (U #f FlV3)  (flv3normalize dv)])
+          (cond
+            [norm
+             (call/flv3-values dv
+               (λ (dx dy dz)
+                 (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
+                 (values (flv3fma norm (- r) mx) dv)))]
+            [else
+             (values +x+y+z-flv3 -x-y-z-flv3)]))]))
+    (flaffine3->affine (point-at-flt3 v dv))))
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width

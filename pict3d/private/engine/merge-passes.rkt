@@ -6,7 +6,7 @@
          (except-in typed/opengl/ffi -> cast)
          "../gl.rkt"
          "../utils.rkt"
-         "draw-pass.rkt"
+         "types.rkt"
          "utils.rkt")
 
 (provide merge-passes)

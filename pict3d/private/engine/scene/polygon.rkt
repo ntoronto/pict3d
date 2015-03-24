@@ -9,16 +9,13 @@
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
-         "../../math/flv3.rkt"
-         "../../math/flt3.rkt"
-         "../../math/flrect3.rkt"
+         "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
-         "../types.rkt"
          "../utils.rkt"
          "../shader-code.rkt"
          "../serialize-vertices.rkt"
-         "../draw-pass.rkt"
+         "../types.rkt"
          "types.rkt"
          "flags.rkt")
 
@@ -38,7 +35,7 @@
          set-rectangle-shape-emitted
          set-rectangle-shape-material
          make-rectangle-shape-passes
-         ;rectangle-shape-rect  ; already an accessor
+         rectangle-shape-rect
          rectangle-shape-transform
          rectangle-shape-line-intersect
          
@@ -48,180 +45,98 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: well-formed-flvectors? (-> (U FlVector (Vectorof FlVector)) Index Index Boolean))
-(define (well-formed-flvectors? vs n i)
-  (if (flvector? vs)
-      (= i (flvector-length vs))
-      (and (= n (vector-length vs))
-           (for/and ([v  (in-vector vs)])
-             (= i (flvector-length v))))))
+(: make-triangle-shape (-> vtx vtx vtx Boolean triangle-shape))
+(define (make-triangle-shape v1 v2 v3 back?)
+  (define fs (flags-join visible-flag
+                         (if (and (color-opaque? (vtx-color v1))
+                                  (color-opaque? (vtx-color v2))
+                                  (color-opaque? (vtx-color v3)))
+                             opaque-flag
+                             transparent-flag)
+                         (if (or (color-emitting? (vtx-emitted v1))
+                                 (color-emitting? (vtx-emitted v2))
+                                 (color-emitting? (vtx-emitted v3)))
+                             emitting-flag
+                             nonemitting-flag)))
+  (triangle-shape (lazy-passes) fs v1 v2 v3 back?))
 
-(: make-triangle-shape (-> (Vectorof FlVector)
-                           (U FlVector (Vectorof FlVector))
-                           (U FlVector (Vectorof FlVector))
-                           (U FlVector (Vectorof FlVector))
-                           (U material (Vectorof material))
-                           Boolean
-                           triangle-shape))
-(define (make-triangle-shape vs ns cs es ms back?)
-  (cond [(not (well-formed-flvectors? vs 3 3))
-         (raise-argument-error 'make-triangle-shape
-                               "length-3 flvector, or length-3 vector of length-3 flvectors"
-                               0 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? ns 3 3))
-         (raise-argument-error 'make-triangle-shape
-                               "length-3 flvector, or length-3 vector of length-3 flvectors"
-                               1 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? cs 3 4))
-         (raise-argument-error 'make-triangle-shape
-                               "length-4 flvector, or length-3 vector of length-4 flvectors"
-                               2 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? es 3 4))
-         (raise-argument-error 'make-triangle-shape
-                               "length-3 flvector, or length-3 vector of length-4 flvectors"
-                               3 vs ns cs es ms back?)]
-        [(not (or (material? ms) (= 3 (vector-length ms))))
-         (raise-argument-error 'make-triangle-shape
-                               "material, or length-3 vector of materials"
-                               4 vs ns cs es ms back?)]
+(: make-quad-shapes (-> vtx vtx vtx vtx  Boolean (List triangle-shape triangle-shape)))
+(define (make-quad-shapes v1 v2 v3 v4 back?)
+  (define p1 (vtx-position v1))
+  (define p2 (vtx-position v2))
+  (define p3 (vtx-position v3))
+  (define p4 (vtx-position v4))
+  ;; Maximize the minimum regularity
+  (define r1 (min (flv3polygon-regularity (vector p1 p2 p3))
+                  (flv3polygon-regularity (vector p3 p4 p1))))
+  (define r2 (min (flv3polygon-regularity (vector p2 p3 p4))
+                  (flv3polygon-regularity (vector p4 p1 p2))))
+  (cond [(>= r1 r2)
+         (list (make-triangle-shape v1 v2 v3 back?)
+               (make-triangle-shape v3 v4 v1 back?))]
         [else
-         (define fs (flags-join visible-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
-         (triangle-shape (lazy-passes) fs vs ns cs es ms back?)]))
+         (list (make-triangle-shape v2 v3 v4 back?)
+               (make-triangle-shape v4 v1 v2 back?))]))
 
-(: take-triangle (All (A) (-> (Vectorof A) Index Index Index (Vectorof A))))
-(define (take-triangle vs i1 i2 i3)
-  (vector (vector-ref vs i1)
-          (vector-ref vs i2)
-          (vector-ref vs i3)))
-
-(: make-quad-shapes (-> (Vectorof FlVector)
-                        (U FlVector (Vectorof FlVector))
-                        (U FlVector (Vectorof FlVector))
-                        (U FlVector (Vectorof FlVector))
-                        (U material (Vectorof material))
-                        Boolean
-                        (List triangle-shape triangle-shape)))
-(define (make-quad-shapes vs ns cs es ms back?)
-  (cond [(not (well-formed-flvectors? vs 4 3))
-         (raise-argument-error 'make-quad-shape
-                               "length-3 flvector, or length-4 vector of length-3 flvectors"
-                               0 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? ns 4 3))
-         (raise-argument-error 'make-quad-shape
-                               "length-3 flvector, or length-4 vector of length-3 flvectors"
-                               1 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? cs 4 4))
-         (raise-argument-error 'make-quad-shape
-                               "length-4 flvector, or length-4 vector of length-4 flvectors"
-                               2 vs ns cs es ms back?)]
-        [(not (well-formed-flvectors? es 4 4))
-         (raise-argument-error 'make-quad-shape
-                               "length-3 flvector, or length-4 vector of length-4 flvectors"
-                               3 vs ns cs es ms back?)]
-        [(not (or (material? ms) (= 4 (vector-length ms))))
-         (raise-argument-error 'make-quad-shape
-                               "material, or length-4 vector of materials"
-                               4 vs ns cs es ms back?)]
-        [else
-         (define fs (flags-join visible-flag (colors-opacity-flag cs) (colors-emitting-flag es)))
-         (list (triangle-shape (lazy-passes)
-                               fs
-                               (take-triangle vs 0 1 2)
-                               (if (vector? ns) (take-triangle ns 0 1 2) ns)
-                               (if (vector? cs) (take-triangle cs 0 1 2) cs)
-                               (if (vector? es) (take-triangle es 0 1 2) es)
-                               (if (vector? ms) (take-triangle ms 0 1 2) ms)
-                               back?)
-               (triangle-shape (lazy-passes)
-                               fs
-                               (take-triangle vs 2 3 0)
-                               (if (vector? ns) (take-triangle ns 2 3 0) ns)
-                               (if (vector? cs) (take-triangle cs 2 3 0) cs)
-                               (if (vector? es) (take-triangle es 2 3 0) es)
-                               (if (vector? ms) (take-triangle ms 2 3 0) ms)
-                               back?))]))
-
-(: make-rectangle-shape (-> Nonempty-FlRect3 FlVector FlVector material Boolean rectangle-shape))
+(: make-rectangle-shape (-> FlRect3 FlV4 FlV4 FlV4 Boolean rectangle-shape))
 (define (make-rectangle-shape b c e m back?)
-  (cond [(not (= 4 (flvector-length c)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 b c e m back?)]
-        [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 b c e m back?)]
-        [else
-         (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
-         (rectangle-shape (lazy-passes) fs b c e m back?)]))
+  (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
+  (rectangle-shape (lazy-passes) fs b c e m back?))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-triangle-shape-color (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
-(define (set-triangle-shape-color a cs)
-  (cond [(not (well-formed-flvectors? cs 3 4))
-         (raise-argument-error 'set-triangle-shape-color
-                               "length-4 flvector, or length-3 vector of length-4 flvectors"
-                               1 a cs)]
-        [else
-         (match-define (triangle-shape _ fs vs ns old-cs es ms back?) a)
-         (cond [(equal? old-cs cs)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs opacity-flags)
-                                           (colors-opacity-flag cs)))
-                (triangle-shape (lazy-passes) new-fs vs ns cs es ms back?)])]))
+(: set-triangle-shape-color (-> triangle-shape FlV4 triangle-shape))
+(define (set-triangle-shape-color a c)
+  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
+  (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                             (color-opacity-flag c)))
+  (triangle-shape (lazy-passes)
+                  new-fs
+                  (vtx-set-color v1 c)
+                  (vtx-set-color v2 c)
+                  (vtx-set-color v3 c)
+                  back?))
 
-(: set-triangle-shape-emitted (-> triangle-shape (U FlVector (Vectorof FlVector)) triangle-shape))
-(define (set-triangle-shape-emitted a es)
-  (cond [(not (well-formed-flvectors? es 3 4))
-         (raise-argument-error 'set-triangle-shape-emitted
-                               "length-4 flvector, or length-3 vector of length-4 flvectors"
-                               1 a es)]
-        [else
-         (match-define (triangle-shape _ fs vs ns cs old-es ms back?) a)
-         (cond [(equal? old-es es)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                                           (colors-emitting-flag es)))
-                (triangle-shape (lazy-passes) new-fs vs ns cs es ms back?)])]))
+(: set-triangle-shape-emitted (-> triangle-shape FlV4 triangle-shape))
+(define (set-triangle-shape-emitted a e)
+  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
+  (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                             (color-emitting-flag e)))
+  (triangle-shape (lazy-passes)
+                  new-fs
+                  (vtx-set-emitted v1 e)
+                  (vtx-set-emitted v2 e)
+                  (vtx-set-emitted v3 e)
+                  back?))
 
-(: set-triangle-shape-material (-> triangle-shape (U material (Vectorof material)) triangle-shape))
-(define (set-triangle-shape-material a ms)
-  (cond [(not (or (material? ms) (= 3 (vector-length ms))))
-         (raise-argument-error 'set-triangle-shape-material
-                               "material, or length-3 vector of materials"
-                               1 a ms)]
-        [else
-         (match-define (triangle-shape _ fs vs ns cs es old-ms back?) a)
-         (cond [(equal? old-ms ms)  a]
-               [else  (triangle-shape (lazy-passes) fs vs ns cs es ms back?)])]))
+(: set-triangle-shape-material (-> triangle-shape FlV4 triangle-shape))
+(define (set-triangle-shape-material a m)
+  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
+  (triangle-shape (lazy-passes) fs
+                  (vtx-set-material v1 m)
+                  (vtx-set-material v2 m)
+                  (vtx-set-material v3 m)
+                  back?))
 
-(: set-rectangle-shape-color (-> rectangle-shape FlVector rectangle-shape))
+(: set-rectangle-shape-color (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-color a c)
-  (cond [(not (= (flvector-length c) 4))
-         (raise-argument-error 'set-rectangle-shape-color "length-4 flvector" 1 a c)]
-        [else
-         (match-define (rectangle-shape _ fs b old-c e m inside?) a)
-         (cond [(equal? old-c c)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs opacity-flags)
-                                           (color-opacity-flag c)))
-                (rectangle-shape (lazy-passes) new-fs b c e m inside?)])]))
+  (match-define (rectangle-shape _ fs b old-c e m inside?) a)
+  (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                             (color-opacity-flag c)))
+  (rectangle-shape (lazy-passes) new-fs b c e m inside?))
 
-(: set-rectangle-shape-emitted (-> rectangle-shape FlVector rectangle-shape))
+(: set-rectangle-shape-emitted (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-emitted a e)
-  (cond [(not (= (flvector-length e) 4))
-         (raise-argument-error 'set-rectangle-shape-emitted "length-4 flvector" 1 a e)]
-        [else
-         (match-define (rectangle-shape _ fs b c old-e m inside?) a)
-         (cond [(equal? old-e e)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                                           (color-emitting-flag e)))
-                (rectangle-shape (lazy-passes) new-fs b c e m inside?)])]))
+  (match-define (rectangle-shape _ fs b c old-e m inside?) a)
+  (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                             (color-emitting-flag e)))
+  (rectangle-shape (lazy-passes) new-fs b c e m inside?))
 
-(: set-rectangle-shape-material (-> rectangle-shape material rectangle-shape))
+(: set-rectangle-shape-material (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-material a m)
   (match-define (rectangle-shape _ fs b c e old-m inside?) a)
-  (cond [(equal? old-m m)  a]
-        [else  (rectangle-shape (lazy-passes) fs b c e m inside?)]))
+  (rectangle-shape (lazy-passes) fs b c e m inside?))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -391,30 +306,34 @@ code
 
 (: make-triangle-shape-passes (-> triangle-shape passes))
 (define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ fs vs ns cs es ms back?) a)
+  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
   (define-values (start stop step)
     (if back?
         (values 2 -1 -1)
         (values 0 3 1)))
   
+  (define verts (vector v1 v2 v3))
+  
   (define mat-struct-size (program-code-vao-size polygon-mat-program-code))
   (define mat-data (make-bytes (* 3 mat-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
-    (define v (vector-ref vs j))
-    (define n (if (vector? ns) (vector-ref ns j) ns))
-    (define m (if (vector? ms) (vector-ref ms j) ms))
+    (define vert (vector-ref verts j))
+    (define v (vtx-position vert))
+    (define n (vtx-normal vert))
+    (define m (vtx-material vert))
     (let* ([i  (serialize-normal/bytes mat-data i n back?)]
-           [i  (serialize-float/byte mat-data i (material-roughness m))]
+           [i  (serialize-float/byte mat-data i (unsafe-flv4-ref m 3))]
            [i  (serialize-vec3 mat-data i v)])
       i))
   
   (define opaq-struct-size (program-code-vao-size polygon-opaq-program-code))
   (define draw-data (make-bytes (* 3 opaq-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
-    (define v (vector-ref vs j))
-    (define c (if (vector? cs) (vector-ref cs j) cs))
-    (define e (if (vector? es) (vector-ref es j) es))
-    (define m (if (vector? ms) (vector-ref ms j) ms))
+    (define vert (vector-ref verts j))
+    (define v (vtx-position vert))
+    (define c (vtx-color vert))
+    (define e (vtx-emitted vert))
+    (define m (vtx-material vert))
     (let* ([i  (serialize-vec3 draw-data i v)]
            [i  (serialize-vec4/bytes draw-data i c)]
            [i  (serialize-emitted/bytes draw-data i e)]
@@ -452,31 +371,44 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: triangle-shape-rect (-> triangle-shape Nonempty-FlRect3))
-(define (triangle-shape-rect a)
-  (assert (flv3rect (triangle-shape-vertices a)) nonempty-flrect3?))
+(: triangle-shape-rect (-> triangle-shape FlAffine3 FlRect3))
+(define (triangle-shape-rect a t)
+  (flrect3 (flt3apply/pos t (vtx-position (triangle-shape-vtx1 a)))
+           (flt3apply/pos t (vtx-position (triangle-shape-vtx2 a)))
+           (flt3apply/pos t (vtx-position (triangle-shape-vtx3 a)))))
+
+(: rectangle-shape-rect (-> rectangle-shape FlAffine3 FlRect3))
+(define (rectangle-shape-rect a t)
+  (flrect3-transform (rectangle-shape-axial-rect a) t))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-easy-transform (-> triangle-shape Affine triangle-shape))
-(define (triangle-shape-easy-transform a affine-t)
-  (match-define (triangle-shape passes fs vs ns cs es ms back?) a)
-  (define t (affine-transform affine-t))
+(: triangle-shape-easy-transform (-> triangle-shape FlAffine3 triangle-shape))
+(define (triangle-shape-easy-transform a t)
+  (match-define (triangle-shape passes fs v1 v2 v3 back?) a)
   (define consistent? (flt3consistent? t))
-  (define transform-pos (λ ([v : FlVector]) (flt3apply/pos t v)))
-  (define transform-norm (λ ([n : FlVector])
-                           (if consistent?
-                               (flt3apply/nrm t n)
-                               (flv3neg (flt3apply/nrm t n)))))
+  
+  (: transform-vtx (-> vtx vtx))
+  (define (transform-vtx vert)
+    (define v (vtx-position vert))
+    (define n (vtx-normal vert))
+    (vtx-set-vecs
+     vert
+     (flt3apply/pos t v)
+     (let ([n  (flt3apply/norm t n)])
+       (if consistent?
+           (if n n +z-flv3)
+           (if n (flv3neg n) +z-flv3)))))
+  
   (triangle-shape (lazy-passes)
                   fs
-                  (vector-map transform-pos vs)
-                  (if (vector? ns) (vector-map transform-norm ns) (transform-norm ns))
-                  cs es ms
+                  (transform-vtx v1)
+                  (transform-vtx v2)
+                  (transform-vtx v3)
                   (if consistent? back? (not back?))))
 
-(: rectangle-shape-transform (-> rectangle-shape Affine (Listof triangle-shape)))
+(: rectangle-shape-transform (-> rectangle-shape FlAffine3 (Listof triangle-shape)))
 (define (rectangle-shape-transform a t)
   (map (λ ([a : triangle-shape])
          (triangle-shape-easy-transform a t))
@@ -488,55 +420,64 @@ code
 (: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
 (define (rectangle-shape->triangle-shapes a)
   (match-define (rectangle-shape _ fs b c e m inside?) a)
-  (match-define (vector v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
+  (define-values (v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
+  
+  (: do-make-quad-shapes (-> FlV3 FlV3 FlV3 FlV3 FlV3 (List triangle-shape triangle-shape)))
+  (define (do-make-quad-shapes v1 v2 v3 v4 n)
+    (make-quad-shapes (vtx v1 n c e m)
+                      (vtx v2 n c e m)
+                      (vtx v3 n c e m)
+                      (vtx v4 n c e m)
+                      inside?))
   (append*
-   (list (make-quad-shapes (vector v4 v3 v2 v1) -z-flv3 c e m inside?)
-         (make-quad-shapes (vector v5 v6 v7 v8) +z-flv3 c e m inside?)
-         (make-quad-shapes (vector v1 v2 v6 v5) -y-flv3 c e m inside?)
-         (make-quad-shapes (vector v3 v4 v8 v7) +y-flv3 c e m inside?)
-         (make-quad-shapes (vector v4 v1 v5 v8) -x-flv3 c e m inside?)
-         (make-quad-shapes (vector v2 v3 v7 v6) +x-flv3 c e m inside?))))
+   (list (do-make-quad-shapes v4 v3 v2 v1 -z-flv3)
+         (do-make-quad-shapes v5 v6 v7 v8 +z-flv3)
+         (do-make-quad-shapes v1 v2 v6 v5 -y-flv3)
+         (do-make-quad-shapes v3 v4 v8 v7 +y-flv3)
+         (do-make-quad-shapes v4 v1 v5 v8 -x-flv3)
+         (do-make-quad-shapes v2 v3 v7 v6 +x-flv3))))
 
 ;; ===================================================================================================
 ;; Ray intersection
 
 ;; The maximum and minimum barycentric coordinates should be 0.0 and 1.0, but because of floating-
 ;; point error and whatnot, we might miss if we use those bounds, so we'll fudge a bit
-;; We end up testing against slightly larger trinagles with somewhat cut off corners
+;; We end up testing against slightly larger triangles with somewhat cut off corners
 (define fudge (* 128 epsilon.0))
 (define coord-min (- fudge))
 (define coord-max (+ 1.0 fudge))
 
-(: triangle-intersect-time (-> FlVector FlVector FlVector FlVector FlVector (U #f Flonum)))
+(: triangle-intersect-time (-> FlV3 FlV3 FlV3 FlV3 FlV3 (U #f Flonum)))
 ;; Moller-Trumbore
 (define (triangle-intersect-time v0 v1 v2 o d)
-  (define e1 (flv3- v1 v0))
-  (define e2 (flv3- v2 v0))
-  (define p (flv3cross d e2))
-  (define det (flv3dot e1 p))
-  (cond
-    [(<= det +max-subnormal.0)  #f]
-    [else
-     ;; Compute first barycentric coordinate u and test
-     (define t (flv3- o v0))
-     (define u (/ (flv3dot t p) det))
-     (cond
-       [(or (< u coord-min) (> u coord-max))  #f]
-       [else
-        ;; Compute the other two barycentric coordinates v,w and test
-        (define q (flv3cross t e1))
-        (define v (/ (flv3dot d q) det))
-        (define w (- 1.0 u v))
-        (cond
-          [(or (< (min v w) coord-min) (> (max v w) coord-max))  #f]
-          [else
-           (/ (flv3dot e2 q) det)])])]))
+  (let* ([e1 : FlV3  (flv3- v1 v0)]
+         [e2 : FlV3  (flv3- v2 v0)]
+         [p : FlV3  (flv3cross d e2)])
+    (define det (flv3dot e1 p))
+    (cond
+      [(<= det +max-subnormal.0)  #f]
+      [else
+       ;; Compute first barycentric coordinate u and test
+       (let ([t : FlV3  (flv3- o v0)])
+         (define u (/ (flv3dot t p) det))
+         (cond
+           [(or (< u coord-min) (> u coord-max))  #f]
+           [else
+            ;; Compute the other two barycentric coordinates v,w and test
+            (let ([q : FlV3  (flv3cross t e1)])
+              (define v (/ (flv3dot d q) det))
+              (define w (- 1.0 u v))
+              (cond
+                [(or (< (min v w) coord-min) (> (max v w) coord-max))  #f]
+                [else
+                 (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-line-intersect (-> triangle-shape FlVector FlVector (U #f line-hit)))
+(: triangle-shape-line-intersect (-> triangle-shape FlV3 FlV3 (U #f line-hit)))
 ;; Moller-Trumbore
 (define (triangle-shape-line-intersect a o d)
-  (define vs (triangle-shape-vertices a))
-  (match-define (vector v0 v1 v2) vs)
+  (define v0 (vtx-position (triangle-shape-vtx1 a)))
+  (define v1 (vtx-position (triangle-shape-vtx2 a)))
+  (define v2 (vtx-position (triangle-shape-vtx3 a)))
   (let-values ([(v0 v1)  (if (triangle-shape-back? a) (values v1 v0) (values v0 v1))])
     (define t (triangle-intersect-time v0 v1 v2 o d))
     (cond
@@ -544,29 +485,18 @@ code
       [else
        (define back? (triangle-shape-back? a))
        (line-hit t
-                 (λ () (flv3fma d t o))
-                 (λ ()
-                   (define norm (flv3polygon-normal vs))
+                 (flv3fma d t o)
+                 (let ([norm  (flv3triangle-normal v0 v1 v2)])
                    (and norm (if back? (flv3neg norm) norm))))])))
 
-(: rectangle-shape-line-intersect (-> rectangle-shape FlVector FlVector (U #f line-hit)))
+(: rectangle-shape-line-intersect (-> rectangle-shape FlV3 FlV3 (U #f line-hit)))
 (define (rectangle-shape-line-intersect a v dv)
-  (define b (rectangle-shape-rect a))
+  (define b (rectangle-shape-axial-rect a))
   (define-values (tmin tmax) (flrect3-line-intersects b v dv))
   (define inside? (rectangle-shape-inside? a))
   (define t (if inside? tmax tmin))
   (cond [(not t)  #f]
         [else
-         (define (lazy-point)
-           (flrect3-closest-point b (flv3fma dv t v)))
-         
-         (: lazy-normal (-> FlVector))
-         (define (lazy-normal)
-           (define norm (assert (flrect3-point-normal b (line-hit-point h)) values))
-           (if inside? (flv3neg norm) norm))
-         
-         (: h line-hit)
-         (define h
-           (line-hit t lazy-point lazy-normal))
-         
-         h]))
+         (define p (flrect3-closest-point b (flv3fma dv t v)))
+         (line-hit t p (let ([norm  (assert (flrect3-point-normal b p) values)])
+                         (if inside? (flv3neg norm) norm)))]))

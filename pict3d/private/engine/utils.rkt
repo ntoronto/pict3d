@@ -7,14 +7,9 @@
          math/base
          (except-in typed/opengl/ffi cast ->)
          "../gl.rkt"
-         "../math/flv3.rkt"
          "../utils.rkt")
 
 (provide (all-defined-out))
-
-(: next-pow2 (-> Natural Natural))
-(define (next-pow2 size)
-  (arithmetic-shift 1 (integer-length (- size 1))))
 
 ;; ===================================================================================================
 ;; Utils for packing and unpacking vertex data
@@ -23,55 +18,12 @@
 (define (byte->flonum b)
   (/ (fl b) 255.0))
 
-(: flonum->byte (-> Flonum Byte))
+(: flonum->byte (-> Flonum Natural))
 (define (flonum->byte x)
   (if (< -inf.0 x +inf.0)
-      (assert (max 0 (min 255 (exact-floor (* x 256.0)))) byte?)
+      (min 255 (max 0 (exact-floor (* x 256.0))))
       0))
-
-(: pack-color (-> FlVector Bytes))
-(define (pack-color v)
-  (define n (flvector-length v))
-  (define bs (make-bytes n))
-  (for ([i  (in-range n)])
-    (unsafe-bytes-set! bs i (flonum->byte (unsafe-flvector-ref v i))))
-  bs)
-
-(: unpack-color (-> Bytes FlVector))
-(define (unpack-color bs)
-  (define n (bytes-length bs))
-  (define v (make-flvector n))
-  (for ([i  (in-range n)])
-    (unsafe-flvector-set! v i (byte->flonum (unsafe-bytes-ref bs i))))
-  v)
-
-(: pack-emitted (-> FlVector (Values Bytes Byte)))
-(define (pack-emitted e)
-  (define r (flvector-ref e 0))
-  (define g (flvector-ref e 1))
-  (define b (flvector-ref e 2))
-  (define i (flvector-ref e 3))
-  (define i.hi (exact-floor i))
-  (define i.lo (- i i.hi))
-  (values (bytes (flonum->byte r) (flonum->byte g) (flonum->byte b) (max 0 (min 255 i.hi)))
-          (flonum->byte i.lo)))
-
-(: normal->rgb-bytes (-> FlVector Bytes))
-(define (normal->rgb-bytes v)
-  (define-values (x y z) (flv3-values v))
-  (: flonum->byte (-> Flonum Byte))
-  (define (flonum->byte x)
-    (assert (max 0 (min 255 (+ 127 (exact-ceiling (* x 127.0))))) byte?))
-  (bytes (flonum->byte x)
-         (flonum->byte y)
-         (flonum->byte z)))
-
-(: decode-normal (-> FlVector FlVector))
-(define (decode-normal v)
-  (define zero #i127/255)
-  (let ([v  (flv3normalize (flv3- v (flvector zero zero zero)))])
-    (if v v zero-flv3)))
-
+#|
 ;; ===================================================================================================
 ;; Shader analogues
 
@@ -115,7 +67,7 @@
   (flvector (* c.z (flmix 1.0 (flclamp (- p.x 1.0) 0.0 1.0) c.y))
             (* c.z (flmix 1.0 (flclamp (- p.y 1.0) 0.0 1.0) c.y))
             (* c.z (flmix 1.0 (flclamp (- p.z 1.0) 0.0 1.0) c.y))))
-
+|#
 ;; ===================================================================================================
 ;; Repeated memcpy (could also be called memset* I guess...)
 
@@ -129,58 +81,6 @@
          (memcpy* dst-ptr dst-offset src-ptr src-size count/2)
          (memcpy dst-ptr (unsafe-fx+ dst-offset (unsafe-fx* count/2 src-size))
                  dst-ptr dst-offset (unsafe-fx* (unsafe-fx- count count/2) src-size) _byte)]))
-
-;; ===================================================================================================
-;; Vector and matrix stuff
-
-(: flvector->f32vector (-> FlVector F32Vector))
-(define (flvector->f32vector v)
-  (define n (flvector-length v))
-  (define f32s (make-f32vector n))
-  (for ([i  (in-range n)])
-    (f32vector-set! f32s i (unsafe-flvector-ref v i)))
-  f32s)
-
-(: rect-triangle-strip (All (A) (-> A A A A A A A A (Listof A))))
-(define (rect-triangle-strip v1 v2 v3 v4 v5 v6 v7 v8)
-  (list v3 v4 v7 v8 v5 v4 v1 v3 v2 v7 v6 v5 v2 v1))
-
-(define-type GL-Data (U Bytes
-                        F32Vector
-                        (Pair GL-Data GL-Data)
-                        Null))
-
-(: gl-data-size (-> GL-Data Index))
-(define (gl-data-size data)
-  (assert
-   (let loop : Nonnegative-Fixnum ([data : GL-Data  data])
-     (cond [(bytes? data)      (bytes-length data)]
-           [(f32vector? data)  (unsafe-fx* 4 (f32vector-length data))]
-           [(pair? data)       (unsafe-fx+ (loop (car data)) (loop (cdr data)))]
-           [else               0]))
-   index?))
-
-(: gl-data->bytes (->* [GL-Data] [Index] Bytes))
-(define (gl-data->bytes data [size (gl-data-size data)])
-  (define bs (make-bytes size))
-  (define ptr (u8vector->cpointer bs))
-  (define i
-    (let loop : Nonnegative-Fixnum ([data : GL-Data  data]
-                                    [i : Nonnegative-Fixnum  0])
-      (cond [(bytes? data)
-             (bytes-copy! bs i data)
-             (unsafe-fx+ i (bytes-length data))]
-            [(f32vector? data)
-             (define n (unsafe-fx* 4 (f32vector-length data)))
-             (memcpy ptr i (f32vector->cpointer data) n _byte)
-             (unsafe-fx+ i n)]
-            [(pair? data)
-             (let ([i  (loop (car data) i)])
-               (loop (cdr data) i))]
-            [else  i])))
-  (unless (= i size)
-    (error 'gl-data->bytes "count mismatch: should convert ~a bytes; converted ~a" size i))
-  bs)
 
 ;; ===================================================================================================
 ;; Single-value memoization
@@ -276,28 +176,6 @@
      (syntax/loc stx
        (define name
          (cache-singleton/context (λ (arg ...) body ...))))]))
-
-;; ===================================================================================================
-
-(: make-gl-cached-vector (All (A) (-> Symbol (-> Integer A) (-> A Index) (-> Integer A))))
-(define (make-gl-cached-vector name make-vec vec-length)
-  (: the-vec (U #f A))
-  (define the-vec #f)
-  
-  (: get-vec (-> Integer A))
-  (define (get-vec size)
-    (get-current-managed-gl-context name)
-    (cond [(index? size)
-           (define vec the-vec)
-           (cond [(and vec (<= size (vec-length vec)))  vec]
-                 [else
-                  (define vec (make-vec (next-pow2 size)))
-                  (set! the-vec vec)
-                  vec])]
-          [else
-           (raise-argument-error name "Index" size)]))
-  
-  get-vec)
 
 ;; ===================================================================================================
 ;; Fast grouping for state sorting

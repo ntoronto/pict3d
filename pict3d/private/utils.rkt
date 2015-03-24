@@ -26,6 +26,12 @@
                (-> A Output-Port (U #t #f 0 1) Void)))])
 
 ;; ===================================================================================================
+
+(: next-pow2 (-> Natural Natural))
+(define (next-pow2 size)
+  (arithmetic-shift 1 (integer-length (- size 1))))
+
+;; ===================================================================================================
 ;; Lists with minimum length
 
 (define-type (Listof+1 A) (Pair A (Listof A)))

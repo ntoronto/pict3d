@@ -3,7 +3,8 @@
 (require (for-syntax racket/base
                      racket/syntax)
          racket/fixnum
-         racket/flonum)
+         racket/flonum
+         "../../math.rkt")
 
 (provide (all-defined-out))
 
@@ -107,43 +108,39 @@
 (define emitting-flags
   (flags-join emitting-flag nonemitting-flag))
 
-(: color-opaque? (-> FlVector Boolean))
+(: color-opaque? (-> FlV4 Boolean))
 (define (color-opaque? cs)
-  (>= (flvector-ref cs 3) 1.0))
+  (>= (unsafe-flv4-ref cs 3) 1.0))
 
-(: colors-opaque? (-> (U FlVector (Vectorof FlVector)) Boolean))
+(: colors-opaque? (-> (Vectorof FlV4) Boolean))
 (define (colors-opaque? cs)
-  (if (vector? cs)
-      (for/and ([c  (in-vector cs)])
-        (color-opaque? c))
-      (color-opaque? cs)))
+  (for/and ([c  (in-vector cs)])
+    (color-opaque? c)))
 
-(: color-emitting? (-> FlVector Boolean))
+(: color-emitting? (-> FlV4 Boolean))
 (define (color-emitting? es)
-  (and (or (> (flvector-ref es 0) 0.0)
-           (> (flvector-ref es 1) 0.0)
-           (> (flvector-ref es 2) 0.0))
-       (> (flvector-ref es 3) 0.0)))
+  (and (or (> (unsafe-flv4-ref es 0) 0.0)
+           (> (unsafe-flv4-ref es 1) 0.0)
+           (> (unsafe-flv4-ref es 2) 0.0))
+       (> (unsafe-flv4-ref es 3) 0.0)))
 
-(: colors-emitting? (-> (U FlVector (Vectorof FlVector)) Boolean))
+(: colors-emitting? (-> (Vectorof FlV4) Boolean))
 (define (colors-emitting? es)
-  (if (vector? es)
-      (for/or ([e  (in-vector es)])
-        (color-emitting? e))
-      (color-emitting? es)))
+  (for/or ([e  (in-vector es)])
+    (color-emitting? e)))
 
-(: color-opacity-flag (-> FlVector Flags))
+(: color-opacity-flag (-> FlV4 Flags))
 (define (color-opacity-flag cs)
   (if (color-opaque? cs) opaque-flag transparent-flag))
 
-(: color-emitting-flag (-> FlVector Flags))
+(: color-emitting-flag (-> FlV4 Flags))
 (define (color-emitting-flag es)
   (if (color-emitting? es) emitting-flag nonemitting-flag))
 
-(: colors-opacity-flag (-> (U FlVector (Vectorof FlVector)) Flags))
+(: colors-opacity-flag (-> (Vectorof FlV4) Flags))
 (define (colors-opacity-flag cs)
   (if (colors-opaque? cs) opaque-flag transparent-flag))
 
-(: colors-emitting-flag (-> (U FlVector (Vectorof FlVector)) Flags))
+(: colors-emitting-flag (-> (Vectorof FlV4) Flags))
 (define (colors-emitting-flag es)
   (if (colors-emitting? es) emitting-flag nonemitting-flag))

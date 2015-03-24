@@ -1,53 +1,52 @@
 #lang typed/racket/base
 
-;; Homogeneous coordinate vectors
+;; Homogeneous coordinate vectors, colors
 
-(require racket/flonum
-         racket/unsafe/ops
-         "flv3.rkt")
+(require (for-syntax racket/base)
+         (only-in racket/unsafe/ops
+                  unsafe-flvector-ref)
+         racket/performance-hint
+         math/flonum
+         "../utils.rkt")
 
 (provide (all-defined-out))
 
-(: flv4? (-> FlVector Boolean))
-(define (flv4? v) (= 4 (flvector-length v)))
+;; ===================================================================================================
+;; FlV4 struct type
 
-;(: flv4-values (-> FlVector (Values Flonum Flonum Flonum Flonum)))
-(define-syntax-rule (flv4-values v-stx)
-  (let ([v : FlVector  v-stx])
-    (unless (= 4 (flvector-length v))
-      (raise-type-error 'flv4-values "length-4 FlVector" v))
-    (values (unsafe-flvector-ref v 0)
-            (unsafe-flvector-ref v 1)
-            (unsafe-flvector-ref v 2)
-            (unsafe-flvector-ref v 3))))
+(define print-flv4
+  (make-constructor-style-printer
+   (λ ([v : FlV4]) 'flv4)
+   (λ ([v : FlV4]) (call/flv4-values v list))))
 
-(: pos->flv4 (-> FlVector FlVector))
-(define (pos->flv4 v)
-  (define-values (x y z) (flv3-values v))
-  (flvector x y z 1.0))
+(struct FlV4 ([flvector : FlVector])
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-flv4)
 
-(: norm->flv4 (-> FlVector FlVector))
-(define (norm->flv4 v)
-  (define-values (x y z) (flv3-values v))
-  (flvector x y z 0.0))
+(define-syntax flv4? (make-rename-transformer #'FlV4?))
 
-(: flplane3->flv4 (-> FlPlane3 FlVector))
-(define (flplane3->flv4 p)
-  (define-values (x y z) (flv3-values (flplane3-normal p)))
-  (define d (flplane3-distance p))
-  (flvector x y z d))
+;(: call/flv4-values (All (A) (-> FlV4 (-> Flonum Flonum Flonum Flonum A) A)))
+(define-syntax-rule (call/flv4-values v f)
+  (let ([vs  (FlV4-flvector (ann v FlV4))])
+    (f (unsafe-flvector-ref vs 0)
+       (unsafe-flvector-ref vs 1)
+       (unsafe-flvector-ref vs 2)
+       (unsafe-flvector-ref vs 3))))
 
-(: flv4->pos (-> FlVector FlVector))
-(define (flv4->pos v)
-  (define-values (x y z w) (flv4-values v))
-  (flvector (/ x w) (/ y w) (/ z w)))
+(begin-encourage-inline
+  
+  (: flv4 (-> Flonum Flonum Flonum Flonum FlV4))
+  (define (flv4 x y z w)
+    (FlV4 (flvector x y z w)))
 
-(: flv4->norm (-> FlVector FlVector))
-(define (flv4->norm v)
-  (define-values (x y z _) (flv4-values v))
-  (flvector x y z))
+  (: unsafe-flv4-ref (-> FlV4 Index Flonum))
+  (define (unsafe-flv4-ref v i)
+    (unsafe-flvector-ref (FlV4-flvector v) i))
 
-(: flv4->flplane3 (-> FlVector (U #f FlPlane3)))
-(define (flv4->flplane3 v)
-  (define-values (x y z w) (flv4-values v))
-  (flplane3 (flvector x y z) w))
+  (: flv4-ref (-> FlV4 (U 0 1 2 3) Flonum))
+  (define flv4-ref unsafe-flv4-ref)
+  
+  )  ; begin-encourage-inline
+
+(define zero-flv4 (flv4 0.0 0.0 0.0 0.0))

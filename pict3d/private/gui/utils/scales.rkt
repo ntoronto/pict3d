@@ -1,16 +1,11 @@
 #lang racket/base
 
 (require racket/list
-         racket/vector
-         racket/flonum
-         racket/math
-         "../../math/flv3.rkt"
-         "../../math/flrect3.rkt"
-         )
+         racket/vector)
 
 (provide max-scale-index
          scale-index->scale
-         flrect3->scale-index)
+         scale->scale-index)
 
 (define scales
   (list->vector
@@ -30,11 +25,6 @@
 (define (scale-index->scale i)
   (vector-ref scales (max 0 (min max-scale-index i))))
 
-(define (flrect3->scale b)
-  ;; Don't try anything tricky until we figure out something sufficiently tricky
-  1)
-
-(define (flrect3->scale-index b)
-  (define r (flrect3->scale b))
-  (define scale (vector-argmin (λ (s) (abs (- r s))) scales))
-  (vector-member scale scales))
+(define (scale->scale-index r)
+  (define i (vector-member (vector-argmin (λ (s) (abs (- (log (abs r)) (log s)))) scales) scales))
+  (if i i (scale->scale-index 1)))

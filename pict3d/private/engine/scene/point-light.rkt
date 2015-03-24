@@ -8,11 +8,8 @@
          racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
-         "../../math/flv3.rkt"
-         "../../math/flt3.rkt"
-         "../../math/flrect3.rkt"
+         "../../math.rkt"
          "../../utils.rkt"
-         "../draw-pass.rkt"
          "../types.rkt"
          "../utils.rkt"
          "../shader-code.rkt"
@@ -30,30 +27,20 @@
 ;; ===================================================================================================
 ;; Constructor
 
-(: make-point-light-shape (-> FlVector Affine Flonum Flonum point-light-shape))
+(: make-point-light-shape (-> FlV4 FlAffine3 Flonum Flonum point-light-shape))
 (define (make-point-light-shape e t r0 r1)
-  (cond [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'make-point-light-shape "length-4 flvector"
-                               0 e t r0 r1)]
-        [else
-         (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
-         (point-light-shape (lazy-passes) fs e t r0 r1)]))
+  (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
+  (point-light-shape (lazy-passes) fs e t r0 r1))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-point-light-shape-emitted (-> point-light-shape FlVector point-light-shape))
+(: set-point-light-shape-emitted (-> point-light-shape FlV4 point-light-shape))
 (define (set-point-light-shape-emitted a e)
-  (cond [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'set-point-light-shape-emitted "length-4 flvector"
-                               1 a e)]
-        [else
-         (match-define (point-light-shape _ fs old-e v r0 r1) a)
-         (cond [(equal? old-e e)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                                           (color-emitting-flag e)))
-                (point-light-shape (lazy-passes) new-fs e v r0 r1)])]))
+  (match-define (point-light-shape _ fs old-e t r0 r1) a)
+  (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                             (color-emitting-flag e)))
+  (point-light-shape (lazy-passes) new-fs e t r0 r1))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -164,14 +151,16 @@ code
      (define size (program-code-vao-size point-light-program-code))
      (define data (make-bytes (* 4 size)))
      (define data-ptr (u8vector->cpointer data))
-     (let* ([i  (serialize-affine data 0 t)]
-            [i  (serialize-float data i (flvector-ref e 3))]
-            [i  (serialize-float data i r0)]
-            [i  (serialize-float data i r1)]
-            [i  (serialize-vec3/bytes data i e)])
-       (for ([k : Nonnegative-Fixnum  (in-range 1 4)])
-         (memcpy data-ptr (unsafe-fx* k size) data-ptr size _byte)
-         (bytes-set! data (unsafe-fx+ (unsafe-fx* k size) i) k)))
+     (call/flv4-values e
+       (λ (r g b int)
+         (let* ([i  (serialize-affine data 0 t)]
+                [i  (serialize-float data i int)]
+                [i  (serialize-float data i r0)]
+                [i  (serialize-float data i r1)]
+                [i  (serialize-vec3/bytes data i (flv3 r g b))])
+           (for ([k : Nonnegative-Fixnum  (in-range 1 4)])
+             (memcpy data-ptr (unsafe-fx* k size) data-ptr size _byte)
+             (bytes-set! data (unsafe-fx+ (unsafe-fx* k size) i) k)))))
      
      (passes
       (vector (shape-params point-light-program empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
@@ -184,16 +173,16 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: point-light-shape-rect (-> point-light-shape Nonempty-FlRect3))
-(define (point-light-shape-rect a)
-  (define t (affine-transform (point-light-shape-affine a)))
+(: point-light-shape-rect (-> point-light-shape FlAffine3 FlRect3))
+(define (point-light-shape-rect a t)
+  (define t0 (point-light-shape-affine a))
   (define r1 (point-light-shape-max-radius a))
-  (transformed-sphere-flrect3 (flt3compose t (scale-flt3 (flvector r1 r1 r1)))))
+  (transformed-sphere-flrect3 (flt3compose t (flt3compose t0 (scale-flt3 (flv3 r1 r1 r1))))))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: point-light-shape-easy-transform (-> point-light-shape Affine point-light-shape))
+(: point-light-shape-easy-transform (-> point-light-shape FlAffine3 point-light-shape))
 (define (point-light-shape-easy-transform a t)
   (match-define (point-light-shape passes fs e t0 r0 r1) a)
-  (point-light-shape (lazy-passes) fs e (affine-compose t t0) r0 r1))
+  (point-light-shape (lazy-passes) fs e (flt3compose t t0) r0 r1))

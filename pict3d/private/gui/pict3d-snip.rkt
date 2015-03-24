@@ -8,17 +8,11 @@
          racket/math
          math/flonum
          typed/opengl
-         "../math/flv3.rkt"
-         "../math/flt3.rkt"
-         "../math/flrect3.rkt"
-         "../engine/scene.rkt"
-         "../engine/utils.rkt"
-         (only-in "../engine/types.rkt" affine affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
-         "pict3d-transforms.rkt"
+         "pict3d-draw.rkt"
          "master-context.rkt"
          "parameters.rkt"
          "indicators.rkt"
@@ -106,40 +100,53 @@
                     width height z-near z-far fov background ambient
                     add-sunlight? add-indicators? auto-camera)
            (send gui get-render-params))
-         ;; Compute a projection matrix
-         (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
-         
-         ;; Get scaling factor for indicator objects like axes
-         (define scale (fl (send gui get-scale)))
-         (define scale-t (affine (scale-flt3 (flvector scale scale scale))))
-         
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy? check-version?)
+           ;; Get scaling factor for indicator objects like axes
+           (define scale (fl (send gui get-scale)))
+           
            ;; Draw the scene, a couple of lights, the origin basis, group bases
-           (define s (send gui get-scene))
+           (define scene (send gui get-scene))
            
-           (define sunlight-scenes
+           (define sunlight-pict3ds
              (if add-sunlight?
-                 (list standard-over-light-scene
-                       standard-under-light-scene)
+                 (list (pict3d standard-over-light-scene)
+                       (pict3d standard-under-light-scene))
                  empty))
            
-           (define light-scenes
+           (define light-pict3ds
              (if add-indicators?
-                 (hash-ref! light-indicator-hash s (λ () (scene-light-indicators s)))
+                 (hash-ref! light-indicator-hash scene
+                            (λ () (map pict3d (scene-light-indicators scene))))
                  empty))
            
-           (define axes-scenes
+           (define axes-pos+scenes
              (if add-indicators?
-                 (let ([h  (hash-ref! axes-indicator-hash s make-hash)])
-                   (hash-ref! h scale (λ () (cons (scene-origin-indicator scale)
-                                                  (scene-basis-indicators s scale)))))
+                 (let ([h  (hash-ref! axes-indicator-hash scene make-hash)])
+                   (hash-ref! h scale
+                              (λ () (cons (cons origin (scene-origin-indicator scale))
+                                          (scene-basis-indicators scene scale)))))
                  empty))
            
-           (draw-scenes (append (list s) sunlight-scenes light-scenes axes-scenes)
-                        width height view proj
-                        (col-flvector background)
-                        (col-flvector ambient))
+           (define-values (_dx _dy _dz v0) (affine->cols view))
+           (define axes-pict3ds
+             (for/fold ([picts empty]) ([pos+scene  (in-list axes-pos+scenes)])
+               (match-define (cons v s) pos+scene)
+               (if (< (pos-dist v v0) (* scale 0.015))
+                   picts
+                   (cons (pict3d s) picts))))
+           
+           (draw-pict3ds (append (list (pict3d scene)) sunlight-pict3ds light-pict3ds axes-pict3ds)
+                         width
+                         height
+                         #:camera view
+                         #:z-near z-near
+                         #:z-far z-far
+                         #:fov fov
+                         #:background background
+                         #:ambient ambient
+                         #:bitmap? #t)
+           
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
            (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
@@ -220,20 +227,29 @@
     (define/public (get-scene) (send pict get-scene))
     (define/public (set-argb-pixels bs) (send pict set-argb-pixels bs))
     
+    ;(: yaw-vel Flonum)
+    ;(: pitch-vel Flonum)
+    (define yaw-vel 0.0)
+    (define pitch-vel 0.0)
+    
     ;(: camera (Instance Camera%))
     (define camera (new camera%))
     
     (define (reset-camera)
-      (send camera set-view-matrix 
-            (pict3d-view-transform (pict3d (send pict get-scene))
-                                   (send pict get-auto-camera))))
+      (set! yaw-vel 0)
+      (set! pitch-vel 0)
+      (send camera set-velocity (dir 0 0 0))
+      (send camera set-basis
+            (let* ([p  (pict3d (send pict get-scene))]
+                   [t  (camera-transform p)])
+              (if t t ((send pict get-auto-camera) p)))))
     
     (reset-camera)
     
     ;(: mouse-mode Boolean)
     (define mouse-mode 'none)
     
-    (define start-scale-index (flrect3->scale-index (scene-visible-rect (send pict get-scene))))
+    (define start-scale-index (scale->scale-index 1))
     (define scale-index start-scale-index)
     (define/public (get-scale) (scale-index->scale scale-index))
     
@@ -300,12 +316,6 @@
     
     (define hud-items empty)
     
-    (define (snip->world-dir snip-x snip-y width height proj view)
-      (define clip-x (* (- (/ (- snip-x 2.0) width) 0.5) 2.0))
-      (define clip-y (* (- (/ (- snip-y 2.0) height) 0.5) 2.0))
-      (define view-v (flv3normalize (flt3apply/pos (flt3inverse proj) (flvector clip-x clip-y 0.0))))
-      (flv3normalize (flt3apply/dir (flt3inverse view) view-v)))
-    
     (define surface-changed? #f)
     (define last-snip-x -1)
     (define last-snip-y -1)
@@ -325,40 +335,44 @@
                    add-sunlight? add-indicators? auto-camera)
           (send pict get-init-params))
         
-        (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
-        (define v0 (flt3apply/pos (flt3inverse view) zero-flv3))
-        (define dv (snip->world-dir snip-x snip-y width height proj view))
-        (define h (scene-ray-intersect (send pict get-scene) v0 dv))
-        
-        (define new-hud-items
-          (cond
-            [(not h)  ;(set! last-trace-pos #f)
-                      empty]
-            [else
-             (define t (line-hit-distance h))
-             (define v (line-hit-point h))
-             (define dx1 (snip->world-dir (- snip-x 0.5) snip-y width height proj view))
-             (define dx2 (snip->world-dir (+ snip-x 0.5) snip-y width height proj view))
-             (define dy1 (snip->world-dir snip-x (- snip-y 0.5) width height proj view))
-             (define dy2 (snip->world-dir snip-x (+ snip-y 0.5) width height proj view))
-             (define d (max (flv3dist (flv3fma dx1 t v0) (flv3fma dx2 t v0))
-                            (flv3dist (flv3fma dy1 t v0) (flv3fma dy2 t v0))))
-             (define n (line-hit-normal h))
-             (append
-              (if (and (rational? d) (> d 0))
-                  (begin
-                    (set! last-trace-pos v)
-                    (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0))) width height)))
-                  (begin
-                    ;(set! last-trace-pos #f)
-                    empty))
-              (if n
-                  (list (list 'trace-norm n width height))
-                  empty))]))
-        
-        (when (not (equal? hud-items new-hud-items))
-          (set! hud-items new-hud-items)
-          (send pict refresh))))
+        (parameterize ([current-pict3d-width   width]
+                       [current-pict3d-height  height]
+                       [current-pict3d-z-near  z-near]
+                       [current-pict3d-z-far   z-far]
+                       [current-pict3d-fov     fov])
+          ;; "Window" coordinates
+          (define x (fl snip-x))
+          (define y (fl snip-y))
+          
+          (define-values (v0 dv) (camera-ray view x y))
+          (define-values (v n)
+            (if (and v0 dv)
+                (trace/normal (pict3d (send pict get-scene)) v0 dv)
+                (values #f #f)))
+          
+          (define new-hud-items
+            (cond
+              [(or (not v) (not n))  empty]
+              [else
+               (define t (pos-dist v v0))
+               ;; Compute an approximation of the change in position values per window coordinate at
+               ;; the intersection point
+               (define-values (_x1 dv1) (camera-ray view (- x 0.5) y))
+               (define-values (_x2 dv2) (camera-ray view (+ x 0.5) y))
+               (define-values (_y1 dv3) (camera-ray view x (- y 0.5)))
+               (define-values (_y2 dv4) (camera-ray view x (+ y 0.5)))
+               (define d (max (pos-dist (pos+ v0 dv1 t) (pos+ v0 dv2 t))
+                              (pos-dist (pos+ v0 dv3 t) (pos+ v0 dv4 t))))
+               (append
+                (cond [(and (rational? d) (> d 0))
+                       (set! last-trace-pos v)
+                       (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0)))))]
+                      [else  empty])
+                (if n (list (list 'trace-norm n)) empty))]))
+          
+          (when (not (equal? hud-items new-hud-items))
+            (set! hud-items new-hud-items)
+            (send pict refresh)))))
     
     (define/public (own-caret own-it?)
       (unless own-it?
@@ -368,7 +382,10 @@
       (send pict refresh))
     
     (define (draw-hud-vector dc v digits width height cstr line)
-      (define-values (x y z) (flv3-values v))
+      (define-values (x y z)
+        (if (pos? v)
+            (values (pos-x v) (pos-y v) (pos-z v))
+            (values (dir-dx v) (dir-dy v) (dir-dz v))))
       ;; Have to break it up like this and draw each coordinate in reverse order
       ;; because of an apparent limit on the lengths of paths
       (define strs
@@ -383,11 +400,17 @@
       (void))
     
     (define (draw-hud-items dc)
+      (define-values
+        (legacy? check-version?
+                 width height z-near z-far fov background ambient
+                 add-sunlight? add-indicators? auto-camera)
+        (send pict get-init-params))
+      
       (for ([item  (in-list hud-items)])
         (match item
-          [(list 'trace-pos v digits width height)
+          [(list 'trace-pos v digits)
            (draw-hud-vector dc v digits width height "pos" 2)]
-          [(list 'trace-norm n width height)
+          [(list 'trace-norm n)
            (draw-hud-vector dc n -2 width height "dir" 1)])))
     
     (define scale-x-min -1)
@@ -505,12 +528,9 @@
     (define center-mouse-x 0)
     (define center-mouse-y 0)
     
-    ;(: yaw-vel Flonum)
-    ;(: pitch-vel Flonum)
-    (define yaw-vel 0.0)
-    (define pitch-vel 0.0)
-    
     (define (copy-hud-data time)
+      (define str "")
+      #;
       (define str
         (string-join
          (for/list ([item  (in-list hud-items)])
@@ -527,8 +547,8 @@
         (send the-clipboard set-clipboard-string str time)))
     
     (define (copy-camera-data time)
-      (define t (send camera get-view-matrix))
-      (define-values (dx dy dz p) (affine->cols (affine (flt3inverse t))))
+      (define t (send camera get-basis))
+      (define-values (dx dy dz p) (affine->cols (affine-inverse t)))
       (define str (format "~v~n~v" p (dir-negate dz)))
       (send the-clipboard set-clipboard-string str time))
     
@@ -618,8 +638,8 @@
                 ;; This event is almost certainly not generated by centering the pointer
                 ;; Update the angle velocities using mouse position differences
                 (unless (and (= dx 0) (= dy 0))
-                  (set! yaw-vel (+ yaw-vel (fl (* 0.002 dx))))
-                  (set! pitch-vel (+ pitch-vel (fl (* 0.002 dy))))
+                  (set! yaw-vel (+ yaw-vel (fl (* 0.1 dx))))
+                  (set! pitch-vel (- pitch-vel (fl (* 0.1 dy))))
                   ;; Center the mouse pointer (generates another mouse event)
                   (define-values (x y) (snip-center-pointer pict))
                   (cond [(and x y)
@@ -633,32 +653,7 @@
                         [else    (set! mouse-mode 'none)
                                  (stop-frame-timer)])))]
              [(eq? mouse-mode 'dragging)
-              (mouse-moved snip-x snip-y)
-              
-              #;; Rotate around a point
-              (unless (and (= dx 0) (= dy 0))
-                (define view-t (send camera get-view-matrix))
-                (define rot-t (send camera get-rotation-matrix))
-                (define pos-t (translate-flt3 drag-pos))
-                (define dpitch
-                  (let* ([dpitch  (- (fl (degrees->radians dy)))]
-                         [p  (+ dpitch (send camera get-pitch))]
-                         [p  (min (* 0.49 pi) (max (* -0.49 pi) p))])
-                    (- (send camera get-pitch) p)))
-                (define dyaw (fl (degrees->radians dx)))
-                (define drot-t
-                  (let* ([t  (flt3inverse pos-t)]
-                         [t  (flt3compose rot-t t)]
-                         [t  (flt3compose (rotate-x-flt3 dpitch) t)]
-                         [t  (flt3compose (flt3inverse rot-t) t)]
-                         [t  (flt3compose (rotate-z-flt3 dyaw) t)]
-                         [t  (flt3compose pos-t t)])
-                    t))
-                (define new-view-t
-                  (flt3compose view-t drot-t))
-                (send camera set-view-matrix new-view-t)
-                (start-frame-timer))
-              ])])))
+              (mouse-moved snip-x snip-y)])])))
     
     (define/public (adjust-cursor dc snip-x snip-y e)
       (cond
@@ -705,7 +700,7 @@
         (when (not frame-timer)
           (set! last-frame-time (- (fl (current-inexact-milliseconds))
                                    (fl frame-delay)))
-          (send camera set-velocity zero-flv3)
+          (send camera set-velocity (dir 0 0 0))
           (frame-timer-tick)
           (start-frame-timer))))
     
@@ -720,29 +715,29 @@
       (define dt (/ frame-delay 1000.0))
       
       (let* ([move-accel  (* (fl (get-scale)) move-accel)]
-             [acc  zero-flv3]
+             [acc  (dir 0 0 0)]
              [acc  (if (keys-pressed? '(#\a #\A left))
-                       (flv3+ acc (flv3* -x-flv3 move-accel))
+                       (dir+ acc (dir-scale -x move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\d #\D right))
-                       (flv3+ acc (flv3* +x-flv3 move-accel))
-                       acc)]
-             [acc  (if (keys-pressed? '(#\f #\F next))
-                       (flv3+ acc (flv3* -y-flv3 move-accel))
+                       (dir+ acc (dir-scale +x move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\r #\R prior))
-                       (flv3+ acc (flv3* +y-flv3 move-accel))
+                       (dir+ acc (dir-scale -y move-accel))
                        acc)]
-             [acc  (if (keys-pressed? '(#\w #\W up))
-                       (flv3+ acc (flv3* -z-flv3 move-accel))
+             [acc  (if (keys-pressed? '(#\f #\F next))
+                       (dir+ acc (dir-scale +y move-accel))
                        acc)]
              [acc  (if (keys-pressed? '(#\s #\S down))
-                       (flv3+ acc (flv3* +z-flv3 move-accel))
+                       (dir+ acc (dir-scale -z move-accel))
                        acc)]
-             [_    (unless (equal? acc zero-flv3)
+             [acc  (if (keys-pressed? '(#\w #\W up))
+                       (dir+ acc (dir-scale +z move-accel))
+                       acc)]
+             [_    (unless (zero? (dir-dist acc))
                      (start-frame-timer))]
              [acc  (send camera rotate-direction acc)]
-             [acc  (flv3+ acc (flv3* (send camera get-velocity) friction-accel))])
+             [acc  (dir+ acc (dir-scale (send camera get-velocity) friction-accel))])
         (send camera accelerate acc dt))
       
       (cond
@@ -756,8 +751,8 @@
            (define ny (/ dy d))
            (let ([dx  (- dx (* nx 12.0))]
                  [dy  (- dy (* ny 12.0))])
-             (set! yaw-vel (+ yaw-vel (* 0.0002 dx)))
-             (set! pitch-vel (+ pitch-vel (* 0.0002 dy)))))
+             (set! yaw-vel (+ yaw-vel (* 0.01 dx)))
+             (set! pitch-vel (- pitch-vel (* 0.01 dy)))))
          (set! surface-changed? #t)
          (start-hud-timer)
          (start-frame-timer)]
@@ -781,7 +776,7 @@
     
     ;(: maybe-redraw (-> Void))
     (define (maybe-redraw)
-      (define view-matrix (send camera get-view-matrix))
+      (define view-matrix (send camera get-basis))
       (unless (equal? view-matrix last-view-matrix)
         (set! last-view-matrix view-matrix)
         (async-channel-put render-queue view-matrix)))

@@ -4,32 +4,18 @@
          racket/class
          racket/math
          math/flonum
-         "../../math/flv3.rkt"
-         "../../math/flt3.rkt")
+         "../pict3d-combinators.rkt"
+         "../user-types.rkt")
 
 (provide (all-defined-out))
 
-#;
-(define-type Camera%
-  (Class (init-field [position  FlVector]
-                     [velocity  FlVector]
-                     [yaw    Flonum]
-                     [pitch  Flonum])
-         [get-position  (-> FlVector)]
-         [set-position  (-> FlVector Void)]
-         [get-velocity  (-> FlVector)]
-         [set-velocity  (-> FlVector Void)]
-         [get-view-matrix  (-> FlAffine3)]
-         [change-angles  (-> Flonum Flonum Void)]
-         [accelerate  (-> FlVector Flonum Void)]
-         [rotate-direction  (-> FlVector FlVector)]
-         [unrotate-direction  (-> FlVector FlVector)]))
-
-#;(: camera% Camera%)
 (define camera%
   (class object%
     (init)
-    (init-field [position zero-flv3] [velocity zero-flv3] [yaw 0.0] [pitch 0.0])
+    (init-field [position origin]
+                [velocity (dir 0 0 0)]
+                [yaw 0.0]
+                [pitch 0.0])
     
     (super-new)
     
@@ -42,48 +28,44 @@
     (define/public (get-pitch) pitch)
     (define/public (set-pitch v) (set! pitch v))
     
-    #;(: get-translation-matrix (-> FlAffine3))
-    (define/public (get-translation-matrix)
-      (translate-flt3 (flv3neg position)))
+    (define/public (get-basis)
+      (affine-compose
+       (move (pos- position origin))
+       (rotate-z yaw)
+       (rotate-y pitch)
+       (rotate-z -90)
+       (rotate-x -90)))
     
-    #;(: get-rotation-matrix (-> FlLinear3))
-    (define/public (get-rotation-matrix)
-      (flt3compose
-       (flt3compose (rotate-x-flt3 (- pitch))
-                    (rotate-y-flt3 (- yaw)))
-       (rotate-x-flt3 (/ pi -2.0))))
-    
-    (define/public (get-view-matrix)
-      (flt3compose (get-rotation-matrix) (get-translation-matrix)))
-    
-    (define/public (set-view-matrix t)
-      (match-define (list m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-        (flvector->list (fltransform3-inverse t)))
-      (set! position (flvector m03 m13 m23))
-      (set! yaw (+ (atan m12 m02) (/ pi 2)))
-      (set! pitch (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22))))))))
+    (define/public (set-basis t)
+      (define-values (_dx _dy dz v) (affine->cols t))
+      (match-define (dir m02 m12 m22) dz)
+      (match-define (pos m03 m13 m23) v)
+      (set! position v)
+      (set! yaw (radians->degrees (atan m12 m02)))
+      (set! pitch (radians->degrees (- (asin (/ m22 (flsqrt (+ (sqr m02) (sqr m12) (sqr m22)))))))))
     
     (define/public (accelerate acc dt)
-      (set! position (flv3+ (flv3+ position (flv3* velocity dt))
-                            (flv3* acc (* 0.5 dt dt))))
-      (set! velocity (flv3+ velocity (flv3* acc dt)))
-      (define speed (flv3mag velocity))
+      (set! position (pos+ position (dir+ (dir-scale velocity dt)
+                                          (dir-scale acc (* 0.5 dt dt)))))
+      (set! velocity (dir+ velocity (dir-scale acc dt)))
+      (define speed (dir-dist velocity))
       (when (< speed (flexpt 2.0 -20.0))
-        (set! velocity zero-flv3)))
+        (set! velocity (dir 0 0 0))))
     
-    (define/public (rotate-direction v)
-      (flt3apply/pos (flt3inverse (get-rotation-matrix)) v))
+    (define/public (rotate-direction dv)
+      (transform-dir dv (get-basis)))
     
-    (define/public (unrotate-direction v)
-      (flt3apply/pos (get-rotation-matrix) v))
+    (define/public (unrotate-direction dv)
+      (transform-dir dv (affine-inverse (get-basis))))
     
     (define/public (change-angles dy dp)
       (let* ([y  (- yaw dy)]
              [p  (- pitch dp)]
-             ;; Keep yaw between -pi and pi by floating-point modulo
-             [y  (- y (* (* 2.0 pi) (round (/ y (* 2.0 pi)))))]
-             ;; Keep pitch between -pi/2 and pi/2 by clamping (gimball lock)
-             [p  (min (* 0.5 pi) (max (* -0.5 pi) p))])
+             ;; Keep yaw between -180 and 180 by floating-point modulo
+             [y  (- y (* 360 (round (/ y 360))))]
+             ;; Keep pitch between -90 and 90 by clamping (gimball lock)
+             [p  (min 90 (max -90 p))]
+             )
       (set! yaw y)
       (set! pitch p)))
     ))

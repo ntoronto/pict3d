@@ -3,13 +3,10 @@
 (require racket/match
          typed/opengl
          math/flonum
-         "../../math/flv3.rkt"
-         "../../math/flt3.rkt"
-         "../../math/flrect3.rkt"
+         "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
          "../types.rkt"
-         "../draw-pass.rkt"
          "types.rkt"
          "flags.rkt")
 
@@ -26,48 +23,32 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-sphere-shape (-> Affine FlVector FlVector material Boolean sphere-shape))
+(: make-sphere-shape (-> FlAffine3 FlV4 FlV4 FlV4 Boolean sphere-shape))
 (define (make-sphere-shape t c e m inside?)
-  (cond [(not (= 4 (flvector-length c)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 1 t c e m inside?)]
-        [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'make-rectangle-shape "length-4 flvector" 2 t c e m inside?)]
-        [else
-         (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
-         (sphere-shape (lazy-passes) fs t c e m inside?)]))
+  (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
+  (sphere-shape (lazy-passes) fs t c e m inside?))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-sphere-shape-color (-> sphere-shape FlVector sphere-shape))
+(: set-sphere-shape-color (-> sphere-shape FlV4 sphere-shape))
 (define (set-sphere-shape-color a c)
-  (cond [(not (= (flvector-length c) 4))
-         (raise-argument-error 'set-sphere-shape-color "length-4 flvector" 1 a c)]
-        [else
-         (match-define (sphere-shape _ fs t old-c e m inside?) a)
-         (cond [(equal? old-c c)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs opacity-flags)
-                                           (color-opacity-flag c)))
-                (sphere-shape (lazy-passes) new-fs t c e m inside?)])]))
+  (match-define (sphere-shape _ fs t old-c e m inside?) a)
+  (define new-fs (flags-join (flags-subtract fs opacity-flags)
+                             (color-opacity-flag c)))
+  (sphere-shape (lazy-passes) new-fs t c e m inside?))
 
-(: set-sphere-shape-emitted (-> sphere-shape FlVector sphere-shape))
+(: set-sphere-shape-emitted (-> sphere-shape FlV4 sphere-shape))
 (define (set-sphere-shape-emitted a e)
-  (cond [(not (= (flvector-length e) 4))
-         (raise-argument-error 'set-sphere-shape-emitted "length-4 flvector" 1 a e)]
-        [else
-         (match-define (sphere-shape _ fs t c old-e m inside?) a)
-         (cond [(equal? old-e e)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                                           (color-emitting-flag e)))
-                (sphere-shape (lazy-passes) new-fs t c e m inside?)])]))
+  (match-define (sphere-shape _ fs t c old-e m inside?) a)
+  (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                             (color-emitting-flag e)))
+  (sphere-shape (lazy-passes) new-fs t c e m inside?))
 
-(: set-sphere-shape-material (-> sphere-shape material sphere-shape))
+(: set-sphere-shape-material (-> sphere-shape FlV4 sphere-shape))
 (define (set-sphere-shape-material a m)
   (match-define (sphere-shape _ fs t c e old-m inside?) a)
-  (cond [(equal? old-m m)  a]
-        [else  (sphere-shape (lazy-passes) fs t c e m inside?)]))
+  (sphere-shape (lazy-passes) fs t c e m inside?))
 
 ;; ===================================================================================================
 ;; Drawing passes
@@ -84,17 +65,17 @@
 ;; ===================================================================================================
 ;; Bounding box
 
-(: sphere-shape-rect (-> sphere-shape Nonempty-FlRect3))
-(define (sphere-shape-rect a)
-  (transformed-sphere-flrect3 (affine-transform (sphere-shape-affine a))))
+(: sphere-shape-rect (-> sphere-shape FlAffine3 FlRect3))
+(define (sphere-shape-rect a t)
+  (transformed-sphere-flrect3 (flt3compose t (sphere-shape-affine a))))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: sphere-shape-easy-transform (-> sphere-shape Affine sphere-shape))
+(: sphere-shape-easy-transform (-> sphere-shape FlAffine3 sphere-shape))
 (define (sphere-shape-easy-transform a t)
   (match-define (sphere-shape passes fs t0 c e m inside?) a)
-  (sphere-shape (lazy-passes) fs (affine-compose2 t t0) c e m inside?))
+  (sphere-shape (lazy-passes) fs (flt3compose t t0) c e m inside?))
 
 ;; ===================================================================================================
 ;; Ray intersection
@@ -104,7 +85,7 @@
 ;; it, and also makes edge-grazing intersections more likely - don't know whether that's a good thing
 (define discr-min (* -128.0 epsilon.0))
 
-(: unit-sphere-line-intersects (-> FlVector FlVector (Values (U #f Flonum) (U #f Flonum))))
+(: unit-sphere-line-intersects (-> FlV3 FlV3 (Values (U #f Flonum) (U #f Flonum))))
 (define (unit-sphere-line-intersects p d)
   (define m^2 (flv3mag^2 d))
   (define b (/ (- (flv3dot p d)) m^2))
@@ -115,26 +96,16 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> sphere-shape FlVector FlVector (U #f line-hit)))
+(: sphere-shape-line-intersect (-> sphere-shape FlV3 FlV3 (U #f line-hit)))
 (define (sphere-shape-line-intersect a v dv)
-  (define s (flt3inverse (affine-transform (sphere-shape-affine a))))
-  (define sv (flt3apply/pos s v))
-  (define sdv (flt3apply/dir s dv))
-  (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
-  (define inside? (sphere-shape-inside? a))
-  (define t (if inside? tmax tmin))
-  (cond [(not t)  #f]
-        [else
-         (define (lazy-point)
-           (flv3fma dv t v))
-         
-         (: lazy-normal (-> (U #f FlVector)))
-         (define (lazy-normal)
-           (define norm (flv3normalize (flv3fma sdv t sv)))
-           (and norm (flt3apply/nrm (flt3inverse s) (if inside? (flv3neg norm) norm))))
-         
-         (: h line-hit)
-         (define h
-           (line-hit t lazy-point lazy-normal))
-         
-         h]))
+  (let* ([s : FlAffine3  (flt3inverse (sphere-shape-affine a))]
+         [sv : FlV3  (flt3apply/pos s v)]
+         [sdv : FlV3  (flt3apply/dir s dv)])
+    (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
+    (define inside? (sphere-shape-inside? a))
+    (define t (if inside? tmax tmin))
+    (and t (line-hit t
+                     (flv3fma dv t v)
+                     (let ([norm  (flv3normalize (flv3fma sdv t sv))])
+                       (and norm (flt3apply/norm (flt3inverse s)
+                                                 (if inside? (flv3neg norm) norm))))))))

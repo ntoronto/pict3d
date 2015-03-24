@@ -7,18 +7,12 @@
          racket/class
          racket/async-channel
          racket/math
-         math/flonum
          typed/opengl
-         "../math/flt3.rkt"
-         "../engine/scene.rkt"
-         (only-in "../engine/types.rkt" affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "pict3d-struct.rkt"
-         "pict3d-combinators.rkt"
-         "pict3d-transforms.rkt"
-         "user-types.rkt"
+         "pict3d-draw.rkt"
          )
 
 (provide pict3d-canvas%)
@@ -48,18 +42,19 @@
                                      background ambient auto-camera
                                      ack-channel)
          cmd)
-       ;; Compute view and projection matrices
-       (define view (pict3d-view-transform pict auto-camera))
-       (define proj (pict3d-canvas-proj-transform width height z-near z-far fov))
-       ;; Lock everything up for drawing
-       (call-with-gl-context
-        (λ ()
-          ;; Draw the scene and swap buffers
-          (draw-scene (pict3d-scene pict) width height view proj
-                      (col-flvector background)
-                      (col-flvector ambient))
-          (gl-swap-buffers))
-        (send canvas get-managed-gl-context))
+       
+       (with-gl-context (send canvas get-managed-gl-context)
+         (draw-pict3ds (list pict)
+                       width
+                       height
+                       #:camera auto-camera
+                       #:z-near z-near
+                       #:z-far z-far
+                       #:fov fov
+                       #:background background
+                       #:ambient ambient
+                       #:bitmap? #f)
+         (gl-swap-buffers))
        
        ;; Send an ACK if the other side is waiting for one
        (when ack-channel

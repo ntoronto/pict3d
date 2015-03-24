@@ -11,6 +11,10 @@
               pict3d-scene
               current-pict3d-print-converter
               current-pict3d-custom-write
+              canvas-projection
+              bitmap-projection
+              camera->view
+              camera-ray
               ))
 
 (check-docs 'pict3d/universe

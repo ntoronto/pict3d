@@ -2,7 +2,7 @@
 
 (require typed/racket/class
          mzlib/pconvert-prop
-         "../engine/scene.rkt")
+         "../engine.rkt")
 
 (provide
  ;; Pict3D printing

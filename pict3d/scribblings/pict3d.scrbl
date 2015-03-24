@@ -319,8 +319,12 @@ All attributes are interpolated across the face of the triangle.
 Returns a @racket[Pict3D] containing a quadrilateral with the given corners.
 The rule for its visibility, and the interpretation of positions and vertices, are the same as
 for @racket[triangle].
+
 A quad's corners are not required to lie in a plane, so its default normal is a best-fit direction
 vector computed using @hyperlink["http://dl.acm.org/citation.cfm?id=130783"]{Newell's method}.
+
+The quad is split into two triangles in a way that makes both triangles as close to
+@hyperlink["http://en.wikipedia.org/wiki/Regular_polygon"]{regular} as possible.
 }
 
 @defproc[(light [position Pos]
@@ -1617,7 +1621,7 @@ On Windows, this parameter is currently ignored.
 @deftypedparam[current-pict3d-check-version? check-version? Boolean Boolean (#:value #t)]{
 Determines whether Pict3D checks the OpenGL version.
 
-When @racket[current-pict3d-check-version?] is @racket[#t], it raises an error when the OpenGL
+When @racket[current-pict3d-check-version?] is @racket[#t], Pict3D raises an error when the OpenGL
 version is less than 3.0.
 Otherwise, it doesn't check, and counts on hardware and drivers implementing equivalent extensions.
 

@@ -6,13 +6,13 @@
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
+         "../../../math.rkt"
          "../../../gl.rkt"
          "../../../utils.rkt"
-         "../../types.rkt"
          "../../utils.rkt"
          "../../shader-code.rkt"
          "../../serialize-vertices.rkt"
-         "../../draw-pass.rkt"
+         "../../types.rkt"
          "../types.rkt"
          "../flags.rkt")
 
@@ -374,7 +374,7 @@ code
   (define mat-size (program-code-vao-size (sphere-mat-program-code)))
   (define mat-data (make-bytes mat-size))
   (let* ([i  (serialize-affine mat-data 0 t)]
-         [i  (serialize-float/byte mat-data i (material-roughness m))]
+         [i  (serialize-float/byte mat-data i (unsafe-flv4-ref m 3))]
          [i  (serialize-byte mat-data i (if inside? 1 0))])
     (void))
   

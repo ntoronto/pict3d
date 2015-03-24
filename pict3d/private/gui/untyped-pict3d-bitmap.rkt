@@ -4,21 +4,13 @@
          racket/class
          racket/list
          racket/contract
-         math/base
-         math/flonum
          typed/opengl
-         "../math/flt3.rkt"
-         "../engine/scene.rkt"
-         "../engine/utils.rkt"
-         (only-in "../engine/types.rkt" affine-transform)
          "../gl.rkt"
          "../utils.rkt"
          "parameters.rkt"
          "master-context.rkt"
          "pict3d-struct.rkt"
-         "pict3d-combinators.rkt"
-         "pict3d-transforms.rkt"
-         "user-types.rkt"
+         "pict3d-draw.rkt"
          )
 
 (provide (contract-out
@@ -38,26 +30,16 @@
   (define-values (bms cpu real gc)
     (time-apply
      (λ ()
-       (define view (pict3d-view-transform pict (current-pict3d-auto-camera)))
-       ;; Compute a projection matrix
-       (define z-near (current-pict3d-z-near))
-       (define z-far (current-pict3d-z-far))
-       (define fov (current-pict3d-fov))
-       (define proj (pict3d-bitmap-proj-transform width height z-near z-far fov))
-       (define bm (make-bitmap width height))
        ;; Lock everything up for drawing
        (with-gl-context (get-master-gl-context (current-pict3d-legacy?)
                                                (current-pict3d-check-version?))
-         ;; Draw the scene
-         (draw-scene (pict3d-scene pict) width height
-                     view proj
-                     (col-flvector (current-pict3d-background))
-                     (col-flvector (current-pict3d-ambient)))
+         (draw-pict3ds (list pict) width height #:bitmap? #t)
          ;; Get the resulting pixels and set them into the bitmap
          (define bs (get-the-bytes (* 4 width height)))
          (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
-         (send bm set-argb-pixels 0 0 width height bs #f #t))
-       bm)
+         (define bm (make-bitmap width height))
+         (send bm set-argb-pixels 0 0 width height bs #f #t)
+         bm))
      empty))
   
   (log-pict3d-debug "<bitmap> heap size: ~a cpu time: ~a real time: ~a gc time: ~a"

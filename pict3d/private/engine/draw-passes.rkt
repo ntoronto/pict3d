@@ -1,15 +1,13 @@
 #lang typed/racket/base
 
 (require racket/match
-         racket/list
-         racket/bool
          math/flonum
-         math/base
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
-         "../math/flt3.rkt"
+         "../math.rkt"
          "../gl.rkt"
          "../utils.rkt"
+         "types.rkt"
          "utils.rkt"
          "shader-code.rkt"
          "draw-pass.rkt")
@@ -446,11 +444,11 @@ code
 ;; ===================================================================================================
 ;; Draw a frame
 
-(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural Natural
-                        FlAffine3- FlTransform3
-                        FlVector FlVector
-                        Void))
-(define (draw-draw-passes passes num width height view* proj* background ambient)  
+(: draw-draw-passes* (-> (Vectorof draw-passes) Natural Natural Natural
+                         FlProjective3 FlProjective3
+                         FlV4 FlV4
+                         Void))
+(define (draw-draw-passes* passes num width height view proj background ambient)
   ;; -------------------------------------------------------------------------------------------------
   ;; Framebuffers
   
@@ -494,27 +492,25 @@ code
   ;; -------------------------------------------------------------------------------------------------
   ;; Standard uniform data
   
-  ;; View and projection matrices as 4x4
-  (define view (->flprojective3 view*))
-  (define proj (->flprojective3 proj*))
-  
   ;; Near and far plane distances in view coordinates
   (define znear (flprojective3-z-near proj))
   (define zfar  (flprojective3-z-far  proj))
   
   ;; Gamma-correct the ambient color and multiply by its intensity
-  (define intensity (flvector-ref ambient 3))
-  (define ambient-rgb (flvector (* (flexpt (flvector-ref ambient 0) 2.2) intensity)
-                                (* (flexpt (flvector-ref ambient 1) 2.2) intensity)
-                                (* (flexpt (flvector-ref ambient 2) 2.2) intensity)))
+  (define ambient-rgb
+    (call/flv4-values ambient
+      (λ (r g b i)
+        (flvector (* (flexpt r 2.2) i)
+                  (* (flexpt g 2.2) i)
+                  (* (flexpt b 2.2) i)))))
   
   (: standard-uniforms (HashTable Symbol Uniform))
   (define standard-uniforms
     (make-immutable-hasheq
-     (list (cons 'view (uniform-mat (fltransform3-forward view) 4))
-           (cons 'unview (uniform-mat (fltransform3-inverse view) 4))
-           (cons 'proj (uniform-mat (fltransform3-forward proj) 4))
-           (cons 'unproj (uniform-mat (fltransform3-inverse proj) 4))
+     (list (cons 'view (uniform-mat (call/flprojective3-forward view flvector) 4))
+           (cons 'unview (uniform-mat (call/flprojective3-inverse view flvector) 4))
+           (cons 'proj (uniform-mat (call/flprojective3-forward proj flvector) 4))
+           (cons 'unproj (uniform-mat (call/flprojective3-inverse proj flvector) 4))
            (cons 'znear (uniform-float znear))
            (cons 'zfar (uniform-float zfar))
            (cons 'log2_znear_zfar (uniform-float (fllog2 (/ znear zfar))))
@@ -544,8 +540,8 @@ code
   ;; =================================================================================================
   ;; Rendering passes
   
-  ;(define face (if (xor (flt3consistent? proj*) (flt3consistent? view*)) 'back 'front))
-  (define face (if (flt3consistent? (flt3compose proj* view*)) 'back 'front))
+  ;(define face (if (xor (flt3consistent? proj) (flt3consistent? view)) 'back 'front))
+  (define face (if (flt3consistent? (flt3compose proj view)) 'back 'front))
   
   (define debug-pass (current-engine-debug-pass))
   (define remaining-passes engine-debug-passes)
@@ -841,11 +837,9 @@ code
          (glClear GL_COLOR_BUFFER_BIT)))
      
      (glViewport 0 0 width height)
-     (define alpha (flvector-ref background 3))
-     (glClearColor (* (flvector-ref background 0) alpha)
-                   (* (flvector-ref background 1) alpha)
-                   (* (flvector-ref background 2) alpha)
-                   alpha)
+     (call/flv4-values background
+       (λ (r g b a)
+         (glClearColor (* r a) (* g a) (* b a) a)))
      (glClear GL_COLOR_BUFFER_BIT)
      
      (define program (bloom-combine-program))
@@ -894,3 +888,12 @@ code
            (gl-program-send-uniform program "rgba" (uniform-int 0))
            (gl-program-send-uniforms program program-uniforms standard-uniforms)
            (draw-fullscreen-quad tex-width tex-height))))]))
+
+(: draw-draw-passes (-> (Vectorof draw-passes) Natural Natural Natural
+                        FlAffine3 FlTransform3
+                        FlV4 FlV4
+                        Void))
+(define (draw-draw-passes passes num width height view proj background ambient)
+  (let ([view : FlProjective3  (->flprojective3 view)]
+        [proj : FlProjective3  (->flprojective3 proj)])
+    (draw-draw-passes* passes num width height view proj background ambient)))

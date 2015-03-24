@@ -15,13 +15,19 @@
      (weld p '(top) branch '(base)))
    '(top)))
 
+(define (combine/bounds t)
+  (combine t (let-values ([(v1 v2)  (bounding-rectangle t)])
+               (with-color (rgba "red" 0.5)
+                 (rectangle v1 v2)))))
+
 (define t (build-tree 11))
+(time (combine/bounds t))
+
 (define frozen-t (freeze t))
-t
-frozen-t
+(time (combine/bounds frozen-t))
 
 (define s
   (for*/fold ([s  empty-pict3d]) ([x  (in-range -2 3)]
                                   [y  (in-range -2 3)])
     (combine s (move frozen-t (dir (* x 5) (* y 5) 0)))))
-s
+(time (combine/bounds s))

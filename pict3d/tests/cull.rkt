@@ -1,31 +1,27 @@
-#lang racket
+#lang typed/racket
 
 (require pict3d)
 
 (require math/flonum
          math/base
-         pict3d/private/math/flv3
-         pict3d/private/math/flt3
-         pict3d/private/math/flrect3
-         pict3d/private/engine/draw-passes
-         pict3d/private/engine/scene
-         (only-in pict3d/private/engine/types affine-transform))
+         pict3d/private/math
+         pict3d/private/engine)
 
 (define sphere-vs 
-  (for/list ([_  (in-range 5000)])
+  (for/list : (Listof Pos) ([_  (in-range 5000)])
     (pos (* (- (random) 0.5) 2)
          (* (- (random) 0.5) 2)
          (* (- (random) 0.5) 2))))
 
 (define spheres
   (combine
-   (for/list ([v  (in-list sphere-vs)])
+   (for/list : (Listof Pict3D) ([v  (in-list sphere-vs)])
      (sphere v #i1/16))))
 
 (define blue-spheres
   (with-color (rgba 1/4 1/2 1 3/4)
     (combine
-     (for/list ([v  (in-list sphere-vs)])
+     (for/list : (Listof Pict3D) ([v  (in-list sphere-vs)])
        (sphere v #i1/16)))))
 
 (define wacky-spheres
@@ -34,14 +30,16 @@
 (define wacky-blue-spheres
   (rotate-z (move (scale-y (rotate-x blue-spheres 30) 1.5) (dir -0.25 -0.25 -0.25)) 30))
 
-;(: frustum (-> FlTransform3 Pict3D))
+(: frustum (-> FlTransform3 Pict3D))
 (define (frustum t)
-  (define tinv (flt3inverse t))
   (match-define (list v1 v2 v4 v3 v5 v6 v8 v7)
-    (for*/list ([z  (list -1.0 1.0)]
-                [y  (list -1.0 1.0)]
-                [x  (list -1.0 1.0)])
-      (pos (flt3apply/pos tinv (flvector x y z)))))
+    (for*/list : (Listof Pos) ([z  (list -1.0 1.0)]
+                               [y  (list -1.0 1.0)]
+                               [x  (list -1.0 1.0)])
+      (let* ([tinv : FlTransform3  (flt3inverse t)]
+             [v : FlV3  (flv3 x y z)]
+             [v : FlV3  (flt3apply/pos tinv v)])
+        (call/flv3-values v pos))))
   
   (combine
    (quad v1 v2 v3 v4)
@@ -57,10 +55,12 @@
 (define zfar 4.0)
 (define fov-radians (degrees->radians (fl 30.0)))
 (define camera (point-at (pos 1.25 1.25 1.25) origin))
-(define proj (perspective-flt3/viewport (fl 800) (fl 600) fov-radians znear zfar))
 (define view (affine-compose (scale (dir 1 -1 -1))
                              (affine-inverse camera)))
-(define t (flt3compose proj (affine-transform view)))
+
+(define t
+  (let ([proj : FlTransform3  (perspective-flt3/viewport (fl 800) (fl 600) fov-radians znear zfar)])
+    (flt3compose proj view)))
 
 (define t-frustum
   (with-color (rgba 0.75 0 0 0.75)
@@ -79,19 +79,17 @@
  (frustum-cull wacky-spheres t)
  wacky-blue-spheres)
 
+(define rect (flrect3 zero-flv3 +x+y+z-flv3))
+
 (combine
- (rect-cull
-  spheres
-  (flrect3 zero-flv3 +x+y+z-flv3))
+ (rect-cull spheres rect)
  (with-color (rgba 0.75 0 0 0.5)
    (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))
  blue-spheres)
 
 (combine
- (rect-cull
-  wacky-spheres
-  (flrect3 zero-flv3 +x+y+z-flv3))
+ (rect-cull wacky-spheres rect)
  (with-color (rgba 0.75 0 0 0.5)
    (with-emitted (emitted 0.25 0 0)
      (rectangle (pos 0 0 0) (pos 1 1 1))))

@@ -6,14 +6,12 @@
          racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
-         "../../math/flt3.rkt"
-         "../../math/flrect3.rkt"
+         "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
-         "../types.rkt"
          "../utils.rkt"
          "../shader-code.rkt"
-         "../draw-pass.rkt"
+         "../types.rkt"
          "types.rkt"
          "flags.rkt")
 
@@ -27,34 +25,20 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-directional-light-shape (-> FlVector FlVector directional-light-shape))
+(: make-directional-light-shape (-> FlV4 FlV3 directional-light-shape))
 (define (make-directional-light-shape e dv)
-  (cond [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'make-directional-light-shape "length-4 flvector"
-                               0 e dv)]
-        [(not (= 3 (flvector-length dv)))
-         (raise-argument-error 'make-directional-light-shape "length-3 flvector"
-                               1 e dv)]
-        [else
-         (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
-         (directional-light-shape (lazy-passes) fs e dv)]))
+  (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
+  (directional-light-shape (lazy-passes) fs e dv))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-directional-light-shape-emitted (-> directional-light-shape FlVector
-                                           directional-light-shape))
+(: set-directional-light-shape-emitted (-> directional-light-shape FlV4 directional-light-shape))
 (define (set-directional-light-shape-emitted a e)
-  (cond [(not (= 4 (flvector-length e)))
-         (raise-argument-error 'set-directional-light-shape-emitted "length-4 flvector"
-                               1 a e)]
-        [else
-         (match-define (directional-light-shape _ fs old-e dv) a)
-         (cond [(equal? old-e e)  a]
-               [else
-                (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                                           (color-emitting-flag e)))
-                (directional-light-shape (lazy-passes) new-fs e dv)])]))
+  (match-define (directional-light-shape _ fs _ dv) a)
+  (define new-fs (flags-join (flags-subtract fs emitting-flags)
+                             (color-emitting-flag e)))
+  (directional-light-shape (lazy-passes) new-fs e dv))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -142,12 +126,13 @@ code
   
   (cond
     [(flags-subset? emitting-flag fs)
-     (define color (flvector-copy e 0 3))
-     (define intensity (flvector-ref e 3))
+     (define-values (r g b i)
+       (call/flv4-values e values))
+     
      (define uniforms
-       (list (cons "light_dir" (uniform-float dv 3))
-             (cons "light_color" (uniform-float color))
-             (cons "light_intensity" (uniform-float intensity))))
+       (list (cons "light_dir" (uniform-float (call/flv3-values dv flvector) 3))
+             (cons "light_color" (uniform-float (flvector r g b)))
+             (cons "light_intensity" (uniform-float i))))
      
      (passes
       (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
@@ -162,11 +147,12 @@ code
 ;; Bounding box
 
 (define directional-light-shape-rect
-  (nonempty-flrect3 (flvector -inf.0 -inf.0 -inf.0)
-                    (flvector +inf.0 +inf.0 +inf.0)))
+  (flrect3 (flv3 -inf.0 -inf.0 -inf.0)
+           (flv3 +inf.0 +inf.0 +inf.0)))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: directional-light-shape-easy-transform (-> directional-light-shape Affine directional-light-shape))
+(: directional-light-shape-easy-transform (-> directional-light-shape FlAffine3
+                                              directional-light-shape))
 (define (directional-light-shape-easy-transform a t) a)

@@ -1,13 +1,18 @@
 #lang racket/base
 
+;; TODO: Change these to call/values convention
+
 (provide (all-defined-out))
 
+;; TODO: This is fl2cross
 (define-syntax-rule (det2 a b c d)
   (- (* a d) (* b c)))
 
+;; TODO: This is fl3dot
 (define-syntax-rule (v3dot x1 y1 z1 x2 y2 z2)
   (+ (* x1 x2) (* y1 y2) (* z1 z2)))
 
+;; TODO: Don't have one of these yet
 (define-syntax-rule (v4dot m0 m1 m2 m3 v0 v1 v2 v3)
   (+ (* m0 v0) (* m1 v1) (* m2 v2) (* m3 v3)))
 
