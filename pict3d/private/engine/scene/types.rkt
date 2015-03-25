@@ -1,13 +1,13 @@
 #lang typed/racket/base
 
-(require racket/match
+(require (for-syntax racket/base)
+         racket/match
          racket/list
          "../../math.rkt"
          "../../gl.rkt"
          "../draw-pass.rkt"
          "../types.rkt"
-         "tags.rkt"
-         "flags.rkt")
+         "tags.rkt")
 
 (provide (all-defined-out))
 
@@ -45,7 +45,7 @@
 (: lazy-passes (-> (HashTable GL-Context passes)))
 (define lazy-passes make-weak-hasheq)
 
-(struct solid-shape shape ([flags : Flags]) #:transparent)
+(struct solid-shape shape () #:transparent)
 
 (struct triangle-shape solid-shape
   ([vtx1 : vtx]
@@ -70,14 +70,14 @@
    [inside? : Boolean])
   #:transparent)
 
-(struct light-shape shape ([flags : Flags] [emitted : FlV4]) #:transparent)
+(struct light-shape shape ([emitted : FlV4]) #:transparent)
 (struct directional-light-shape light-shape ([direction : FlV3]) #:transparent)
 (struct point-light-shape light-shape ([affine : FlAffine3]
                                        [min-radius : Flonum]
                                        [max-radius : Flonum])
   #:transparent)
 
-(struct indicator-shape shape ([flags : Flags]) #:transparent)
+(struct indicator-shape shape () #:transparent)
 (struct point-light-shell-shape indicator-shape
   ([emitted : FlV4]
    [affine : FlAffine3]
@@ -102,25 +102,27 @@
 ;; Bounding boxes
 
 (define axial-tol 1e-14)
+(define tight-badness 1e-14)
 
-(struct bbox ([rect : FlRect3] [tight? : Boolean])
+(struct bbox ([rect : FlRect3] [badness : Nonnegative-Flonum])
   #:transparent
   #:mutable)
 
-(define zero-bbox (bbox zero-flrect3 #t))
+(define zero-bbox (bbox zero-flrect3 0.0))
 
 (: maybe-bbox-rect (-> (U #f bbox) (U #f FlRect3)))
 (define (maybe-bbox-rect b)
   (and b (bbox-rect b)))
 
-(: maybe-bbox-tight? (-> (U #f bbox) Boolean))
-(define (maybe-bbox-tight? b)
-  (if b (bbox-tight? b) #t))
+(: maybe-bbox-badness (-> (U #f bbox) Nonnegative-Flonum))
+(define (maybe-bbox-badness b)
+  (if b (bbox-badness b) 0.0))
 
 (: bbox-transform (-> bbox FlAffine3 bbox))
 (define (bbox-transform b t)
-  (bbox (flrect3-transform (bbox-rect b) t)
-        (and (bbox-tight? b) (or (identity-flaffine3? t) (flt3axial? t axial-tol)))))
+  (define-values (new-r new-badness)
+    (flrect3-transform/badness (bbox-rect b) t))
+  (bbox new-r (+ (bbox-badness b) new-badness)))
 
 (: maybe-bbox-transform (-> (U #f bbox) FlAffine3 (U #f bbox)))
 (define (maybe-bbox-transform b t)
@@ -129,60 +131,13 @@
 (: bbox-join (-> bbox bbox bbox))
 (define (bbox-join b1 b2)
   (bbox (flrect3-join (bbox-rect b1) (bbox-rect b2))
-        (and (bbox-tight? b1) (bbox-tight? b2))))
+        (max (bbox-badness b1) (bbox-badness b2))))
 
 (: maybe-bbox-join (-> (U #f bbox) (U #f bbox) (U #f bbox)))
 (define (maybe-bbox-join b1 b2)
   (cond [(not b1)  b2]
         [(not b2)  b1]
         [else  (bbox-join b1 b2)]))
-
-(: bbox-contains-bbox? (-> bbox bbox (U Boolean 'unknown)))
-(define (bbox-contains-bbox? b1 b2)
-  (define r1 (bbox-rect b1))
-  (define r2 (bbox-rect b2))
-  (cond [(and (bbox-tight? b1) (bbox-tight? b2))
-         (flrect3-contains-rect? r1 r2)]
-        [(flrect3-disjoint? r1 r2)
-         #f]
-        [(bbox-tight? b1)
-         (flrect3-contains-rect? r1 r2)]
-        [else
-         'unknown]))
-
-(: maybe-bbox-contains-bbox? (-> (U #f bbox) (U #f bbox) (U Boolean 'unknown)))
-(define (maybe-bbox-contains-bbox? b1 b2)
-  (cond [(not b2)  #t]
-        [(not b1)  (if (bbox-tight? b2) #f 'unknown)]
-        [else  (bbox-contains-bbox? b1 b2)]))
-
-(: bbox-disjoint? (-> bbox bbox (U Boolean 'unknown)))
-(define (bbox-disjoint? b1 b2)
-  (cond [(and (bbox-tight? b1) (bbox-tight? b2))
-         (flrect3-disjoint? (bbox-rect b1) (bbox-rect b2))]
-        [(flrect3-disjoint? (bbox-rect b1) (bbox-rect b2))  #t]
-        [else  'unknown]))
-
-(: maybe-bbox-disjoint? (-> (U #f bbox) (U #f bbox) (U Boolean 'unknown)))
-(define (maybe-bbox-disjoint? b1 b2)
-  (if (and b1 b2)
-      (bbox-disjoint? b1 b2)
-      #t))
-
-(: bbox-line-intersects (-> bbox FlV3 FlV3 (Values (U #f 'unknown Flonum) (U #f 'unknown Flonum))))
-(define (bbox-line-intersects b v dv)
-  (cond [(bbox-tight? b)  (flrect3-line-intersects (bbox-rect b) v dv)]
-        [else
-         (define-values (t1 t2) (flrect3-line-intersects (bbox-rect b) v dv))
-         (if (and (not t1) (not t1))
-             (values #f #f)
-             (values 'unknown 'unknown))]))
-
-(: maybe-bbox-line-intersects (-> (U #f bbox) FlV3 FlV3
-                                  (Values (U #f 'unknown Flonum) (U #f 'unknown Flonum))))
-(define (maybe-bbox-line-intersects b v dv)
-  (if b (bbox-line-intersects b v dv) (values #f #f)))
-
 
 (: bbox-appx-contains-bbox? (-> bbox bbox Boolean))
 (define (bbox-appx-contains-bbox? b1 b2)
@@ -231,77 +186,55 @@
 ;; ===================================================================================================
 ;; Scene types
 
-(struct scene () #:transparent)
+(struct Empty-Scene () #:transparent)
+(define empty-scene (Empty-Scene))
+(define-syntax empty-scene? (make-rename-transformer #'Empty-Scene?))
 
-(struct Empty-Scene scene () #:transparent)
+(struct nonempty-scene () #:transparent)
 
-(struct nonempty-scene scene
+(struct node-scene nonempty-scene
   ([visible-bbox : (U #f bbox)]
-   [invisible-bbox : (U #f bbox)])
-  #:transparent)
-
-(struct container-scene nonempty-scene
-  ([count : Nonnegative-Fixnum]
+   [invisible-bbox : (U #f bbox)]
+   [count : Nonnegative-Fixnum]
    [child-tags : Tags]
-   [child-flags : Flags])
-  #:transparent)
-
-(struct leaf-scene nonempty-scene
-  ([shape : Shape])
-  #:transparent)
-
-(struct node-scene container-scene
-  ([neg : Nonempty-Scene]
+   [neg : Nonempty-Scene]
    [pos : Nonempty-Scene])
   #:transparent)
 
-(struct trans-scene container-scene
-  ([affine : FlAffine3]
-   [scene : Nonempty-Scene])
+(struct trans-scene nonempty-scene
+  ([scene : Nonempty-Scene]
+   [affine : FlAffine3])
   #:transparent)
 
-(struct group-scene container-scene
-  ([tag : Tag]
-   [scene : Scene])
+(struct group-scene nonempty-scene
+  ([scene : Scene]
+   [tag : Tag])
   #:transparent)
 
 (define-type Nonempty-Scene
-  (U leaf-scene
+  (U Shape
      node-scene
      trans-scene
      group-scene))
 
 (define-type Scene (U Empty-Scene Nonempty-Scene))
 
-(define empty-scene (Empty-Scene))
-(define empty-scene? Empty-Scene?)
-
 (: scene-count (-> Scene Nonnegative-Fixnum))
 (define (scene-count s)
   (cond [(empty-scene? s)  0]
-        [(leaf-scene? s)  1]
-        [else  (container-scene-count s)]))
+        [(node-scene? s)  (node-scene-count s)]
+        [(trans-scene? s)  (scene-count (trans-scene-scene s))]
+        [(group-scene? s)  (scene-count (group-scene-scene s))]
+        [else  1]))
 
 (: scene-tags (-> Scene Tags))
 (define (scene-tags s)
   (cond [(empty-scene? s)  empty-tags]
-        [(leaf-scene? s)  empty-tags]
-        [else  (container-scene-child-tags s)]))
-
-(: scene-visible-bbox (-> Scene (U #f bbox)))
-(define (scene-visible-bbox s)
-  (cond [(empty-scene? s)  #f]
-        [else  (nonempty-scene-visible-bbox s)]))
-
-(: scene-invisible-bbox (-> Scene (U #f bbox)))
-(define (scene-invisible-bbox s)
-  (cond [(empty-scene? s)  #f]
-        [else  (nonempty-scene-invisible-bbox s)]))
-
-(: scene-bbox (-> Scene (U #f bbox)))
-(define (scene-bbox s)
-  (maybe-bbox-join (scene-visible-bbox s)
-                   (scene-invisible-bbox s)))
+        [(node-scene? s)  (node-scene-child-tags s)]
+        [(trans-scene? s)  (scene-tags (trans-scene-scene s))]
+        [(group-scene? s)  (tags-add (scene-tags (group-scene-scene s))
+                                     (group-scene-tag s))]
+        [else  empty-tags]))
 
 ;; ===================================================================================================
 ;; Ray-scene intersection types

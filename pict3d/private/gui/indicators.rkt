@@ -14,14 +14,11 @@
          scene-origin-indicator
          scene-basis-indicators)
 
-(define-values (standard-over-light-scene standard-under-light-scene)
-  (let* ([dv : FlV3  (flv3 -0.25 -0.5 -1.0)]
-         [-dv : FlV3  (flv3neg dv)]
-         [e1 : FlV4  (flv4 1.0 1.0 1.0 1.0)]
-         [e2 : FlV4  (flv4 1.0 1.0 1.0 0.5)])
-    (values
-     (make-leaf-scene (make-directional-light-shape e1 dv))
-     (make-leaf-scene (make-directional-light-shape e2 -dv)))))
+(define standard-over-light-scene
+  (make-directional-light-shape (flv4 1.0 1.0 1.0 1.0) (flv3 -0.25 -0.5 -1.0)))
+
+(define standard-under-light-scene
+  (make-directional-light-shape (flv4 1.0 1.0 1.0 0.5) (flv3 +0.25 +0.5 +1.0)))
 
 (: unit-octahedron-vertices (Listof (Vectorof FlV3)))
 (define unit-octahedron-vertices
@@ -46,12 +43,11 @@
   (scene-union*
    (map (λ ([vs : (Vectorof FlV3)]
             [n : FlV3])
-          (make-leaf-scene
-           (make-triangle-shape
-            (vtx (vector-ref vs 0) n c e m)
-            (vtx (vector-ref vs 1) n c e m)
-            (vtx (vector-ref vs 2) n c e m)
-            #f)))
+          (make-triangle-shape
+           (vtx (vector-ref vs 0) n c e m)
+           (vtx (vector-ref vs 1) n c e m)
+           (vtx (vector-ref vs 2) n c e m)
+           #f))
         unit-octahedron-vertices
         unit-octahedron-normals)))
 
@@ -64,7 +60,7 @@
     (scene-for-each!
      s
      empty  ; no planes
-     (λ ([a : Shape] [b : (U #f FlRect3)] [t0 : FlAffine3] [c : Nonnegative-Fixnum])
+     (λ ([a : Shape] [t0 : FlAffine3] [c : Nonnegative-Fixnum])
        (cond [(point-light-shape? a)
               (let ([t : FlAffine3  (flt3compose t t0)])
                 (let ([a  (point-light-shape-easy-transform a t)])
@@ -88,7 +84,7 @@
 
 (: point-light-indicator (-> point-light-shape Scene))
 (define (point-light-indicator a)
-  (match-define (point-light-shape _ fs e t r0 r1) a)
+  (match-define (point-light-shape _ e t r0 r1) a)
   ;; i = intensity
   (define i (unsafe-flv4-ref e 3))
   ;; s = radius of a ball that would give off that much light...
@@ -100,13 +96,12 @@
          [dv : FlV3  (flv3 s s s)]
          [t0 : FlAffine3  (scale-flt3 dv)]
          [ts : FlAffine3  (flt3compose t t0)])
-    (make-leaf-scene
-     (make-frozen-scene-shape
-      (assert
-       (scene-union
-        (make-leaf-scene (make-point-light-shell-shape e t (* 0.99 r0) (* 1.01 r1)))
-        (make-trans-scene ts (unit-octahedron-scene black-color e1 ambient-material #f)))
-       nonempty-scene?)))))
+    (make-frozen-scene-shape
+     (assert
+      (scene-union
+       (make-point-light-shell-shape e t (* 0.99 r0) (* 1.01 r1))
+       (make-trans-scene (unit-octahedron-scene black-color e1 ambient-material #f) ts))
+      nonempty-scene?))))
 
 (: scene-light-indicators (-> Scene (Listof Scene)))
 (define (scene-light-indicators s)
@@ -118,22 +113,20 @@
    (for/list : (Listof Scene) ([i  (in-range 4)])
      (define n (assert (flv3triangle-normal +x-y-flv3 +x+y-flv3 +z-flv3) values))
      (define s
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx +x-y-flv3 n c e m)
-         (vtx +x+y-flv3 n c e m)
-         (vtx +z-flv3 n c e m)
-         #f)))
+       (make-triangle-shape
+        (vtx +x-y-flv3 n c e m)
+        (vtx +x+y-flv3 n c e m)
+        (vtx +z-flv3 n c e m)
+        #f))
      (scene-transform-shapes s (rotate-z-flt3 (degrees->radians (* (fl i) +90.0)))))))
 
 (: make-unit-arrow-scene (-> FlV4 FlV4 FlV4 Scene))
 (define (make-unit-arrow-scene c e m)
   (scene-union
-   (make-leaf-scene
-    (let* ([mn : FlV3  (flv3 #i-1/64 #i-1/64 0.0)]
-           [mx : FlV3  (flv3 #i1/64 #i1/64 #i60/64)]
-           [b : FlRect3  (flrect3 mn mx)])
-      (make-rectangle-shape b c e m #f)))
+   (let* ([mn : FlV3  (flv3 #i-1/64 #i-1/64 0.0)]
+          [mx : FlV3  (flv3 #i1/64 #i1/64 #i60/64)]
+          [b : FlRect3  (flrect3 mn mx)])
+     (make-rectangle-shape b c e m #f))
    (let* ([dv : FlV3  (flv3 #i2/64 #i2/64 #i8/64)]
           [v  : FlV3  (flv3 0.0 0.0 #i56/64)]
           [t1 : FlAffine3  (scale-flt3 dv)]
@@ -161,15 +154,14 @@
   (let* ([s : FlV3  (flv3 0.03 0.03 0.03)]
          [t : FlAffine3  (scale-flt3 s)]
          [e : FlV4  (flv4 1.0 1.0 1.0 2.0)])
-    (make-leaf-scene
-     (make-frozen-scene-shape
-      (assert
-       (scene-union*
-        (list (make-leaf-scene (make-sphere-shape t black-color e axis-material #f))
-              x-axis-scene
-              y-axis-scene
-              z-axis-scene))
-       nonempty-scene?)))))
+    (make-frozen-scene-shape
+     (assert
+      (scene-union*
+       (list (make-sphere-shape t black-color e axis-material #f)
+             x-axis-scene
+             y-axis-scene
+             z-axis-scene))
+      nonempty-scene?))))
 
 (define basis-dim 0.5)
 (define basis-scale-t (scale-flt3 (flv3 0.5 0.5 1.0)))
@@ -194,20 +186,18 @@
 (define basis-scene
   (let ([t : FlAffine3  (scale-flt3 (flv3 0.015 0.015 0.015))]
         [e : FlV4  (flv4 1.0 1.0 1.0 1.0)])
-    (make-leaf-scene
-     (make-frozen-scene-shape
-      (assert
-       (scene-union*
-        (list (make-leaf-scene (make-sphere-shape t black-color e axis-material #f))
-              x-basis-scene
-              y-basis-scene
-              z-basis-scene))
-       nonempty-scene?)))))
+    (make-frozen-scene-shape
+     (assert
+      (scene-union*
+       (list (make-sphere-shape t black-color e axis-material #f)
+             x-basis-scene
+             y-basis-scene
+             z-basis-scene))
+      nonempty-scene?))))
 
 (: scene-origin-indicator (-> Flonum Scene))
 (define (scene-origin-indicator scale)
-  (make-trans-scene (scale-flt3 (flv3 scale scale scale))
-                    axes-scene))
+  (make-trans-scene axes-scene (scale-flt3 (flv3 scale scale scale))))
 
 (: scene-basis-indicators (-> Scene Flonum (Listof (Pair Pos Scene))))
 (define (scene-basis-indicators s scale)
@@ -215,5 +205,5 @@
   (map (λ ([nt : (Pair Tag FlAffine3)])
          (define t0 (cdr nt))
          (cons (flv3->pos (flaffine3-position t0))
-               (make-trans-scene (flt3compose t0 t) basis-scene)))
+               (make-trans-scene basis-scene (flt3compose t0 t))))
        (scene-group-transforms s 'all)))

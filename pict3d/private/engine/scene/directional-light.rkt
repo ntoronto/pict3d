@@ -12,8 +12,7 @@
          "../utils.rkt"
          "../shader-code.rkt"
          "../types.rkt"
-         "types.rkt"
-         "flags.rkt")
+         "types.rkt")
 
 (provide make-directional-light-shape
          make-directional-light-shape-passes
@@ -27,18 +26,15 @@
 
 (: make-directional-light-shape (-> FlV4 FlV3 directional-light-shape))
 (define (make-directional-light-shape e dv)
-  (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
-  (directional-light-shape (lazy-passes) fs e dv))
+  (directional-light-shape (lazy-passes) e dv))
 
 ;; ===================================================================================================
 ;; Set attributes
 
 (: set-directional-light-shape-emitted (-> directional-light-shape FlV4 directional-light-shape))
 (define (set-directional-light-shape-emitted a e)
-  (match-define (directional-light-shape _ fs _ dv) a)
-  (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                             (color-emitting-flag e)))
-  (directional-light-shape (lazy-passes) new-fs e dv))
+  (match-define (directional-light-shape _ _ dv) a)
+  (directional-light-shape (lazy-passes) e dv))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -122,26 +118,23 @@ code
 
 (: make-directional-light-shape-passes (-> directional-light-shape passes))
 (define (make-directional-light-shape-passes a)
-  (match-define (directional-light-shape _ fs e dv) a)
+  (match-define (directional-light-shape _ e dv) a)
   
-  (cond
-    [(flags-subset? emitting-flag fs)
-     (define-values (r g b i)
-       (call/flv4-values e values))
-     
-     (define uniforms
-       (list (cons "light_dir" (uniform-float (call/flv3-values dv flvector) 3))
-             (cons "light_color" (uniform-float (flvector r g b)))
-             (cons "light_intensity" (uniform-float i))))
-     
-     (passes
-      (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
-                            (vertices 4 data vertex-ids)))
-      #()
-      #()
-      #()
-      #())]
-    [else  empty-passes]))
+  (define-values (r g b i)
+    (call/flv4-values e values))
+  
+  (define uniforms
+    (list (cons "light_dir" (uniform-float (call/flv3-values dv flvector) 3))
+          (cons "light_color" (uniform-float (flvector r g b)))
+          (cons "light_intensity" (uniform-float i))))
+  
+  (passes
+   (vector (shape-params directional-light-program uniforms #t GL_TRIANGLES
+                         (vertices 4 data vertex-ids)))
+   #()
+   #()
+   #()
+   #()))
 
 ;; ===================================================================================================
 ;; Bounding box

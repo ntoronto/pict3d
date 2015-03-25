@@ -145,11 +145,11 @@
 
 (: group (-> Pict3D (U #f Tag) Pict3D))
 (define (group p n)
-  (if n (pict3d (make-group-scene n (pict3d-scene p))) p))
+  (if n (pict3d (make-group-scene (pict3d-scene p) n)) p))
 
 (: basis (-> Tag Affine Pict3D))
 (define (basis n t)
-  (pict3d (make-trans-scene t (make-group-scene n empty-scene))))
+  (pict3d (make-trans-scene (make-group-scene empty-scene n) t)))
 
 (: group-tag (-> Pict3D (U #f Tag)))
 (define (group-tag p)
@@ -210,11 +210,11 @@
 
 (: bounding-rectangle (-> Pict3D (Values (U #f Pos) (U #f Pos))))
 (define (bounding-rectangle p)
-  (let ([r : (U #f FlRect3)  (maybe-bbox-rect (scene-visible-tight-bbox (pict3d-scene p)))])
-    (if (flrect3? r)
-        (values (call/flv3-values (flrect3-min r) pos)
-                (call/flv3-values (flrect3-max r) pos))
-        (values #f #f))))
+  (define r (maybe-bbox-rect (scene-visible-bbox/badness (pict3d-scene p) tight-badness)))
+  (if (flrect3? r)
+      (values (call/flv3-values (flrect3-min r) pos)
+              (call/flv3-values (flrect3-max r) pos))
+      (values #f #f)))
 
 (: center (-> Pict3D (U #f Pos)))
 (define (center p)
@@ -247,12 +247,11 @@
   (define norm (flv3triangle-normal v1 v2 v3))
   (cond [norm
          (pict3d
-          (make-leaf-scene
-           (make-triangle-shape
-            (vtx v1 (if n1 n1 norm) c1 e1 m1)
-            (vtx v2 (if n2 n2 norm) c2 e2 m2)
-            (vtx v3 (if n3 n3 norm) c3 e3 m3)
-            (and back? #t))))]
+          (make-triangle-shape
+           (vtx v1 (if n1 n1 norm) c1 e1 m1)
+           (vtx v2 (if n2 n2 norm) c2 e2 m2)
+           (vtx v3 (if n3 n3 norm) c3 e3 m3)
+           (and back? #t)))]
         [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -276,10 +275,7 @@
             (vtx v3 (if n3 n3 norm) c3 e3 m3)
             (vtx v4 (if n4 n4 norm) c4 e4 m4)
             (and back? #t)))
-         (pict3d
-          (scene-union
-           (make-leaf-scene (first as))
-           (make-leaf-scene (second as))))]
+         (pict3d (scene-union (first as) (second as)))]
         [else  empty-pict3d]))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -299,12 +295,11 @@
              (flrect3 mn mx))]))
   (let ([b : FlRect3  b])
     (pict3d
-     (make-leaf-scene
-      (make-rectangle-shape b
-                            (current-color)
-                            (current-emitted)
-                            (current-material)
-                            (and inside? #t))))))
+     (make-rectangle-shape b
+                           (current-color)
+                           (current-emitted)
+                           (current-material)
+                           (and inside? #t)))))
 
 (: cube (->* [Pos Real] [#:inside? Any] Pict3D))
 (define cube rectangle)
@@ -335,12 +330,11 @@
 (define (ellipsoid v1 v2 #:inside? [inside? #f])
   (let ([t : FlAffine3  (standard-transform v1 v2)])
     (pict3d
-     (make-leaf-scene
-      (make-sphere-shape t
-                         (current-color)
-                         (current-emitted)
-                         (current-material)
-                         (and inside? #t))))))
+     (make-sphere-shape t
+                        (current-color)
+                        (current-emitted)
+                        (current-material)
+                        (and inside? #t)))))
 
 (: sphere (->* [Pos Real] [#:inside? Any] Pict3D))
 (define sphere ellipsoid)
@@ -352,7 +346,7 @@
 (define (sunlight dv [e  (emitted 1.0 1.0 1.0 1.0)])
   (let ([dv : (U #f FlV3)  (flv3normalize dv)])
     (if dv
-        (pict3d (make-leaf-scene (make-directional-light-shape e dv)))
+        (pict3d (make-directional-light-shape e dv))
         empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -367,7 +361,7 @@
         [r1  (abs (fl r1))])
     (if (< r0 r1)
         (let ([t : FlAffine3  (translate-flt3 v)])
-          (pict3d (make-leaf-scene (make-point-light-shape e t r0 r1))))
+          (pict3d (make-point-light-shape e t r0 r1)))
         empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -379,7 +373,7 @@
   (cond [(empty-scene? s)  p]
         [else
          (combine
-          (pict3d (make-leaf-scene (make-frozen-scene-shape s)))
+          (pict3d (make-frozen-scene-shape s))
           (for/list : (Listof Pict3D) ([nt  (in-list (scene-group-transforms s 'empty))])
             (basis (car nt) (flaffine3->affine (cdr nt)))))]))
 
@@ -388,7 +382,7 @@
 
 (: transform (-> Pict3D Affine Pict3D))
 (define (transform s t)
-  (pict3d (make-trans-scene t (pict3d-scene s))))
+  (pict3d (make-trans-scene (pict3d-scene s) t)))
 
 (: make-transformer (All (A) (-> (-> A FlAffine3)
                                  (case-> (-> A Affine)
@@ -635,37 +629,33 @@
      (scene-union*
       (list
        ;; Top
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx (flv3 x1 y1 1.0) +z-flv3 c e m)
-         (vtx (flv3 x2 y2 1.0) +z-flv3 c e m)
-         (vtx +z-flv3 +z-flv3 c e m)
-         inside?))
+       (make-triangle-shape
+        (vtx (flv3 x1 y1 1.0) +z-flv3 c e m)
+        (vtx (flv3 x2 y2 1.0) +z-flv3 c e m)
+        (vtx +z-flv3 +z-flv3 c e m)
+        inside?)
        ;; Sides
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx (flv3 x1 y1 -1.0) (flv3 x1 y1 0.0) c e m)
-         (vtx (flv3 x2 y2 -1.0) (flv3 x2 y2 0.0) c e m)
-         (vtx (flv3 x2 y2 +1.0) (flv3 x2 y2 0.0) c e m)
-         inside?))
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx (flv3 x1 y1 -1.0) (flv3 x1 y1 0.0) c e m)
-         (vtx (flv3 x2 y2 +1.0) (flv3 x2 y2 0.0) c e m)
-         (vtx (flv3 x1 y1 +1.0) (flv3 x1 y1 0.0) c e m)
-         inside?))
+       (make-triangle-shape
+        (vtx (flv3 x1 y1 -1.0) (flv3 x1 y1 0.0) c e m)
+        (vtx (flv3 x2 y2 -1.0) (flv3 x2 y2 0.0) c e m)
+        (vtx (flv3 x2 y2 +1.0) (flv3 x2 y2 0.0) c e m)
+        inside?)
+       (make-triangle-shape
+        (vtx (flv3 x1 y1 -1.0) (flv3 x1 y1 0.0) c e m)
+        (vtx (flv3 x2 y2 +1.0) (flv3 x2 y2 0.0) c e m)
+        (vtx (flv3 x1 y1 +1.0) (flv3 x1 y1 0.0) c e m)
+        inside?)
        ;; Bottom
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
-         (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
-         (vtx -z-flv3 -z-flv3 c e m)
-         inside?)))))))
+       (make-triangle-shape
+        (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
+        (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
+        (vtx -z-flv3 -z-flv3 c e m)
+        inside?))))))
 
 (: cylinder (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural] Pict3D))
 (define (cylinder v1 v2 #:inside? [inside? #f] #:segments [n 32])
-  (freeze (pict3d (make-trans-scene (standard-transform v1 v2)
-                                    (standard-cylinder-scene (and inside? #t) n)))))
+  (freeze (pict3d (make-trans-scene (standard-cylinder-scene (and inside? #t) n)
+                                    (standard-transform v1 v2)))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Cone
@@ -688,27 +678,24 @@
      (define y1 (flsin t1))
      (define x2 (flcos t2))
      (define y2 (flsin t2))
-     (scene-union*
-      (list
-       ;; Sides
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx +z-flv3 (if smooth? +z-flv3 (flv3 (* nx x0) (* nx y0) ny)) c e m)
-         (vtx (flv3 x1 y1 -1.0) (flv3 (* nx x1) (* nx y1) ny) c e m)
-         (vtx (flv3 x2 y2 -1.0) (flv3 (* nx x2) (* nx y2) ny) c e m)
-         inside?))
-       ;; Bottom
-       (make-leaf-scene
-        (make-triangle-shape
-         (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
-         (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
-         (vtx -z-flv3 -z-flv3 c e m)
-         inside?)))))))
+     (scene-union
+      ;; Sides
+      (make-triangle-shape
+       (vtx +z-flv3 (if smooth? +z-flv3 (flv3 (* nx x0) (* nx y0) ny)) c e m)
+       (vtx (flv3 x1 y1 -1.0) (flv3 (* nx x1) (* nx y1) ny) c e m)
+       (vtx (flv3 x2 y2 -1.0) (flv3 (* nx x2) (* nx y2) ny) c e m)
+       inside?)
+      ;; Bottom
+      (make-triangle-shape
+       (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
+       (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
+       (vtx -z-flv3 -z-flv3 c e m)
+       inside?)))))
 
 (: cone (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
 (define (cone v1 v2 #:inside? [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
-    (freeze (pict3d (make-trans-scene (standard-transform v1 v2)
-                                      (standard-cone-scene (and inside? #t) n (and smooth? #t))))))
+    (freeze (pict3d (make-trans-scene (standard-cone-scene (and inside? #t) n (and smooth? #t))
+                                      (standard-transform v1 v2)))))
 
 ;; ===================================================================================================
 ;; Collision detection

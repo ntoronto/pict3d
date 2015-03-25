@@ -15,8 +15,7 @@
          "../shader-code.rkt"
          "../serialize-vertices.rkt"
          "../utils.rkt"
-         "types.rkt"
-         "flags.rkt")
+         "types.rkt")
 
 (provide make-point-light-shell-shape
          make-point-light-shell-shape-passes
@@ -29,8 +28,7 @@
 
 (: make-point-light-shell-shape (-> FlV4 FlAffine3 Flonum Flonum point-light-shell-shape))
 (define (make-point-light-shell-shape e t r0 r1)
-  (define fs (flags-join invisible-flag transparent-flag (color-emitting-flag e)))
-  (point-light-shell-shape (lazy-passes) fs e t r0 r1))
+  (point-light-shell-shape (lazy-passes) e t r0 r1))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -196,32 +194,29 @@ code
 
 (: make-point-light-shell-shape-passes (-> point-light-shell-shape passes))
 (define (make-point-light-shell-shape-passes a)
-  (match-define (point-light-shell-shape _ fs e t r0 r1) a)
+  (match-define (point-light-shell-shape _ e t r0 r1) a)
   
-  (cond
-    [(flags-subset? emitting-flag fs)
-     (define size (program-code-vao-size point-light-shell-program-code))
-     (define data (make-bytes (* 4 size)))
-     (define data-ptr (u8vector->cpointer data))
-     (call/flv4-values e
-       (λ (r g b int)
-         (let* ([i  (serialize-affine data 0 t)]
-                [i  (serialize-float data i int)]
-                [i  (serialize-float data i r0)]
-                [i  (serialize-float data i r1)]
-                [i  (serialize-vec3/bytes data i (flv3 r g b))])
-           (for ([k : Nonnegative-Fixnum  (in-range 1 4)])
-             (memcpy data-ptr (unsafe-fx* k size) data-ptr size _byte)
-             (bytes-set! data (unsafe-fx+ (unsafe-fx* k size) i) k)))))
-     
-     (passes
-      (vector (shape-params point-light-shell-program
-                            empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
-      #()
-      #()
-      #()
-      #())]
-    [else  empty-passes]))
+  (define size (program-code-vao-size point-light-shell-program-code))
+  (define data (make-bytes (* 4 size)))
+  (define data-ptr (u8vector->cpointer data))
+  (call/flv4-values e
+    (λ (r g b int)
+      (let* ([i  (serialize-affine data 0 t)]
+             [i  (serialize-float data i int)]
+             [i  (serialize-float data i r0)]
+             [i  (serialize-float data i r1)]
+             [i  (serialize-vec3/bytes data i (flv3 r g b))])
+        (for ([k : Nonnegative-Fixnum  (in-range 1 4)])
+          (memcpy data-ptr (unsafe-fx* k size) data-ptr size _byte)
+          (bytes-set! data (unsafe-fx+ (unsafe-fx* k size) i) k)))))
+  
+  (passes
+   (vector (shape-params point-light-shell-program
+                         empty #t GL_TRIANGLES (vertices 4 data vertex-ids)))
+   #()
+   #()
+   #()
+   #()))
 
 ;; ===================================================================================================
 ;; Bounding box
@@ -238,5 +233,5 @@ code
 (: point-light-shell-shape-easy-transform (-> point-light-shell-shape FlAffine3
                                               point-light-shell-shape))
 (define (point-light-shell-shape-easy-transform a t)
-  (match-define (point-light-shell-shape passes fs e t0 r0 r1) a)
-  (point-light-shell-shape (lazy-passes) fs e (flt3compose t t0) r0 r1))
+  (match-define (point-light-shell-shape passes e t0 r0 r1) a)
+  (point-light-shell-shape (lazy-passes) e (flt3compose t t0) r0 r1))

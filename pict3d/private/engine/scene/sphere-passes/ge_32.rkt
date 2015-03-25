@@ -13,8 +13,7 @@
          "../../shader-code.rkt"
          "../../serialize-vertices.rkt"
          "../../types.rkt"
-         "../types.rkt"
-         "../flags.rkt")
+         "../types.rkt")
 
 (provide make-sphere-shape-passes)
 
@@ -369,7 +368,7 @@ code
 
 (: make-sphere-shape-passes (-> sphere-shape passes))
 (define (make-sphere-shape-passes a)
-  (match-define (sphere-shape _ fs t c e m inside?) a)
+  (match-define (sphere-shape _ t c e m inside?) a)
   
   (define mat-size (program-code-vao-size (sphere-mat-program-code)))
   (define mat-data (make-bytes mat-size))
@@ -387,7 +386,7 @@ code
          [i  (serialize-byte draw-data i (if inside? 1 0))])
     (void))
   
-  (if (flags-subset? transparent-flag fs)
+  (if (< (flv4-ref c 3) 1.0)
       (passes
        #()
        #()

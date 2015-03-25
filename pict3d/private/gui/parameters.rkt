@@ -24,25 +24,25 @@
 
 (: default-pict3d-auto-camera (-> Pict3D Affine))
 (define (default-pict3d-auto-camera p)
-  (let ([b : (U #f FlRect3)  (maybe-bbox-rect (scene-visible-tight-bbox (pict3d-scene p)))])
-    (define-values (v dv)
-      (cond
-       [(not b)
-        (values +x+y+z-flv3 -x-y-z-flv3)]
-       [else
-        (define mn (flrect3-min b))
-        (define mx (flrect3-max b))
-        (let* ([dv : FlV3  (flv3- mn mx)]
-               [norm : (U #f FlV3)  (flv3normalize dv)])
-          (cond
-            [norm
-             (call/flv3-values dv
-               (λ (dx dy dz)
-                 (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
-                 (values (flv3fma norm (- r) mx) dv)))]
-            [else
-             (values +x+y+z-flv3 -x-y-z-flv3)]))]))
-    (flaffine3->affine (point-at-flt3 v dv))))
+  (define b (maybe-bbox-rect (scene-visible-bbox/badness (pict3d-scene p) tight-badness)))
+  (define-values (v dv)
+    (cond
+      [(not b)
+       (values +x+y+z-flv3 -x-y-z-flv3)]
+      [else
+       (define mn (flrect3-min b))
+       (define mx (flrect3-max b))
+       (let* ([dv : FlV3  (flv3- mn mx)]
+              [norm : (U #f FlV3)  (flv3normalize dv)])
+         (cond
+           [norm
+            (call/flv3-values dv
+              (λ (dx dy dz)
+                (define r (* 0.25 (min (abs dx) (abs dy) (abs dz))))
+                (values (flv3fma norm (- r) mx) dv)))]
+           [else
+            (values +x+y+z-flv3 -x-y-z-flv3)]))]))
+    (flaffine3->affine (point-at-flt3 v dv)))
 
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width

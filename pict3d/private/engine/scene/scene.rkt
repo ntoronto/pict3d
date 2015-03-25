@@ -33,30 +33,53 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
          "../merge-passes.rkt"
          "../utils.rkt"
          "tags.rkt"
-         "flags.rkt"
          "types.rkt"
          "shape.rkt")
 
 (provide (all-defined-out))
 
+(: scene-visible-bbox (-> Scene (U #f bbox)))
+(define (scene-visible-bbox s)
+  (cond [(empty-scene? s)  #f]
+        [(node-scene? s)
+         (node-scene-visible-bbox s)]
+        [(trans-scene? s)
+         (maybe-bbox-transform (scene-visible-bbox (trans-scene-scene s))
+                               (trans-scene-affine s))]
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (if (empty-scene? s0) zero-bbox (scene-visible-bbox s0))]
+        [else
+         (shape-visible-bbox s identity-flaffine3)]))
+
+(: scene-invisible-bbox (-> Scene (U #f bbox)))
+(define (scene-invisible-bbox s)
+  (cond [(empty-scene? s)  #f]
+        [(node-scene? s)
+         (node-scene-invisible-bbox s)]
+        [(trans-scene? s)
+         (maybe-bbox-transform (scene-invisible-bbox (trans-scene-scene s))
+                               (trans-scene-affine s))]
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (if (empty-scene? s0) zero-bbox (scene-invisible-bbox s0))]
+        [else
+         (shape-invisible-bbox s identity-flaffine3)]))
+
+(: scene-bbox (-> Scene (U #f bbox)))
+(define (scene-bbox s)
+  (maybe-bbox-join (scene-visible-bbox s)
+                   (scene-invisible-bbox s)))
+
 ;; ===================================================================================================
 ;; Scene constructors
 
-(: make-leaf-scene (-> Shape leaf-scene))
-(define (make-leaf-scene a)
-  (leaf-scene (shape-visible-bbox a identity-flaffine3 #f)
-              (shape-invisible-bbox a identity-flaffine3 #f)
-              a))
-
 (: make-nonempty-node-scene (-> Nonempty-Scene Nonempty-Scene node-scene))
 (define (make-nonempty-node-scene s1 s2)
-  (node-scene (maybe-bbox-join (nonempty-scene-visible-bbox s1)
-                               (nonempty-scene-visible-bbox s2))
-              (maybe-bbox-join (nonempty-scene-invisible-bbox s1)
-                               (nonempty-scene-invisible-bbox s2))
+  (node-scene (maybe-bbox-join (scene-visible-bbox s1) (scene-visible-bbox s2))
+              (maybe-bbox-join (scene-invisible-bbox s1) (scene-invisible-bbox s2))
               (fx+ (scene-count s1) (scene-count s2))
               (tags-union (scene-tags s1) (scene-tags s2))
-              (flags-join (scene-flags s1) (scene-flags s2))
               s1
               s2))
 
@@ -66,54 +89,25 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
         [(empty-scene? s2)  s1]
         [else  (make-nonempty-node-scene s1 s2)]))
 
-(: make-simple-trans-scene (-> FlAffine3 Nonempty-Scene Nonempty-Scene))
-(define (make-simple-trans-scene t s)
-  (trans-scene (maybe-bbox-transform (nonempty-scene-visible-bbox s) t)
-               (maybe-bbox-transform (nonempty-scene-invisible-bbox s) t)
-               (scene-count s)
-               (scene-tags s)
-               (scene-flags s)
-               t
-               s))
-
-(: make-nonempty-trans-scene (-> FlAffine3 Nonempty-Scene Nonempty-Scene))
-(define (make-nonempty-trans-scene t s)
+(: make-nonempty-trans-scene (-> Nonempty-Scene FlAffine3 Nonempty-Scene))
+(define (make-nonempty-trans-scene s t)
   (cond [(identity-flaffine3? t)  s]
-        [(leaf-scene? s)
-         (define a (shape-easy-transform (leaf-scene-shape s) t))
-         (if a (make-leaf-scene a) (make-simple-trans-scene t s))]
+        [(shape? s)
+         (define a (shape-easy-transform s t))
+         (if a a (trans-scene s t))]
         [(trans-scene? s)
-         (make-nonempty-trans-scene (flt3compose t (trans-scene-affine s))
-                                    (trans-scene-scene s))]
-        [(and (node-scene? s) (<= (container-scene-count s) 12))
-         (make-nonempty-node-scene
-          (make-nonempty-trans-scene t (node-scene-neg s))
-          (make-nonempty-trans-scene t (node-scene-pos s)))]
+         (make-nonempty-trans-scene (trans-scene-scene s)
+                                    (flt3compose t (trans-scene-affine s)))]
         [else
-         (make-simple-trans-scene t s)]))
+         (trans-scene s t)]))
 
-(: make-trans-scene (-> FlAffine3 Scene Scene))
-(define (make-trans-scene t s)
-  (if (empty-scene? s) s (make-nonempty-trans-scene t s)))
+(: make-trans-scene (-> Scene FlAffine3 Scene))
+(define (make-trans-scene s t)
+  (if (empty-scene? s) s (make-nonempty-trans-scene s t)))
 
-(: make-group-scene (-> Tag Scene group-scene))
-(define (make-group-scene n s)
-  (cond [(empty-scene? s)
-         (group-scene zero-bbox zero-bbox 0 (singleton-tags n) empty-flags n s)]
-        [else
-         (group-scene (nonempty-scene-visible-bbox s)
-                      (nonempty-scene-invisible-bbox s)
-                      (scene-count s)
-                      (tags-add (scene-tags s) n)
-                      (scene-flags s)
-                      n
-                      s)]))
-
-(: scene-flags (-> Scene Flags))
-(define (scene-flags s)
-  (cond [(empty-scene? s)  empty-flags]
-        [(leaf-scene? s)   (shape-flags (leaf-scene-shape s))]
-        [else  (container-scene-child-flags s)]))
+(: make-group-scene (-> Scene Tag group-scene))
+(define (make-group-scene s n)
+  (group-scene s n))
 
 ;; ===================================================================================================
 ;; Scene union with an attempt at on-the-fly rebalancing
@@ -130,7 +124,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (cond
          [(<= x xmin)  (values empty-scene s)]
          [(<= xmax x)  (values s empty-scene)]
-         [(or (leaf-scene? s) (trans-scene? s) (group-scene? s))
+         [(or (shape? s) (trans-scene? s) (group-scene? s))
           (if (< (- x xmin) (- xmax x))
               (values s empty-scene)
               (values empty-scene s))]
@@ -152,28 +146,27 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (define r (maybe-bbox-rect (maybe-bbox-join bv bi)))
   (define c (unsafe-fx+ (scene-count s1) (scene-count s2)))
   (define ms (tags-union (scene-tags s1) (scene-tags s2)))
-  (define fs (flags-join (scene-flags s1) (scene-flags s2)))
   (cond
     [(not r)
-     (node-scene bv bi c ms fs s1 s2)]
+     (node-scene bv bi c ms s1 s2)]
     [else
      (define-values (i x) (flrect3-longest-axis/center r))
      (define-values (s11 s12) (scene-rebalance-split s1 i x))
      (define-values (s21 s22) (scene-rebalance-split s2 i x))
      (cond [(empty-scene? s11)
             (if (or (empty-scene? s21) (empty-scene? s22))
-                (node-scene bv bi c ms fs s1 s2)
-                (node-scene bv bi c ms fs s21 (nonempty-scene-union/rebalance s1 s22)))]
+                (node-scene bv bi c ms s1 s2)
+                (node-scene bv bi c ms s21 (nonempty-scene-union/rebalance s1 s22)))]
            [(empty-scene? s12)
             (if (or (empty-scene? s21) (empty-scene? s22))
-                (node-scene bv bi c ms fs s1 s2)
-                (node-scene bv bi c ms fs (nonempty-scene-union/rebalance s1 s21) s22))]
+                (node-scene bv bi c ms s1 s2)
+                (node-scene bv bi c ms (nonempty-scene-union/rebalance s1 s21) s22))]
            [(empty-scene? s21)
-            (node-scene bv bi c ms fs s11 (nonempty-scene-union/rebalance s12 s2))]
+            (node-scene bv bi c ms s11 (nonempty-scene-union/rebalance s12 s2))]
            [(empty-scene? s22)
-            (node-scene bv bi c ms fs (nonempty-scene-union/rebalance s11 s2) s12)]
+            (node-scene bv bi c ms (nonempty-scene-union/rebalance s11 s2) s12)]
            [else
-            (node-scene bv bi c ms fs
+            (node-scene bv bi c ms
                         (nonempty-scene-union/rebalance s11 s21)
                         (nonempty-scene-union/rebalance s12 s22))])]))
 
@@ -182,26 +175,24 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (define (node-scene-insert s1 s2)
   (define s11 (node-scene-neg s1))
   (define s12 (node-scene-pos s1))
-  (cond [(and (maybe-bbox-appx-contains-bbox? (nonempty-scene-visible-bbox s11)
-                                              (nonempty-scene-visible-bbox s2))
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-invisible-bbox s11)
-                                              (nonempty-scene-invisible-bbox s2)))
-         (node-scene (nonempty-scene-visible-bbox s1)
-                     (nonempty-scene-invisible-bbox s1)
-                     (unsafe-fx+ (container-scene-count s1) (scene-count s2))
-                     (tags-union (container-scene-child-tags s1) (scene-tags s2))
-                     (flags-join (container-scene-child-flags s1) (scene-flags s2))
+  (cond [(and (maybe-bbox-appx-contains-bbox? (scene-visible-bbox s11)
+                                              (scene-visible-bbox s2))
+              (maybe-bbox-appx-contains-bbox? (scene-invisible-bbox s11)
+                                              (scene-invisible-bbox s2)))
+         (node-scene (scene-visible-bbox s1)
+                     (scene-invisible-bbox s1)
+                     (unsafe-fx+ (scene-count s1) (scene-count s2))
+                     (tags-union (scene-tags s1) (scene-tags s2))
                      (nonempty-scene-union s11 s2)
                      s12)]
-        [(and (maybe-bbox-appx-contains-bbox? (nonempty-scene-visible-bbox s12)
-                                              (nonempty-scene-visible-bbox s2))
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-invisible-bbox s12)
-                                              (nonempty-scene-invisible-bbox s2)))
-         (node-scene (nonempty-scene-visible-bbox s1)
-                     (nonempty-scene-invisible-bbox s1)
-                     (unsafe-fx+ (container-scene-count s1) (scene-count s2))
-                     (tags-union (container-scene-child-tags s1) (scene-tags s2))
-                     (flags-join (container-scene-child-flags s1) (scene-flags s2))
+        [(and (maybe-bbox-appx-contains-bbox? (scene-visible-bbox s12)
+                                              (scene-visible-bbox s2))
+              (maybe-bbox-appx-contains-bbox? (scene-invisible-bbox s12)
+                                              (scene-invisible-bbox s2)))
+         (node-scene (scene-visible-bbox s1)
+                     (scene-invisible-bbox s1)
+                     (unsafe-fx+ (scene-count s1) (scene-count s2))
+                     (tags-union (scene-tags s1) (scene-tags s2))
                      s11
                      (nonempty-scene-union s12 s2))]
         [else
@@ -210,23 +201,28 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (: nonempty-scene-union (-> Nonempty-Scene Nonempty-Scene Nonempty-Scene))
 ;; Compute the nonempty union of two nonempty scenes
 (define (nonempty-scene-union s1 s2)
-  (cond [(and (node-scene? s1)
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-visible-bbox s1)
-                                              (nonempty-scene-visible-bbox s2))
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-invisible-bbox s1)
-                                              (nonempty-scene-invisible-bbox s2)))
-         ;; Try to insert s2 into one of s1's children
-         (node-scene-insert s1 s2)]
-        [(and (node-scene? s2)
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-visible-bbox s2)
-                                              (nonempty-scene-visible-bbox s1))
-              (maybe-bbox-appx-contains-bbox? (nonempty-scene-invisible-bbox s2)
-                                              (nonempty-scene-invisible-bbox s1)))
-         ;; Try to insert s1 into one of s2's children
-         (node-scene-insert s2 s1)]
-        [else
-         ;; Give up and rebalance
-         (nonempty-scene-union/rebalance s1 s2)]))
+  (define bv1 (scene-visible-bbox s1))
+  (define bi1 (scene-invisible-bbox s1))
+  (define bv2 (scene-visible-bbox s2))
+  (define bi2 (scene-invisible-bbox s2))
+  (let ([bv1  (if (and bv1 (> (bbox-badness bv1) 16.0)) (scene-visible-bbox/badness s1 16.0) bv1)]
+        [bi1  (if (and bi1 (> (bbox-badness bi1) 16.0)) (scene-invisible-bbox/badness s1 16.0) bi1)]
+        [bv2  (if (and bv2 (> (bbox-badness bv2) 16.0)) (scene-visible-bbox/badness s2 16.0) bv2)]
+        [bi2  (if (and bi2 (> (bbox-badness bi2) 16.0)) (scene-invisible-bbox/badness s2 16.0) bi2)]
+        )
+    (cond [(and (node-scene? s1)
+                (maybe-bbox-appx-contains-bbox? bv1 bv2)
+                (maybe-bbox-appx-contains-bbox? bi1 bi2))
+           ;; Try to insert s2 into one of s1's children
+           (node-scene-insert s1 s2)]
+          [(and (node-scene? s2)
+                (maybe-bbox-appx-contains-bbox? bv2 bv1)
+                (maybe-bbox-appx-contains-bbox? bi2 bi1))
+           ;; Try to insert s1 into one of s2's children
+           (node-scene-insert s2 s1)]
+          [else
+           ;; Give up and rebalance
+           (nonempty-scene-union/rebalance s1 s2)])))
 
 (: scene-union (-> Scene Scene Scene))
 ;; Compute the union of two scenes
@@ -236,7 +232,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
         [else  (nonempty-scene-union s1 s2)]))
 
 (: scene-union* (-> (Listof Scene) Scene))
-;; TODO: for each split, sort by left edge on longest axis?
+;; TODO: for each split, sort by min edge on longest axis?
 (define (scene-union* ss)
   (cond
     [(empty? ss)  empty-scene]
@@ -261,11 +257,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (let loop ([s s])
     (cond
       [(empty-scene? s)  s]
-      [(leaf-scene? s)
-       (define a (leaf-scene-shape s))
-       (define new-a (f a))
-       (cond [(eq? new-a a)  s]
-             [else  (make-leaf-scene new-a)])]
+      [(shape? s)  (f s)]
       [(node-scene? s)
        (define s1 (node-scene-neg s))
        (define s2 (node-scene-pos s))
@@ -277,76 +269,77 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (define s0 (trans-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene (trans-scene-affine s) new-s0)])]
+             [else  (make-trans-scene new-s0 (trans-scene-affine s))])]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-group-scene (group-scene-tag s) new-s0)])])))
+             [else  (make-group-scene new-s0 (group-scene-tag s))])])))
 
 ;; ===================================================================================================
 ;; Tight bounding boxes
 
-(: nonempty-scene-tight-bbox (-> Nonempty-Scene (U 'invisible 'visible) (U #f bbox)))
-(define (nonempty-scene-tight-bbox s kind)
-  (: nonempty-scene-bbox (-> Nonempty-Scene (U #f bbox)))
-  (define (nonempty-scene-bbox s)
+(: scene-recompute-bbox (-> Scene (U 'invisible 'visible) Nonnegative-Flonum (U #f bbox)))
+(define (scene-recompute-bbox s kind max-badness)
+  (: node-scene-bbox (-> node-scene (U #f bbox)))
+  (define (node-scene-bbox s)
     (if (eq? kind 'visible)
-        (nonempty-scene-visible-bbox s)
-        (nonempty-scene-invisible-bbox s)))
+        (node-scene-visible-bbox s)
+        (node-scene-invisible-bbox s)))
+  
+  (: set-node-scene-bbox! (-> node-scene bbox Void))
+  (define (set-node-scene-bbox! s b)
+    (define target-b (node-scene-bbox s))
+    (when target-b
+      (set-bbox-rect! target-b (bbox-rect b))
+      (set-bbox-badness! target-b (bbox-badness b))))
   
   (: shape-bbox (-> Shape FlAffine3 (U #f bbox)))
   (define (shape-bbox a t)
     (if (eq? kind 'visible)
-        (shape-visible-bbox a t #t)
-        (shape-invisible-bbox a t #t)))
+        (shape-visible-bbox a t)
+        (shape-invisible-bbox a t)))
   
-  (let loop ([s s] [t identity-flaffine3])
-    (define b (nonempty-scene-bbox s))
-    (define axial? (and b (or (identity-flaffine3? t) (flt3axial? t axial-tol))))
+  (let loop ([s s] [t identity-flaffine3] [max-badness max-badness])
     (cond
-      [(not b)  #f]
-      [(and (bbox-tight? b) axial?)
-       ;; A tight bounding box and a near-axial transform: just transform the box
-       (maybe-bbox-transform b t)]
-      [else
-       (define new-b
-         (cond
-           [(leaf-scene? s)
-            ;; Get the bounding box of the transformed shape
-            (shape-bbox (leaf-scene-shape s) t)]
-           [(node-scene? s)
-            (maybe-bbox-join (loop (node-scene-neg s) t)
-                             (loop (node-scene-pos s) t))]
-           [(trans-scene? s)
-            (loop (trans-scene-scene s)
-                  (flt3compose t (trans-scene-affine s)))]
-           [(group-scene? s)
-            (define s0 (group-scene-scene s))
-            (cond [(empty-scene? s0)  #f]
-                  [else  (loop s0 t)])]))
-       
-       (when (and new-b axial?)
-         (set-bbox-rect! b (flrect3-transform (bbox-rect new-b) (flt3inverse t)))
-         (set-bbox-tight?! b #t))
-       
-       new-b])))
+      [(empty-scene? s)  #f]
+      [(shape? s)  (shape-bbox s t)]
+      [(node-scene? s)
+       (define b (let ([b  (node-scene-bbox s)])
+                   (if b (bbox-transform b t) #f)))
+       (cond [(< (maybe-bbox-badness b) max-badness)  b]
+             [else
+              (define new-b
+                (maybe-bbox-join (loop (node-scene-neg s) t max-badness)
+                                 (loop (node-scene-pos s) t max-badness)))
+              (when new-b
+                (let ([new-b  (bbox-transform new-b (flt3inverse t))])
+                  (when (and (< (bbox-badness new-b) max-badness)
+                             (< (bbox-badness (bbox-transform new-b t)) max-badness))
+                    (set-node-scene-bbox! s new-b))))
+              new-b])]
+      [(trans-scene? s)
+       (loop (trans-scene-scene s)
+             (flt3compose t (trans-scene-affine s))
+             max-badness)]
+      [(group-scene? s)
+       (define s0 (group-scene-scene s))
+       (cond [(empty-scene? s0)  (bbox-transform zero-bbox t)]
+             [else  (loop s0 t max-badness)])]))
+  )
 
-(: scene-visible-tight-bbox (-> Scene (U #f bbox)))
-(define (scene-visible-tight-bbox s)
-  (cond [(empty-scene? s)  #f]
-        [else  (nonempty-scene-tight-bbox s 'visible)]))
+(: scene-visible-bbox/badness (-> Scene Nonnegative-Flonum (U #f bbox)))
+(define (scene-visible-bbox/badness s max-badness)
+  (scene-recompute-bbox s 'visible max-badness))
 
-(: scene-invisible-tight-bbox (-> Scene (U #f bbox)))
-(define (scene-invisible-tight-bbox s)
-  (cond [(empty-scene? s)  #f]
-        [else  (nonempty-scene-tight-bbox s 'invisible)]))
+(: scene-invisible-bbox/badness (-> Scene Nonnegative-Flonum (U #f bbox)))
+(define (scene-invisible-bbox/badness s max-badness)
+  (scene-recompute-bbox s 'invisible max-badness))
 
-(: scene-tight-bbox (-> Scene (U #f bbox)))
-(define (scene-tight-bbox s)
-  (cond [(empty-scene? s)  #f]
-        [else  (maybe-bbox-join (nonempty-scene-tight-bbox s 'visible)
-                                (nonempty-scene-tight-bbox s 'invisible))]))
+(: scene-bbox/badness (-> Scene Nonnegative-Flonum (U #f bbox)))
+(define (scene-bbox/badness s max-badness)
+  (maybe-bbox-join (scene-recompute-bbox s 'visible max-badness)
+                   (scene-recompute-bbox s 'invisible max-badness)))
 
 ;; ===================================================================================================
 ;; Tastes almost-but-not-quite-entirely-unlike map
@@ -362,7 +355,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: nonempty-scene-for-each! (-> Nonempty-Scene
                                 (Listof FlPlane3)
-                                (-> Shape (U #f FlRect3) FlAffine3 Nonnegative-Fixnum Any)
+                                (-> Shape FlAffine3 Nonnegative-Fixnum Any)
                                 Nonnegative-Fixnum
                                 Nonnegative-Fixnum))
 (define (nonempty-scene-for-each! s planes f start)
@@ -377,8 +370,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
             [else
              (define b (scene-bbox s))
              (define side (maybe-bbox-appx-classify/planes b parent-planes))
-             (if (and b (eq? side 'both) (not (bbox-tight? b)))
-                 (let ([b  (scene-tight-bbox s)])
+             (if (and b (eq? side 'both) (> (bbox-badness b) 16.0))
+                 (let ([b  (scene-bbox/badness s 16.0)])
                    (maybe-bbox-appx-classify/planes b parent-planes))
                  side)]))
     
@@ -386,8 +379,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
     
     (cond
       [(eq? side 'outside)   i]
-      [(leaf-scene? s)
-       (f (leaf-scene-shape s) (maybe-bbox-rect (scene-bbox s)) t i)
+      [(shape? s)
+       (f s t i)
        (unsafe-fx+ i 1)]
       [(node-scene? s)
        (let* ([i  (loop (node-scene-neg s) t planes i)]
@@ -403,7 +396,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: scene-for-each! (-> Scene
                        (Listof FlPlane3)
-                       (-> Shape (U #f FlRect3) FlAffine3 Nonnegative-Fixnum Any)
+                       (-> Shape FlAffine3 Nonnegative-Fixnum Any)
                        Nonnegative-Fixnum
                        Nonnegative-Fixnum))
 (define (scene-for-each! s planes f start)
@@ -411,15 +404,14 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       start
       (nonempty-scene-for-each! s planes f start)))
 
-(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape (U #f FlRect3) FlAffine3 B)
-                              (Listof B))))
+(: scene-extract (All (B) (-> Scene (Listof FlPlane3) (-> Shape FlAffine3 B) (Listof B))))
 (define (scene-extract s planes f)
   (: bs (Listof B))
   (define bs empty)
   (scene-for-each! s
                    planes
-                   (λ ([a : Shape] [r : (U #f FlRect3)] [t : FlAffine3] [i : Nonnegative-Fixnum])
-                     (set! bs (cons (f a r t) bs)))
+                   (λ ([a : Shape] [t : FlAffine3] [i : Nonnegative-Fixnum])
+                     (set! bs (cons (f a t) bs)))
                    0)
   bs)
 
@@ -427,16 +419,6 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; ===================================================================================================
 ;; Shape operations
-
-;; ===================================================================================================
-;; Shape flags
-
-(: shape-flags (-> Shape Flags))
-(define (shape-flags a)
-  (cond [(solid-shape? a)  (solid-shape-flags a)]
-        [(light-shape? a)  (light-shape-flags a)]
-        [(indicator-shape? a)  (indicator-shape-flags a)]
-        [(frozen-scene-shape? a)  (frozen-scene-shape-flags a)]))
 
 ;; ===================================================================================================
 ;; Extracting data for drawing passes
@@ -466,32 +448,32 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Shape visible and invisible bounding boxes
 
-(: shape-visible-bbox (-> Shape FlAffine3 Boolean (U #f bbox)))
-(define (shape-visible-bbox a t tight?)
+(: shape-visible-bbox (-> Shape FlAffine3 (U #f bbox)))
+(define (shape-visible-bbox a t)
   (cond
     [(solid-shape? a)
      (cond
-       [(triangle-shape? a)   (bbox (triangle-shape-rect a t) #t)]
-       [(rectangle-shape? a)  (bbox (rectangle-shape-rect a t) #t)]
-       [(sphere-shape? a)     (bbox (sphere-shape-rect a t) #t)])]
+       [(triangle-shape? a)   (bbox (triangle-shape-rect a t) 0.0)]
+       [(rectangle-shape? a)  (bbox (rectangle-shape-rect a t) 0.0)]
+       [(sphere-shape? a)     (bbox (sphere-shape-rect a t) 0.0)])]
     [(light-shape? a)      #f]
     [(indicator-shape? a)  #f]
     [(frozen-scene-shape? a)
-     (frozen-scene-shape-visible-bbox a t tight?)]))
+     (frozen-scene-shape-visible-bbox a t)]))
 
-(: shape-invisible-bbox (-> Shape FlAffine3 Boolean (U #f bbox)))
-(define (shape-invisible-bbox a t tight?)
+(: shape-invisible-bbox (-> Shape FlAffine3 (U #f bbox)))
+(define (shape-invisible-bbox a t)
   (cond
     [(solid-shape? a)  #f]
     [(light-shape? a)
      (cond
-       [(directional-light-shape? a)  (bbox directional-light-shape-rect #t)]
-       [(point-light-shape? a)        (bbox (point-light-shape-rect a t) #t)])]
+       [(directional-light-shape? a)  (bbox directional-light-shape-rect 0.0)]
+       [(point-light-shape? a)        (bbox (point-light-shape-rect a t) 0.0)])]
     [(indicator-shape? a)
      (cond
-       [(point-light-shell-shape? a)  (bbox (point-light-shell-shape-rect a t) #t)])]
+       [(point-light-shell-shape? a)  (bbox (point-light-shell-shape-rect a t) 0.0)])]
     [(frozen-scene-shape? a)
-     (frozen-scene-shape-invisible-bbox a t tight?)]))
+     (frozen-scene-shape-invisible-bbox a t)]))
 
 ;; ===================================================================================================
 ;; Shape and scene transformation (forced, not lazy)
@@ -539,9 +521,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 (define (scene-transform-shapes s t)
   (cond
     [(empty-scene? s)  s]
-    [(leaf-scene? s)
-     (define a (leaf-scene-shape s))
-     (scene-union* (map make-leaf-scene (shape-transform a t)))]
+    [(shape? s)  (scene-union* (shape-transform s t))]
     [(node-scene? s)
      (make-node-scene (scene-transform-shapes (node-scene-neg s) t)
                       (scene-transform-shapes (node-scene-pos s) t))]
@@ -608,11 +588,10 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 
 (: make-frozen-scene-shape-passes (-> frozen-scene-shape passes))
 (define (make-frozen-scene-shape-passes a)
+  (define s (scene-transform-shapes (frozen-scene-shape-scene a) identity-flaffine3))
   (merge-passes
-   (append* (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) identity-flaffine3)
-                           empty
-                           (λ ([s : Shape] [_ : (U #f FlRect3)] [t : FlAffine3])
-                             (map shape-passes (shape-transform s t)))))))
+   (append* (scene-extract s empty (λ ([s : Shape] [t : FlAffine3])
+                                     (map shape-passes (shape-transform s t)))))))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -638,41 +617,31 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
 ;; ===================================================================================================
 ;; Bounding box
 
-(: frozen-scene-shape-visible-bbox (-> frozen-scene-shape FlAffine3 Boolean (U #f bbox)))
-(define (frozen-scene-shape-visible-bbox a t tight?)
+(: frozen-scene-shape-visible-bbox (-> frozen-scene-shape FlAffine3 (U #f bbox)))
+(define (frozen-scene-shape-visible-bbox a t)
   (define s (frozen-scene-shape-scene a))
   (let* ([b  (scene-visible-bbox s)]
-         [b  (if (and b tight? (not (maybe-bbox-tight? b)))
-                 (scene-visible-tight-bbox s)
+         [b  (if (and b (> (bbox-badness b) tight-badness))
+                 (scene-visible-bbox/badness s tight-badness)
                  b)])
     (maybe-bbox-transform b t)))
 
-(: frozen-scene-shape-invisible-bbox (-> frozen-scene-shape FlAffine3 Boolean (U #f bbox)))
-(define (frozen-scene-shape-invisible-bbox a t tight?)
+(: frozen-scene-shape-invisible-bbox (-> frozen-scene-shape FlAffine3 (U #f bbox)))
+(define (frozen-scene-shape-invisible-bbox a t)
   (define s (frozen-scene-shape-scene a))
   (let* ([b  (scene-invisible-bbox s)]
-         [b  (if (and b tight? (not (maybe-bbox-tight? b)))
-                 (scene-invisible-tight-bbox s)
+         [b  (if (and b (> (bbox-badness b) tight-badness))
+                 (scene-invisible-bbox/badness s tight-badness)
                  b)])
     (maybe-bbox-transform b t)))
-
-;; ===================================================================================================
-;; Flags
-
-(: frozen-scene-shape-flags (-> frozen-scene-shape Flags))
-(define (frozen-scene-shape-flags a)
-  (scene-flags (frozen-scene-shape-scene a)))
 
 ;; ===================================================================================================
 ;; Transform
 
 (: frozen-scene-shape-transform (-> frozen-scene-shape FlAffine3 (Listof Shape)))
 (define (frozen-scene-shape-transform a t)
-  (append*
-   (scene-extract (scene-transform-shapes (frozen-scene-shape-scene a) t)
-                  empty
-                  (λ ([a : Shape] [_ : (U #f FlRect3)] [t : FlAffine3])
-                    (shape-transform a t)))))
+  (define s (scene-transform-shapes (frozen-scene-shape-scene a) t))
+  (append* (scene-extract s empty shape-transform)))
 
 ;; ===================================================================================================
 ;; ===================================================================================================
@@ -687,8 +656,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (let loop ([s s])
     (cond
       [(empty-scene? s)  s]
-      [(leaf-scene? s)
-       (if (p? (leaf-scene-shape s)) s empty-scene)]
+      [(shape? s)  (if (p? s) s empty-scene)]
       [(node-scene? s)
        (define s1 (node-scene-neg s))
        (define s2 (node-scene-pos s))
@@ -700,12 +668,12 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (define s0 (trans-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene (trans-scene-affine s) new-s0)])]
+             [else  (make-trans-scene new-s0 (trans-scene-affine s))])]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (define new-s0 (loop s0))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-group-scene (group-scene-tag s) new-s0)])])))
+             [else  (make-group-scene new-s0 (group-scene-tag s))])])))
 
 ;; ===================================================================================================
 ;; Mapping over groups
@@ -719,8 +687,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
              [as : (Listof A)  empty])
     (cond
       [(empty-scene? s)  as]
-      [(leaf-scene? s)  as]
-      [(let ([tags  (container-scene-child-tags s)])
+      [(shape? s)  as]
+      [(let ([tags  (scene-tags s)])
          (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
        as]
       [(node-scene? s)
@@ -742,8 +710,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
              [as : (Listof A)  empty])
     (cond
       [(empty-scene? s)  as]
-      [(leaf-scene? s)  as]
-      [(let ([tags  (container-scene-child-tags s)])
+      [(shape? s)  as]
+      [(let ([tags  (scene-tags s)])
          (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
        as]
       [(node-scene? s)
@@ -767,7 +735,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (let loop ([t  identity-flaffine3] [s s])
     (cond
       [(empty-scene? s)  empty]
-      [(leaf-scene? s)  empty]
+      [(shape? s)  empty]
       [(node-scene? s)
        (append (loop t (node-scene-neg s))
                (loop t (node-scene-pos s)))]
@@ -789,8 +757,8 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
   (let loop ([s s] [ns : (Listof+1 Tag)  ns])
     (cond
       [(empty-scene? s)  s]
-      [(leaf-scene? s)  s]
-      [(let ([tags  (container-scene-child-tags s)])
+      [(shape? s)  s]
+      [(let ([tags  (scene-tags s)])
          (not (andmap (λ ([n : Tag]) (tags-contain? tags n)) ns)))
        s]
       [(node-scene? s)
@@ -804,7 +772,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (define s0 (trans-scene-scene s))
        (define new-s0 (loop s0 ns))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene (trans-scene-affine s) new-s0)])]
+             [else  (make-trans-scene new-s0 (trans-scene-affine s))])]
       [(group-scene? s)
        (define n0 (group-scene-tag s))
        (cond [(equal? n0 (first ns))
@@ -814,12 +782,12 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
                        (define s0 (group-scene-scene s))
                        (define new-s0 (loop s0 ns))
                        (cond [(eq? new-s0 s0)  s]
-                             [else  (make-group-scene n0 new-s0)])]))]
+                             [else  (make-group-scene new-s0 n0)])]))]
              [else
               (define s0 (group-scene-scene s))
               (define new-s0 (loop s0 ns))
               (cond [(eq? new-s0 s0)  s]
-                    [else  (make-group-scene n0 new-s0)])])])))
+                    [else  (make-group-scene new-s0 n0)])])])))
 
 ;; ===================================================================================================
 ;; Scene-ray-intersection
@@ -850,18 +818,17 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       (let* ([b  (scene-bbox s)]
              [r  (maybe-bbox-rect b)])
         (define-values (tmin tmax) (maybe-flrect3-line-intersects r v dv))
-        (if (and b tmin tmax (not (bbox-tight? b)))
-            (let ([r  (maybe-bbox-rect (scene-tight-bbox s))])
+        (if (and b tmin tmax (> (bbox-badness b) 16.0))
+            (let ([r  (maybe-bbox-rect (scene-bbox/badness s 16.0))])
               (maybe-flrect3-line-intersects r v dv))
             (values tmin tmax))))
     (cond
       [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
-      [(leaf-scene? s)
-       (define a (leaf-scene-shape s))
-       (cond [(frozen-scene-shape? a)
-              (loop (frozen-scene-shape-scene a) v dv t)]
+      [(shape? s)
+       (cond [(frozen-scene-shape? s)
+              (loop (frozen-scene-shape-scene s) v dv t)]
              [else
-              (define h (shape-line-intersect a v dv))
+              (define h (shape-line-intersect s v dv))
               (if (or (not h) (< (line-hit-distance h) 0.0))
                   #f
                   (transform-line-hit h (flt3inverse t)))])]
@@ -912,7 +879,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
       (scene-for-each!
        s
        planes
-       (λ ([a : Shape] [_ : (U #f FlRect3)] [t : FlAffine3] [i : Nonnegative-Fixnum])
+       (λ ([a : Shape] [t : FlAffine3] [i : Nonnegative-Fixnum])
          (define b (vector-ref bs i))
          (set-draw-passes-passes! b (shape-passes a))
          (set-draw-passes-affine! b t))
@@ -935,7 +902,7 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
          [(or (eq? side 'pos) (eq? side 'poszero) (eq? side 'zero))  s]
          [(eq? side 'neg)  empty-scene]
          ;; side is either 'negzero or 'both
-         [(leaf-scene? s)  s]
+         [(shape? s)  s]
          [(node-scene? s)
           (define s1 (node-scene-neg s))
           (define s2 (node-scene-pos s))
@@ -950,27 +917,27 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
                  [new-p : (U #f FlPlane3)  (flt3apply/plane inv-t0 p)])
             (cond [new-p  (define new-s0 (loop s0 new-p))
                           (cond [(eq? new-s0 s0)  s]
-                                [else  (make-trans-scene t0 new-s0)])]
+                                [else  (make-trans-scene new-s0 t0)])]
                   [else  empty-scene]))]
          [(group-scene? s)
           (define s0 (group-scene-scene s))
           (define new-s0 (loop s0 p))
           (cond [(eq? new-s0 s0)  s]
-                [else  (make-group-scene (group-scene-tag s) new-s0)])])])))
+                [else  (make-group-scene new-s0 (group-scene-tag s))])])])))
 
 ;; ===================================================================================================
 ;; Scene rect culling
 
 (: scene-rect-cull* (-> Scene FlRect3 Scene))
 (define (scene-rect-cull* s r)
-  (define orig-b (bbox r #t))
+  (define orig-b (bbox r 0.0))
   (let loop ([s s] [t  identity-flaffine3] [b orig-b])
     (cond
       [(empty-scene? s)  s]
       [(maybe-bbox-appx-contains-bbox? b (scene-bbox s))  s]
       [(maybe-bbox-appx-disjoint? b (scene-bbox s))  empty-scene]
       ;; The shape's bounding box is partly inside and partly outside
-      [(leaf-scene? s)  s]
+      [(shape? s)  s]
       [(node-scene? s)
        (define s1 (node-scene-neg s))
        (define s2 (node-scene-pos s))
@@ -985,13 +952,12 @@ parametric polymorphism and no higher-order types, Typed Racket generates an O(1
        (define new-b (bbox-transform orig-b new-t))
        (define new-s0 (loop s0 new-t new-b))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene t0 new-s0)])]
+             [else  (make-trans-scene new-s0 t0)])]
       [(group-scene? s)
-       (define n0 (group-scene-tag s))
        (define s0 (group-scene-scene s))
        (define new-s0 (loop s0 t b))
        (cond [(eq? new-s0 s0)  s]
-             [else  (make-group-scene n0 new-s0)])])))
+             [else  (make-group-scene new-s0 (group-scene-tag s))])])))
 
 (: scene-rect-cull (-> Scene FlRect3 Scene))
 (define (scene-rect-cull s b)

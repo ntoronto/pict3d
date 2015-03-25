@@ -16,8 +16,7 @@
          "../shader-code.rkt"
          "../serialize-vertices.rkt"
          "../types.rkt"
-         "types.rkt"
-         "flags.rkt")
+         "types.rkt")
 
 (provide make-triangle-shape
          set-triangle-shape-color
@@ -47,18 +46,7 @@
 
 (: make-triangle-shape (-> vtx vtx vtx Boolean triangle-shape))
 (define (make-triangle-shape v1 v2 v3 back?)
-  (define fs (flags-join visible-flag
-                         (if (and (color-opaque? (vtx-color v1))
-                                  (color-opaque? (vtx-color v2))
-                                  (color-opaque? (vtx-color v3)))
-                             opaque-flag
-                             transparent-flag)
-                         (if (or (color-emitting? (vtx-emitted v1))
-                                 (color-emitting? (vtx-emitted v2))
-                                 (color-emitting? (vtx-emitted v3)))
-                             emitting-flag
-                             nonemitting-flag)))
-  (triangle-shape (lazy-passes) fs v1 v2 v3 back?))
+  (triangle-shape (lazy-passes) v1 v2 v3 back?))
 
 (: make-quad-shapes (-> vtx vtx vtx vtx  Boolean (List triangle-shape triangle-shape)))
 (define (make-quad-shapes v1 v2 v3 v4 back?)
@@ -80,19 +68,15 @@
 
 (: make-rectangle-shape (-> FlRect3 FlV4 FlV4 FlV4 Boolean rectangle-shape))
 (define (make-rectangle-shape b c e m back?)
-  (define fs (flags-join visible-flag (color-opacity-flag c) (color-emitting-flag e)))
-  (rectangle-shape (lazy-passes) fs b c e m back?))
+  (rectangle-shape (lazy-passes) b c e m back?))
 
 ;; ===================================================================================================
 ;; Set attributes
 
 (: set-triangle-shape-color (-> triangle-shape FlV4 triangle-shape))
 (define (set-triangle-shape-color a c)
-  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
-  (define new-fs (flags-join (flags-subtract fs opacity-flags)
-                             (color-opacity-flag c)))
+  (match-define (triangle-shape _ v1 v2 v3 back?) a)
   (triangle-shape (lazy-passes)
-                  new-fs
                   (vtx-set-color v1 c)
                   (vtx-set-color v2 c)
                   (vtx-set-color v3 c)
@@ -100,11 +84,8 @@
 
 (: set-triangle-shape-emitted (-> triangle-shape FlV4 triangle-shape))
 (define (set-triangle-shape-emitted a e)
-  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
-  (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                             (color-emitting-flag e)))
+  (match-define (triangle-shape _ v1 v2 v3 back?) a)
   (triangle-shape (lazy-passes)
-                  new-fs
                   (vtx-set-emitted v1 e)
                   (vtx-set-emitted v2 e)
                   (vtx-set-emitted v3 e)
@@ -112,8 +93,8 @@
 
 (: set-triangle-shape-material (-> triangle-shape FlV4 triangle-shape))
 (define (set-triangle-shape-material a m)
-  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
-  (triangle-shape (lazy-passes) fs
+  (match-define (triangle-shape _ v1 v2 v3 back?) a)
+  (triangle-shape (lazy-passes)
                   (vtx-set-material v1 m)
                   (vtx-set-material v2 m)
                   (vtx-set-material v3 m)
@@ -121,22 +102,18 @@
 
 (: set-rectangle-shape-color (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-color a c)
-  (match-define (rectangle-shape _ fs b old-c e m inside?) a)
-  (define new-fs (flags-join (flags-subtract fs opacity-flags)
-                             (color-opacity-flag c)))
-  (rectangle-shape (lazy-passes) new-fs b c e m inside?))
+  (match-define (rectangle-shape _ b old-c e m inside?) a)
+  (rectangle-shape (lazy-passes) b c e m inside?))
 
 (: set-rectangle-shape-emitted (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-emitted a e)
-  (match-define (rectangle-shape _ fs b c old-e m inside?) a)
-  (define new-fs (flags-join (flags-subtract fs emitting-flags)
-                             (color-emitting-flag e)))
-  (rectangle-shape (lazy-passes) new-fs b c e m inside?))
+  (match-define (rectangle-shape _ b c old-e m inside?) a)
+  (rectangle-shape (lazy-passes) b c e m inside?))
 
 (: set-rectangle-shape-material (-> rectangle-shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-material a m)
-  (match-define (rectangle-shape _ fs b c e old-m inside?) a)
-  (rectangle-shape (lazy-passes) fs b c e m inside?))
+  (match-define (rectangle-shape _ b c e old-m inside?) a)
+  (rectangle-shape (lazy-passes) b c e m inside?))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -306,7 +283,7 @@ code
 
 (: make-triangle-shape-passes (-> triangle-shape passes))
 (define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ fs v1 v2 v3 back?) a)
+  (match-define (triangle-shape _ v1 v2 v3 back?) a)
   (define-values (start stop step)
     (if back?
         (values 2 -1 -1)
@@ -340,7 +317,9 @@ code
            [i  (serialize-material-reflectances/bytes draw-data i m)])
       i))
   
-  (if (flags-subset? transparent-flag fs)
+  (if (or (< (flv4-ref (vtx-color v1) 3) 1.0)
+          (< (flv4-ref (vtx-color v2) 3) 1.0)
+          (< (flv4-ref (vtx-color v3) 3) 1.0))
       (passes
        #()
        #()
@@ -386,7 +365,7 @@ code
 
 (: triangle-shape-easy-transform (-> triangle-shape FlAffine3 triangle-shape))
 (define (triangle-shape-easy-transform a t)
-  (match-define (triangle-shape passes fs v1 v2 v3 back?) a)
+  (match-define (triangle-shape passes v1 v2 v3 back?) a)
   (define consistent? (flt3consistent? t))
   
   (: transform-vtx (-> vtx vtx))
@@ -402,7 +381,6 @@ code
            (if n (flv3neg n) +z-flv3)))))
   
   (triangle-shape (lazy-passes)
-                  fs
                   (transform-vtx v1)
                   (transform-vtx v2)
                   (transform-vtx v3)
@@ -419,7 +397,7 @@ code
 
 (: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
 (define (rectangle-shape->triangle-shapes a)
-  (match-define (rectangle-shape _ fs b c e m inside?) a)
+  (match-define (rectangle-shape _ b c e m inside?) a)
   (define-values (v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
   
   (: do-make-quad-shapes (-> FlV3 FlV3 FlV3 FlV3 FlV3 (List triangle-shape triangle-shape)))
