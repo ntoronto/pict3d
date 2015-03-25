@@ -3,6 +3,7 @@
 (require (only-in racket/unsafe/ops
                   unsafe-fx+)
          racket/list
+         racket/promise
          "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
@@ -122,13 +123,13 @@
   (cond
     [(empty-scene? s)  s]
     [(shape? s)
-     (define ss (shape-deep-transform s t))
-     (if (list? ss) (scene-union* ss) ss)]
+     (scene-union* (shape-deep-transform s t))]
     [(node-scene? s)
      (make-node-scene (scene-deep-transform (node-scene-neg s) t)
                       (scene-deep-transform (node-scene-pos s) t))]
     [(trans-scene? s)
-     (scene-deep-transform (trans-scene-scene s) (flt3compose t (trans-scene-affine s)))]
+     (scene-deep-transform (trans-scene-scene s)
+                           (flt3compose t (trans-scene-affine s)))]
     [(group-scene? s)
      (scene-deep-transform (group-scene-scene s) t)]))
 
@@ -286,16 +287,17 @@
 ;; ===================================================================================================
 ;; Scene-ray-intersection
 
-(: transform-line-hit (-> line-hit FlAffine3 line-hit))
-(define (transform-line-hit h t)
-  (cond [(identity-flaffine3? t)  h]
+(: transform-surface-data (-> (Promise surface-data) FlAffine3 (Promise surface-data)))
+(define (transform-surface-data data t)
+  (cond [(identity-flaffine3? t)  data]
         [else
-         (line-hit (line-hit-distance h)
-                   (flt3apply/pos t (line-hit-point h))
-                   (let ([n  (line-hit-normal h)])
-                     (and n (flt3apply/norm t n))))]))
+         (let ([data  (force data)])
+           (delay (surface-data (flt3apply/pos t (surface-data-point data))
+                                (let ([n  (surface-data-normal data)])
+                                  (and n (flt3apply/norm t n))))))]))
 
-(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3 (U #f line-hit)))
+(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3
+                                    (Values (U #f Flonum) (U #f (Promise surface-data)))))
 (define (nonempty-scene-ray-intersect s v dv)
   (let loop ([s s] [v v] [dv dv] [t  identity-flaffine3])
     (define-values (tmin tmax)
@@ -307,18 +309,22 @@
               (maybe-flrect3-line-intersects r v dv))
             (values tmin tmax))))
     (cond
-      [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  #f]
+      [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  (values #f #f)]
       [(shape? s)
-       (define h (shape-line-intersect s v dv))
-       (if (or (not h) (< (line-hit-distance h) 0.0))
-           #f
-           (transform-line-hit h (flt3inverse t)))]
+       (define-values (time data) (shape-line-intersect s v dv))
+       (if (or (not time) (not data) (< time 0.0))
+           (values #f #f)
+           (values time (transform-surface-data data (flt3inverse t))))]
       [(node-scene? s)
-       (define h1 (loop (node-scene-neg s) v dv t))
-       (define h2 (loop (node-scene-pos s) v dv t))
-       (if (and h1 h2)
-           (if (<= (line-hit-distance h1) (line-hit-distance h2)) h1 h2)
-           (if h1 h1 h2))]
+       (define-values (time1 data1) (loop (node-scene-neg s) v dv t))
+       (define-values (time2 data2) (loop (node-scene-pos s) v dv t))
+       (if (and time1 time2 data1 data2)
+           (if (<= time1 time2)
+               (values time1 data1)
+               (values time2 data2))
+           (if (and time1 data1)
+               (values time1 data1)
+               (values time2 data2)))]
       [(trans-scene? s)
        (let* ([t0 : FlAffine3  (flt3inverse (trans-scene-affine s))]
               [v  : FlV3  (flt3apply/pos t0 v)]
@@ -327,12 +333,12 @@
          (loop (trans-scene-scene s) v dv t))]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
-       (cond [(empty-scene? s0)  #f]
+       (cond [(empty-scene? s0)  (values #f #f)]
              [else  (loop s0 v dv t)])])))
 
-(: scene-ray-intersect (-> Scene FlV3 FlV3 (U #f line-hit)))
+(: scene-ray-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data)))))
 (define (scene-ray-intersect s v dv)
-  (if (empty-scene? s) #f (nonempty-scene-ray-intersect s v dv)))
+  (if (empty-scene? s) (values #f #f) (nonempty-scene-ray-intersect s v dv)))
 
 ;; ===================================================================================================
 ;; Scene drawing

@@ -29,8 +29,7 @@
     (if (scene-flattened? s)
         (make-frozen-scene-shape/transformed (assert s nonempty-scene?))
         (error 'make-frozen-scene-shape
-               "internal error: expected scene-deep-transform to return a flattened scene; 
- given ~e"
+               "internal error: expected scene-deep-transform to return a flattened scene; got ~e"
                s))))
 
 ;; ===================================================================================================
@@ -60,7 +59,9 @@
 (: get-frozen-scene-shape-passes (-> shape passes))
 (define (get-frozen-scene-shape-passes s)
   (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
-    (merge-passes (scene-extract s empty (λ ([s : shape] [_ : FlAffine3]) (shape-passes s))))))
+    (merge-passes
+     (append* (scene-extract s empty (λ ([s : shape] [t : FlAffine3])
+                                       (map shape-passes (shape-deep-transform s t))))))))
 
 ;; ===================================================================================================
 ;; Bounding box
@@ -83,15 +84,16 @@
 ;; ===================================================================================================
 ;; Transform
 
-(: frozen-scene-shape-deep-transform (-> shape FlAffine3 frozen-scene-shape))
+(: frozen-scene-shape-deep-transform (-> shape FlAffine3 (Listof shape)))
 (define (frozen-scene-shape-deep-transform s t)  
   (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
-    (make-frozen-scene-shape s t)))
+    (append* (scene-extract (scene-deep-transform s t) empty shape-deep-transform))))
 
 ;; ===================================================================================================
 ;; Ray intersection
 
-(: frozen-scene-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(: frozen-scene-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
+                                                                 (U #f (Promise surface-data)))))
 (define (frozen-scene-shape-line-intersect s v dv)
   (let ([s  (assert s frozen-scene-shape?)])
     (nonempty-scene-ray-intersect (frozen-scene-shape-scene s) v dv)))

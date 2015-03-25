@@ -704,39 +704,33 @@
 (define (trace p v1 to)
   (cond
     [(pos? to)
-     (let ([v2  to])
-       (let ([dv : FlV3  (flv3- v2 v1)])
-         (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
-         (and h
-              (<= (line-hit-distance h) 1.0)
-              (call/flv3-values (line-hit-point h) pos))))]
+     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 (flv3- to v1)))
+     (and time data (flv3->pos (surface-data-point (force data))))]
     [else
-     (let ([dv  to])
-       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (and h (call/flv3-values (line-hit-point h) pos)))]))
+     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 to))
+     (and time data (flv3->pos (surface-data-point (force data))))]))
 
 (: trace/normal (-> Pict3D Pos (U Pos Dir) (Values (U #f Pos) (U #f Dir))))
 (define (trace/normal p v1 to)
   (cond
     [(pos? to)
-     (let ([v2  to])
-       (let ([dv : FlV3  (flv3- v2 v1)])
-         (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
-         (cond [(and h (<= (line-hit-distance h) 1.0))
-                (let ([v  (line-hit-point h)]
-                      [n  (line-hit-normal h)])
-                  (values (call/flv3-values v pos)
-                          (and n (call/flv3-values n dir))))]
-               [else  (values #f #f)])))]
+     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 (flv3- to v1)))
+     (cond [(and time data (<= time 1.0))
+            (let ([data  (force data)])
+              (define v (surface-data-point data))
+              (define n (surface-data-normal data))
+              (values (flv3->pos v) (and n (flv3->dir n))))]
+           [else
+            (values #f #f)])]
     [else
-     (let ([dv  to])
-       (define h (scene-ray-intersect (pict3d-scene p) v1 dv))
-       (cond [(not h)  (values #f #f)]
-             [else
-              (let ([v  (line-hit-point h)]
-                    [n  (line-hit-normal h)])
-                (values (call/flv3-values v pos)
-                        (and n (call/flv3-values n dir))))]))]))
+     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 to))
+     (cond [(and time data)
+            (let ([data  (force data)])
+              (define v (surface-data-point data))
+              (define n (surface-data-normal data))
+              (values (flv3->pos v) (and n (flv3->dir n))))]
+           [else
+            (values #f #f)])]))
 
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)

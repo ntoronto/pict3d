@@ -5,6 +5,7 @@
 (require racket/list
          racket/vector
          racket/match
+         racket/promise
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
@@ -469,8 +470,8 @@ code
                 [else
                  (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
-;; Moller-Trumbore
+(: triangle-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
+                                                             (U #f (Promise surface-data)))))
 (define (triangle-shape-line-intersect s o d)
   (let ([s  (assert s triangle-shape?)])
     (define v0 (vtx-position (triangle-shape-vtx1 s)))
@@ -478,27 +479,33 @@ code
     (define v2 (vtx-position (triangle-shape-vtx3 s)))
     (define back? (triangle-shape-back? s))
     (let-values ([(v0 v1)  (if back? (values v1 v0) (values v0 v1))])
-      (define t (triangle-intersect-time v0 v1 v2 o d))
+      (define time (triangle-intersect-time v0 v1 v2 o d))
       (cond
-        [(not t)  #f]
+        [(not time)  (values #f #f)]
         [else
-         (line-hit t
-                   (flv3fma d t o)
-                   (let ([norm  (flv3triangle-normal v0 v1 v2)])
-                     (and norm (if back? (flv3neg norm) norm))))]))))
+         (define data
+           (delay (surface-data
+                   (flv3fma d time o)
+                   (let ([n  (flv3triangle-normal v0 v1 v2)])
+                     (and n (if back? (flv3neg n) n))))))
+         (values time data)]))))
 
-(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
+                                                              (U #f (Promise surface-data)))))
 (define (rectangle-shape-line-intersect s v dv)
   (let ([s  (assert s rectangle-shape?)])
     (define b (rectangle-shape-axial-rect s))
     (define-values (tmin tmax) (flrect3-line-intersects b v dv))
     (define inside? (rectangle-shape-inside? s))
-    (define t (if inside? tmax tmin))
-    (cond [(not t)  #f]
+    (define time (if inside? tmax tmin))
+    (cond [(not time)  (values #f #f)]
           [else
-           (define p (flrect3-closest-point b (flv3fma dv t v)))
-           (line-hit t p (let ([norm  (assert (flrect3-point-normal b p) values)])
-                           (if inside? (flv3neg norm) norm)))])))
+           (define data
+             (delay (define p (flrect3-closest-point b (flv3fma dv time v)))
+                    (define n (let ([n  (assert (flrect3-point-normal b p) values)])
+                                (if inside? (flv3neg n) n)))
+                    (surface-data p n)))
+           (values time data)])))
 
 ;; ===================================================================================================
 
@@ -510,7 +517,7 @@ code
    get-triangle-shape-passes
    (λ (s kind t) (and (eq? kind 'visible) (get-triangle-shape-bbox s t)))
    triangle-shape-transform
-   triangle-shape-transform
+   (λ (s t) (list (triangle-shape-transform s t)))
    triangle-shape-line-intersect))
 
 (define rectangle-shape-functions

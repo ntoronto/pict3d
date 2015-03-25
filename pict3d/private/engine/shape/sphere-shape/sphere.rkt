@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/match
+         racket/promise
          typed/opengl
          math/flonum
          "../../../math.rkt"
@@ -84,7 +85,8 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(: sphere-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
+                                                           (U #f (Promise surface-data)))))
 (define (sphere-shape-line-intersect a v dv)
   (let* ([a  (assert a sphere-shape?)]
          [s : FlAffine3  (flt3inverse (sphere-shape-affine a))]
@@ -92,12 +94,15 @@
          [sdv : FlV3  (flt3apply/dir s dv)])
     (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
     (define inside? (sphere-shape-inside? a))
-    (define t (if inside? tmax tmin))
-    (and t (line-hit t
-                     (flv3fma dv t v)
-                     (let ([norm  (flv3normalize (flv3fma sdv t sv))])
-                       (and norm (flt3apply/norm (flt3inverse s)
-                                                 (if inside? (flv3neg norm) norm))))))))
+    (define time (if inside? tmax tmin))
+    (cond [(not time)  (values #f #f)]
+          [else
+           (define data
+             (delay (surface-data
+                     (flv3fma dv time v)
+                     (let ([n  (flv3normalize (flv3fma sdv time sv))])
+                       (and n (flt3apply/norm (flt3inverse s) (if inside? (flv3neg n) n)))))))
+           (values time data)])))
 
 ;; ===================================================================================================
 
@@ -109,5 +114,5 @@
    get-sphere-shape-passes
    (λ (s kind t) (and (eq? kind 'visible) (get-sphere-shape-bbox s t)))
    sphere-shape-transform
-   sphere-shape-transform
+   (λ (s t) (list (sphere-shape-transform s t)))
    sphere-shape-line-intersect))

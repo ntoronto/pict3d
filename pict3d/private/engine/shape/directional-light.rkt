@@ -165,5 +165,5 @@ code
    get-directional-light-shape-passes
    (λ (s kind t) (and (eq? kind 'invisible) directional-light-shape-bbox))
    directional-light-shape-transform
-   directional-light-shape-transform
-   (λ (s v dv) #f)))
+   (λ (s t) (list (directional-light-shape-transform s t)))
+   (λ (s v dv) (values #f #f))))

@@ -256,5 +256,5 @@ code
    get-point-light-shell-shape-passes
    (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shell-shape-bbox s t)))
    point-light-shell-shape-transform
-   point-light-shell-shape-transform
-   (λ (s v dv) #f)))
+   (λ (s t) (list (point-light-shell-shape-transform s t)))
+   (λ (s v dv) (values #f #f))))

@@ -2,6 +2,7 @@
 
 (require (for-syntax racket/base)
          racket/list
+         racket/promise
          "../../math.rkt"
          "../../gl.rkt"
          "../draw.rkt"
@@ -97,9 +98,8 @@
 ;; ===================================================================================================
 ;; Collision detection types
 
-(struct line-hit
-  ([distance : Flonum]
-   [point : FlV3]
+(struct surface-data
+  ([point : FlV3]
    [normal : (U #f FlV3)])
   #:transparent)
 
@@ -113,8 +113,8 @@
    [get-passes : (-> shape passes)]
    [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
    [fast-transform : (-> shape FlAffine3 (U #f shape))]
-   [deep-transform : (-> shape FlAffine3 (U shape (Listof shape)))]
-   [line-intersect : (-> shape FlV3 FlV3 (U #f line-hit))])
+   [deep-transform : (-> shape FlAffine3 (Listof shape))]
+   [line-intersect : (-> shape FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data))))])
   #:transparent)
 
 (struct shape
@@ -155,11 +155,11 @@
 (define (shape-fast-transform s t)
   ((shape-functions-fast-transform (shape-vtable s)) s t))
 
-(: shape-deep-transform (-> shape FlAffine3 (U shape (Listof shape))))
+(: shape-deep-transform (-> shape FlAffine3 (Listof shape)))
 (define (shape-deep-transform s t)
   ((shape-functions-deep-transform (shape-vtable s)) s t))
 
-(: shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(: shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data)))))
 (define (shape-line-intersect s v dv)
   ((shape-functions-line-intersect (shape-vtable s)) s v dv))
 
