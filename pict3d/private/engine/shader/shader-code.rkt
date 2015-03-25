@@ -4,7 +4,7 @@
          racket/match
          racket/list
          typed/opengl
-         "../gl.rkt")
+         "../../gl.rkt")
 
 (provide (all-defined-out))
 

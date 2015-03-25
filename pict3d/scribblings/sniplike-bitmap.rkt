@@ -16,18 +16,18 @@
   (define s (pict3d-scene p))
   (define scale 1.0)
   
-  (define sunlight-scenes
+  (define sunlight-pict3ds
     (if add-sunlight?
-        (list standard-over-light-scene
-              standard-under-light-scene)
+        (list standard-over-light
+              standard-under-light)
         empty))
   
-  (define light-scenes
+  (define light-pict3ds
     (if add-indicators?
         (scene-light-indicators s)
         empty))
   
-  (define axes-pos+scenes
+  (define axes-pos+picts
     (if add-indicators?
         (cons (cons origin (scene-origin-indicator scale))
               (scene-basis-indicators s scale))
@@ -38,15 +38,18 @@
       (if t t ((current-pict3d-auto-camera) p))))
   
   (define-values (_dx _dy _dz v0) (affine->cols view))
-  (define axes-scenes
-    (for/fold ([scenes empty]) ([pos+scene  (in-list axes-pos+scenes)])
-      (match-define (cons v s) pos+scene)
+  (define axes-pict3ds
+    (for/fold (;[picts : (Listof Pict3D)  empty]
+               [picts empty]
+               )
+              ([pos+picts  (in-list axes-pos+picts)])
+      (match-define (cons v p) pos+picts)
       (if (< (pos-dist v v0) (* scale 0.015))
-          scenes
-          (cons s scenes))))
+          picts
+          (cons p picts))))
   
-  (define scenes
-    (cons s (append sunlight-scenes light-scenes axes-scenes)))
+  (define picts
+    (cons p (append sunlight-pict3ds light-pict3ds axes-pict3ds)))
   
   (parameterize ([current-pict3d-auto-camera  (λ (_) view)])
-    (pict3d->bitmap (pict3d (scene-union* scenes)) width height)))
+    (pict3d->bitmap (combine picts) width height)))

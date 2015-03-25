@@ -21,7 +21,7 @@ performant, modern 3D engine.
 It's getting there.
 
 Pict3D draws on @racketmodname[pict] for inspiration, though some aspects of working in three
-dimensions make direct functional analogues impossible or very difficult.
+dimensions make direct analogues impossible or very difficult.
 For example,
 @itemlist[
  @item{In a 3D scene, solid colors alone are insufficient to indicate the shapes of objects.}
@@ -1596,8 +1596,8 @@ The defaults are sufficient for nearly every use, allowing both microscopic and 
 are orders of magnitude smaller and larger than most 3D engines allow.
 
 The only feasible reason to change these is to set the far plane as a speed optimization.
-(Pict3D's rendering engine won't process anything for drawing that it can prove is beyond the far
-plane.)
+(Pict3D's rendering engine won't process anything for drawing that it can prove is outside the
+@hyperlink["http://en.wikipedia.org/wiki/Viewing_frustum"]{view frustum}.)
 }
 
 @deftypedparam[current-pict3d-legacy? legacy? Boolean Boolean (#:value #f)]{

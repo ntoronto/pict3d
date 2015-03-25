@@ -20,9 +20,9 @@ Turns out the former is about 10% faster.
          racket/flonum
          racket/math
          (except-in typed/opengl/ffi -> cast)
-         "../ffi.rkt"
-         "../math.rkt"
-         "utils.rkt")
+         "../../ffi.rkt"
+         "../../math.rkt"
+         "../utils.rkt")
 
 (provide (all-defined-out))
 

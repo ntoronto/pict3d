@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require "private/engine/draw-passes.rkt")
+(require "private/engine/draw.rkt")
 
 (provide Engine-Debug-Pass
          engine-debug-passes

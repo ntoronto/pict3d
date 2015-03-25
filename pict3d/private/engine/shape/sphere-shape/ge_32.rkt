@@ -1,21 +1,17 @@
 #lang typed/racket/base
 
-(require racket/unsafe/ops
-         racket/list
+(require racket/list
          racket/match
          typed/opengl
-         (except-in typed/opengl/ffi -> cast)
-         math/flonum
          "../../../math.rkt"
-         "../../../gl.rkt"
          "../../../utils.rkt"
+         "../../shader.rkt"
+         "../../draw.rkt"
+         "../../scene.rkt"
          "../../utils.rkt"
-         "../../shader-code.rkt"
-         "../../serialize-vertices.rkt"
-         "../../types.rkt"
-         "../types.rkt")
+         "sphere-type.rkt")
 
-(provide make-sphere-shape-passes)
+(provide get-sphere-shape-passes)
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -366,9 +362,9 @@ code
 ;; ===================================================================================================
 ;; Sphere shape passes
 
-(: make-sphere-shape-passes (-> sphere-shape passes))
-(define (make-sphere-shape-passes a)
-  (match-define (sphere-shape _ t c e m inside?) a)
+(: get-sphere-shape-passes (-> shape passes))
+(define (get-sphere-shape-passes s)
+  (match-define (sphere-shape _ _ t c e m inside?) s)
   
   (define mat-size (program-code-vao-size (sphere-mat-program-code)))
   (define mat-data (make-bytes mat-size))

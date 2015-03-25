@@ -4,13 +4,13 @@
          math/flonum
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
-         "../math.rkt"
-         "../gl.rkt"
+         "../../math.rkt"
+         "../../gl.rkt"
+         "../../utils.rkt"
          "../utils.rkt"
-         "types.rkt"
-         "utils.rkt"
-         "shader-code.rkt"
-         "draw-pass.rkt")
+         "../shader.rkt"
+         "draw-pass.rkt"
+         "types.rkt")
 
 (provide Engine-Debug-Pass
          engine-debug-passes

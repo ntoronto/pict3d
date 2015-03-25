@@ -3,73 +3,67 @@
 (require racket/match
          typed/opengl
          math/flonum
-         "../../math.rkt"
-         "../../gl.rkt"
-         "../../utils.rkt"
-         "../types.rkt"
-         "types.rkt")
+         "../../../math.rkt"
+         "../../scene.rkt"
+         "../../draw.rkt"
+         "sphere-type.rkt"
+         (prefix-in 30: "ge_30.rkt")
+         (prefix-in 32: "ge_32.rkt"))
 
 (provide make-sphere-shape
-         set-sphere-shape-color
-         set-sphere-shape-emitted
-         set-sphere-shape-material
-         make-sphere-shape-passes
-         sphere-shape-rect
-         sphere-shape-easy-transform
-         sphere-shape-line-intersect
-         )
+         (struct-out sphere-shape))
 
 ;; ===================================================================================================
 ;; Constructors
 
 (: make-sphere-shape (-> FlAffine3 FlV4 FlV4 FlV4 Boolean sphere-shape))
 (define (make-sphere-shape t c e m inside?)
-  (sphere-shape (lazy-passes) t c e m inside?))
+  (sphere-shape (lazy-passes) sphere-shape-functions
+                t c e m inside?))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-sphere-shape-color (-> sphere-shape FlV4 sphere-shape))
+(: set-sphere-shape-color (-> shape FlV4 sphere-shape))
 (define (set-sphere-shape-color a c)
-  (match-define (sphere-shape _ t old-c e m inside?) a)
-  (sphere-shape (lazy-passes) t c e m inside?))
+  (match-define (sphere-shape _ _ t _ e m inside?) a)
+  (make-sphere-shape t c e m inside?))
 
-(: set-sphere-shape-emitted (-> sphere-shape FlV4 sphere-shape))
+(: set-sphere-shape-emitted (-> shape FlV4 sphere-shape))
 (define (set-sphere-shape-emitted a e)
-  (match-define (sphere-shape _ t c old-e m inside?) a)
-  (sphere-shape (lazy-passes) t c e m inside?))
+  (match-define (sphere-shape _ _ t c _ m inside?) a)
+  (make-sphere-shape t c e m inside?))
 
-(: set-sphere-shape-material (-> sphere-shape FlV4 sphere-shape))
+(: set-sphere-shape-material (-> shape FlV4 sphere-shape))
 (define (set-sphere-shape-material a m)
-  (match-define (sphere-shape _ t c e old-m inside?) a)
-  (sphere-shape (lazy-passes) t c e m inside?))
+  (match-define (sphere-shape _ _ t c e _ inside?) a)
+  (make-sphere-shape t c e m inside?))
 
 ;; ===================================================================================================
 ;; Drawing passes
 
-(require (prefix-in 30: "sphere-passes/ge_30.rkt")
-         (prefix-in 32: "sphere-passes/ge_32.rkt"))
-
-(: make-sphere-shape-passes (-> sphere-shape passes))
-(define (make-sphere-shape-passes a)
+(: get-sphere-shape-passes (-> shape passes))
+(define (get-sphere-shape-passes s)
   (if (gl-version-at-least? 32)
-      (32:make-sphere-shape-passes a)
-      (30:make-sphere-shape-passes a)))
+      (32:get-sphere-shape-passes s)
+      (30:get-sphere-shape-passes s)))
 
 ;; ===================================================================================================
 ;; Bounding box
 
-(: sphere-shape-rect (-> sphere-shape FlAffine3 FlRect3))
-(define (sphere-shape-rect a t)
-  (transformed-sphere-flrect3 (flt3compose t (sphere-shape-affine a))))
+(: get-sphere-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-sphere-shape-bbox s t)
+  (let ([s  (assert s sphere-shape?)])
+    (bbox (transformed-sphere-flrect3 (flt3compose t (sphere-shape-affine s)))
+          0.0)))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: sphere-shape-easy-transform (-> sphere-shape FlAffine3 sphere-shape))
-(define (sphere-shape-easy-transform a t)
-  (match-define (sphere-shape passes t0 c e m inside?) a)
-  (sphere-shape (lazy-passes) (flt3compose t t0) c e m inside?))
+(: sphere-shape-transform (-> shape FlAffine3 sphere-shape))
+(define (sphere-shape-transform s t)
+  (match-define (sphere-shape _ _ t0 c e m inside?) s)
+  (make-sphere-shape (flt3compose t t0) c e m inside?))
 
 ;; ===================================================================================================
 ;; Ray intersection
@@ -90,9 +84,10 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> sphere-shape FlV3 FlV3 (U #f line-hit)))
+(: sphere-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
 (define (sphere-shape-line-intersect a v dv)
-  (let* ([s : FlAffine3  (flt3inverse (sphere-shape-affine a))]
+  (let* ([a  (assert a sphere-shape?)]
+         [s : FlAffine3  (flt3inverse (sphere-shape-affine a))]
          [sv : FlV3  (flt3apply/pos s v)]
          [sdv : FlV3  (flt3apply/dir s dv)])
     (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
@@ -103,3 +98,16 @@
                      (let ([norm  (flv3normalize (flv3fma sdv t sv))])
                        (and norm (flt3apply/norm (flt3inverse s)
                                                  (if inside? (flv3neg norm) norm))))))))
+
+;; ===================================================================================================
+
+(define sphere-shape-functions
+  (shape-functions
+   set-sphere-shape-color
+   set-sphere-shape-emitted
+   set-sphere-shape-material
+   get-sphere-shape-passes
+   (λ (s kind t) (and (eq? kind 'visible) (get-sphere-shape-bbox s t)))
+   sphere-shape-transform
+   sphere-shape-transform
+   sphere-shape-line-intersect))

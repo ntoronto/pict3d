@@ -5,38 +5,40 @@
 (require racket/unsafe/ops
          racket/match
          racket/list
-         racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          "../../math.rkt"
          "../../utils.rkt"
-         "../types.rkt"
-         "../utils.rkt"
-         "../shader-code.rkt"
-         "../serialize-vertices.rkt"
-         "types.rkt")
+         "../shader.rkt"
+         "../draw.rkt"
+         "../scene.rkt"
+         "../utils.rkt")
 
 (provide make-point-light-shape
-         make-point-light-shape-passes
-         set-point-light-shape-emitted
-         point-light-shape-rect
-         point-light-shape-easy-transform
-         )
+         (struct-out point-light-shape))
+
+(struct point-light-shape shape
+  ([emitted : FlV4]
+   [affine : FlAffine3]
+   [min-radius : Flonum]
+   [max-radius : Flonum])
+  #:transparent)
 
 ;; ===================================================================================================
 ;; Constructor
 
 (: make-point-light-shape (-> FlV4 FlAffine3 Flonum Flonum point-light-shape))
 (define (make-point-light-shape e t r0 r1)
-  (point-light-shape (lazy-passes) e t r0 r1))
+  (point-light-shape (lazy-passes) point-light-shape-functions
+                     e t r0 r1))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-point-light-shape-emitted (-> point-light-shape FlV4 point-light-shape))
-(define (set-point-light-shape-emitted a e)
-  (match-define (point-light-shape _ old-e t r0 r1) a)
-  (point-light-shape (lazy-passes) e t r0 r1))
+(: set-point-light-shape-emitted (-> shape FlV4 point-light-shape))
+(define (set-point-light-shape-emitted s e)
+  (match-define (point-light-shape _ _ _ t r0 r1) s)
+  (make-point-light-shape e t r0 r1))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -139,9 +141,10 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-point-light-shape-passes (-> point-light-shape passes))
-(define (make-point-light-shape-passes a)
-  (match-define (point-light-shape _ e t r0 r1) a)
+(: get-point-light-shape-passes (-> shape passes))
+(define (get-point-light-shape-passes s)
+  (match-define (point-light-shape _ _ e t r0 r1) s)
+  
   (define size (program-code-vao-size point-light-program-code))
   (define data (make-bytes (* 4 size)))
   (define data-ptr (u8vector->cpointer data))
@@ -166,16 +169,30 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: point-light-shape-rect (-> point-light-shape FlAffine3 FlRect3))
-(define (point-light-shape-rect a t)
-  (define t0 (point-light-shape-affine a))
-  (define r1 (point-light-shape-max-radius a))
-  (transformed-sphere-flrect3 (flt3compose t (flt3compose t0 (scale-flt3 (flv3 r1 r1 r1))))))
+(: get-point-light-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-point-light-shape-bbox s t)
+  (match-define (point-light-shape _ _ e t0 r0 r1) s)
+  (bbox (transformed-sphere-flrect3 (flt3compose t (flt3compose t0 (scale-flt3 (flv3 r1 r1 r1)))))
+        0.0))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: point-light-shape-easy-transform (-> point-light-shape FlAffine3 point-light-shape))
-(define (point-light-shape-easy-transform a t)
-  (match-define (point-light-shape passes e t0 r0 r1) a)
-  (point-light-shape (lazy-passes) e (flt3compose t t0) r0 r1))
+(: point-light-shape-transform (-> shape FlAffine3 point-light-shape))
+(define (point-light-shape-transform s t)
+  (match-define (point-light-shape _ _ e t0 r0 r1) s)
+  (make-point-light-shape e (flt3compose t t0) r0 r1))
+
+;; ===================================================================================================
+
+(: point-light-shape-functions shape-functions)
+(define point-light-shape-functions
+  (shape-functions
+   (λ (s c) s)
+   set-point-light-shape-emitted
+   (λ (s m) s)
+   get-point-light-shape-passes
+   (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shape-bbox s t)))
+   point-light-shape-transform
+   point-light-shape-transform
+   (λ (s v dv) #f)))

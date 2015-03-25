@@ -2,53 +2,79 @@
 
 ;; Triangles, quads, rectangles
 
-(require racket/unsafe/ops
-         racket/list
+(require racket/list
          racket/vector
          racket/match
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
          "../../math.rkt"
-         "../../gl.rkt"
          "../../utils.rkt"
-         "../utils.rkt"
-         "../shader-code.rkt"
-         "../serialize-vertices.rkt"
-         "../types.rkt"
-         "types.rkt")
+         "../shader.rkt"
+         "../draw.rkt"
+         "../scene.rkt"
+         "../utils.rkt")
 
 (provide make-triangle-shape
-         set-triangle-shape-color
-         set-triangle-shape-emitted
-         set-triangle-shape-material
-         make-triangle-shape-passes
-         triangle-shape-rect
-         triangle-shape-easy-transform
-         triangle-shape-line-intersect
-         
          make-quad-shapes
-         
          make-rectangle-shape
-         set-rectangle-shape-color
-         set-rectangle-shape-emitted
-         set-rectangle-shape-material
-         make-rectangle-shape-passes
-         rectangle-shape-rect
-         rectangle-shape-transform
-         rectangle-shape-line-intersect
-         
-         rectangle-shape->triangle-shapes
-         )
+         (struct-out vtx)
+         (struct-out triangle-shape)
+         (struct-out rectangle-shape))
+
+;; ===================================================================================================
+;; Vertex data
+
+(struct vtx ([position : FlV3]
+             [normal : FlV3]
+             [color : FlV4]
+             [emitted : FlV4]
+             [material : FlV4])
+  #:transparent)
+
+(: vtx-set-vecs (-> vtx FlV3 FlV3 vtx))
+(define (vtx-set-vecs v pos norm)
+  (vtx pos norm (vtx-color v) (vtx-emitted v) (vtx-material v)))
+
+(: vtx-set-color (-> vtx FlV4 vtx))
+(define (vtx-set-color v c)
+  (vtx (vtx-position v) (vtx-normal v) c (vtx-emitted v) (vtx-material v)))
+
+(: vtx-set-emitted (-> vtx FlV4 vtx))
+(define (vtx-set-emitted v e)
+  (vtx (vtx-position v) (vtx-normal v) (vtx-color v) e (vtx-material v)))
+
+(: vtx-set-material (-> vtx FlV4 vtx))
+(define (vtx-set-material v m)
+  (vtx (vtx-position v) (vtx-normal v) (vtx-color v) (vtx-emitted v) m))
+
+;; ===================================================================================================
+;; Shape data types
+
+(struct triangle-shape shape
+  ([vtx1 : vtx]
+   [vtx2 : vtx]
+   [vtx3 : vtx]
+   [back? : Boolean])
+  #:transparent)
+
+(struct rectangle-shape shape
+  ([axial-rect : FlRect3]
+   [color : FlV4]
+   [emitted : FlV4]
+   [material : FlV4]
+   [inside? : Boolean])
+  #:transparent)
 
 ;; ===================================================================================================
 ;; Constructors
 
 (: make-triangle-shape (-> vtx vtx vtx Boolean triangle-shape))
 (define (make-triangle-shape v1 v2 v3 back?)
-  (triangle-shape (lazy-passes) v1 v2 v3 back?))
+  (triangle-shape (lazy-passes) triangle-shape-functions
+                  v1 v2 v3 back?))
 
-(: make-quad-shapes (-> vtx vtx vtx vtx  Boolean (List triangle-shape triangle-shape)))
+(: make-quad-shapes (-> vtx vtx vtx vtx Boolean (List triangle-shape triangle-shape)))
 (define (make-quad-shapes v1 v2 v3 v4 back?)
   (define p1 (vtx-position v1))
   (define p2 (vtx-position v2))
@@ -68,52 +94,41 @@
 
 (: make-rectangle-shape (-> FlRect3 FlV4 FlV4 FlV4 Boolean rectangle-shape))
 (define (make-rectangle-shape b c e m back?)
-  (rectangle-shape (lazy-passes) b c e m back?))
+  (rectangle-shape (lazy-passes) rectangle-shape-functions
+                   b c e m back?))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-triangle-shape-color (-> triangle-shape FlV4 triangle-shape))
-(define (set-triangle-shape-color a c)
-  (match-define (triangle-shape _ v1 v2 v3 back?) a)
-  (triangle-shape (lazy-passes)
-                  (vtx-set-color v1 c)
-                  (vtx-set-color v2 c)
-                  (vtx-set-color v3 c)
-                  back?))
+(: set-triangle-shape-color (-> shape FlV4 triangle-shape))
+(define (set-triangle-shape-color s c)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+  (make-triangle-shape (vtx-set-color v1 c) (vtx-set-color v2 c) (vtx-set-color v3 c) back?))
 
-(: set-triangle-shape-emitted (-> triangle-shape FlV4 triangle-shape))
-(define (set-triangle-shape-emitted a e)
-  (match-define (triangle-shape _ v1 v2 v3 back?) a)
-  (triangle-shape (lazy-passes)
-                  (vtx-set-emitted v1 e)
-                  (vtx-set-emitted v2 e)
-                  (vtx-set-emitted v3 e)
-                  back?))
+(: set-triangle-shape-emitted (-> shape FlV4 triangle-shape))
+(define (set-triangle-shape-emitted s e)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+  (make-triangle-shape (vtx-set-emitted v1 e) (vtx-set-emitted v2 e) (vtx-set-emitted v3 e) back?))
 
-(: set-triangle-shape-material (-> triangle-shape FlV4 triangle-shape))
-(define (set-triangle-shape-material a m)
-  (match-define (triangle-shape _ v1 v2 v3 back?) a)
-  (triangle-shape (lazy-passes)
-                  (vtx-set-material v1 m)
-                  (vtx-set-material v2 m)
-                  (vtx-set-material v3 m)
-                  back?))
+(: set-triangle-shape-material (-> shape FlV4 triangle-shape))
+(define (set-triangle-shape-material s m)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+  (make-triangle-shape (vtx-set-material v1 m) (vtx-set-material v2 m) (vtx-set-material v3 m) back?))
 
-(: set-rectangle-shape-color (-> rectangle-shape FlV4 rectangle-shape))
-(define (set-rectangle-shape-color a c)
-  (match-define (rectangle-shape _ b old-c e m inside?) a)
-  (rectangle-shape (lazy-passes) b c e m inside?))
+(: set-rectangle-shape-color (-> shape FlV4 rectangle-shape))
+(define (set-rectangle-shape-color s c)
+  (match-define (rectangle-shape _ _ b _ e m inside?) s)
+  (make-rectangle-shape b c e m inside?))
 
-(: set-rectangle-shape-emitted (-> rectangle-shape FlV4 rectangle-shape))
-(define (set-rectangle-shape-emitted a e)
-  (match-define (rectangle-shape _ b c old-e m inside?) a)
-  (rectangle-shape (lazy-passes) b c e m inside?))
+(: set-rectangle-shape-emitted (-> shape FlV4 rectangle-shape))
+(define (set-rectangle-shape-emitted s e)
+  (match-define (rectangle-shape _ _ b c _ m inside?) s)
+  (make-rectangle-shape b c e m inside?))
 
-(: set-rectangle-shape-material (-> rectangle-shape FlV4 rectangle-shape))
-(define (set-rectangle-shape-material a m)
-  (match-define (rectangle-shape _ b c e old-m inside?) a)
-  (rectangle-shape (lazy-passes) b c e m inside?))
+(: set-rectangle-shape-material (-> shape FlV4 rectangle-shape))
+(define (set-rectangle-shape-material s m)
+  (match-define (rectangle-shape _ _ b c e _ inside?) s)
+  (make-rectangle-shape b c e m inside?))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material
@@ -281,9 +296,9 @@ code
 ;; ===================================================================================================
 ;; Triangle shape passes
 
-(: make-triangle-shape-passes (-> triangle-shape passes))
-(define (make-triangle-shape-passes a)
-  (match-define (triangle-shape _ v1 v2 v3 back?) a)
+(: get-triangle-shape-passes (-> shape passes))
+(define (get-triangle-shape-passes s)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
   (define-values (start stop step)
     (if back?
         (values 2 -1 -1)
@@ -336,37 +351,44 @@ code
 ;; ===================================================================================================
 ;; Rectangle shape passes
 
-(: make-rectangle-shape-passes (-> rectangle-shape passes))
-(define (make-rectangle-shape-passes a)
-  (define as (rectangle-shape->triangle-shapes a))
-  (define ps (map make-triangle-shape-passes as))
-  (passes
-   #()
-   (apply vector-append (map passes-opaque-material ps))
-   (apply vector-append (map passes-opaque-color ps))
-   (apply vector-append (map passes-transparent-material ps))
-   (apply vector-append (map passes-transparent-color ps))))
+(: get-rectangle-shape-passes (-> shape passes))
+(define (get-rectangle-shape-passes s)
+  (let ([s  (assert s rectangle-shape?)])
+    (define ss (rectangle-shape->triangle-shapes s))
+    (define ps (map get-triangle-shape-passes ss))
+    (passes
+     #()
+     (apply vector-append (map passes-opaque-material ps))
+     (apply vector-append (map passes-opaque-color ps))
+     (apply vector-append (map passes-transparent-material ps))
+     (apply vector-append (map passes-transparent-color ps)))))
 
 ;; ===================================================================================================
 ;; Bounding box
 
-(: triangle-shape-rect (-> triangle-shape FlAffine3 FlRect3))
-(define (triangle-shape-rect a t)
-  (flrect3 (flt3apply/pos t (vtx-position (triangle-shape-vtx1 a)))
-           (flt3apply/pos t (vtx-position (triangle-shape-vtx2 a)))
-           (flt3apply/pos t (vtx-position (triangle-shape-vtx3 a)))))
+(: get-triangle-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-triangle-shape-bbox s t)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+  (bbox (flrect3 (flt3apply/pos t (vtx-position v1))
+                 (flt3apply/pos t (vtx-position v2))
+                 (flt3apply/pos t (vtx-position v3)))
+        0.0))
 
-(: rectangle-shape-rect (-> rectangle-shape FlAffine3 FlRect3))
-(define (rectangle-shape-rect a t)
-  (flrect3-transform (rectangle-shape-axial-rect a) t))
+(: get-rectangle-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-rectangle-shape-bbox s t)
+  (let ([s  (assert s rectangle-shape?)])
+    (bbox (flrect3-transform (rectangle-shape-axial-rect s) t)
+          0.0)))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-easy-transform (-> triangle-shape FlAffine3 triangle-shape))
-(define (triangle-shape-easy-transform a t)
-  (match-define (triangle-shape passes v1 v2 v3 back?) a)
+(: triangle-shape-transform (-> shape FlAffine3 triangle-shape))
+(define (triangle-shape-transform s t)
+  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+  
   (define consistent? (flt3consistent? t))
+  (define new-back? (if consistent? back? (not back?)))
   
   (: transform-vtx (-> vtx vtx))
   (define (transform-vtx vert)
@@ -380,24 +402,21 @@ code
            (if n n +z-flv3)
            (if n (flv3neg n) +z-flv3)))))
   
-  (triangle-shape (lazy-passes)
-                  (transform-vtx v1)
-                  (transform-vtx v2)
-                  (transform-vtx v3)
-                  (if consistent? back? (not back?))))
+  (make-triangle-shape (transform-vtx v1) (transform-vtx v2) (transform-vtx v3) new-back?))
 
-(: rectangle-shape-transform (-> rectangle-shape FlAffine3 (Listof triangle-shape)))
-(define (rectangle-shape-transform a t)
-  (map (λ ([a : triangle-shape])
-         (triangle-shape-easy-transform a t))
-       (rectangle-shape->triangle-shapes a)))
+(: rectangle-shape-deep-transform (-> shape FlAffine3 (Listof triangle-shape)))
+(define (rectangle-shape-deep-transform s t)
+  (let ([s  (assert s rectangle-shape?)])
+    (map (λ ([s : triangle-shape])
+           (triangle-shape-transform s t))
+         (rectangle-shape->triangle-shapes s))))
 
 ;; ===================================================================================================
 ;; Conversions
 
 (: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
 (define (rectangle-shape->triangle-shapes a)
-  (match-define (rectangle-shape _ b c e m inside?) a)
+  (match-define (rectangle-shape _ _ b c e m inside?) a)
   (define-values (v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
   
   (: do-make-quad-shapes (-> FlV3 FlV3 FlV3 FlV3 FlV3 (List triangle-shape triangle-shape)))
@@ -450,31 +469,57 @@ code
                 [else
                  (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-line-intersect (-> triangle-shape FlV3 FlV3 (U #f line-hit)))
+(: triangle-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
 ;; Moller-Trumbore
-(define (triangle-shape-line-intersect a o d)
-  (define v0 (vtx-position (triangle-shape-vtx1 a)))
-  (define v1 (vtx-position (triangle-shape-vtx2 a)))
-  (define v2 (vtx-position (triangle-shape-vtx3 a)))
-  (let-values ([(v0 v1)  (if (triangle-shape-back? a) (values v1 v0) (values v0 v1))])
-    (define t (triangle-intersect-time v0 v1 v2 o d))
-    (cond
-      [(not t)  #f]
-      [else
-       (define back? (triangle-shape-back? a))
-       (line-hit t
-                 (flv3fma d t o)
-                 (let ([norm  (flv3triangle-normal v0 v1 v2)])
-                   (and norm (if back? (flv3neg norm) norm))))])))
-
-(: rectangle-shape-line-intersect (-> rectangle-shape FlV3 FlV3 (U #f line-hit)))
-(define (rectangle-shape-line-intersect a v dv)
-  (define b (rectangle-shape-axial-rect a))
-  (define-values (tmin tmax) (flrect3-line-intersects b v dv))
-  (define inside? (rectangle-shape-inside? a))
-  (define t (if inside? tmax tmin))
-  (cond [(not t)  #f]
+(define (triangle-shape-line-intersect s o d)
+  (let ([s  (assert s triangle-shape?)])
+    (define v0 (vtx-position (triangle-shape-vtx1 s)))
+    (define v1 (vtx-position (triangle-shape-vtx2 s)))
+    (define v2 (vtx-position (triangle-shape-vtx3 s)))
+    (define back? (triangle-shape-back? s))
+    (let-values ([(v0 v1)  (if back? (values v1 v0) (values v0 v1))])
+      (define t (triangle-intersect-time v0 v1 v2 o d))
+      (cond
+        [(not t)  #f]
         [else
-         (define p (flrect3-closest-point b (flv3fma dv t v)))
-         (line-hit t p (let ([norm  (assert (flrect3-point-normal b p) values)])
-                         (if inside? (flv3neg norm) norm)))]))
+         (line-hit t
+                   (flv3fma d t o)
+                   (let ([norm  (flv3triangle-normal v0 v1 v2)])
+                     (and norm (if back? (flv3neg norm) norm))))]))))
+
+(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(define (rectangle-shape-line-intersect s v dv)
+  (let ([s  (assert s rectangle-shape?)])
+    (define b (rectangle-shape-axial-rect s))
+    (define-values (tmin tmax) (flrect3-line-intersects b v dv))
+    (define inside? (rectangle-shape-inside? s))
+    (define t (if inside? tmax tmin))
+    (cond [(not t)  #f]
+          [else
+           (define p (flrect3-closest-point b (flv3fma dv t v)))
+           (line-hit t p (let ([norm  (assert (flrect3-point-normal b p) values)])
+                           (if inside? (flv3neg norm) norm)))])))
+
+;; ===================================================================================================
+
+(define triangle-shape-functions
+  (shape-functions
+   set-triangle-shape-color
+   set-triangle-shape-emitted
+   set-triangle-shape-material
+   get-triangle-shape-passes
+   (λ (s kind t) (and (eq? kind 'visible) (get-triangle-shape-bbox s t)))
+   triangle-shape-transform
+   triangle-shape-transform
+   triangle-shape-line-intersect))
+
+(define rectangle-shape-functions
+  (shape-functions
+   set-rectangle-shape-color
+   set-rectangle-shape-emitted
+   set-rectangle-shape-material
+   get-rectangle-shape-passes
+   (λ (s kind t) (and (eq? kind 'visible) (get-rectangle-shape-bbox s t)))
+   (λ (s t) #f)
+   rectangle-shape-deep-transform
+   rectangle-shape-line-intersect))

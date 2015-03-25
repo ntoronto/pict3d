@@ -1,9 +1,9 @@
 #lang typed/racket/base
 
 (require racket/list
-         "../math.rkt"
-         "../gl.rkt"
-         "../utils.rkt")
+         "../../math.rkt"
+         "../../gl.rkt"
+         "../../utils.rkt")
 
 (provide (all-defined-out))
 

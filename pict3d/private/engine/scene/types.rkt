@@ -1,102 +1,13 @@
 #lang typed/racket/base
 
 (require (for-syntax racket/base)
-         racket/match
          racket/list
          "../../math.rkt"
          "../../gl.rkt"
-         "../draw-pass.rkt"
-         "../types.rkt"
+         "../draw.rkt"
          "tags.rkt")
 
 (provide (all-defined-out))
-
-;; ===================================================================================================
-;; Polygon vertices
-
-(struct vtx ([position : FlV3]
-             [normal : FlV3]
-             [color : FlV4]
-             [emitted : FlV4]
-             [material : FlV4])
-  #:transparent)
-
-(: vtx-set-vecs (-> vtx FlV3 FlV3 vtx))
-(define (vtx-set-vecs v pos norm)
-  (vtx pos norm (vtx-color v) (vtx-emitted v) (vtx-material v)))
-
-(: vtx-set-color (-> vtx FlV4 vtx))
-(define (vtx-set-color v c)
-  (vtx (vtx-position v) (vtx-normal v) c (vtx-emitted v) (vtx-material v)))
-
-(: vtx-set-emitted (-> vtx FlV4 vtx))
-(define (vtx-set-emitted v e)
-  (vtx (vtx-position v) (vtx-normal v) (vtx-color v) e (vtx-material v)))
-
-(: vtx-set-material (-> vtx FlV4 vtx))
-(define (vtx-set-material v m)
-  (vtx (vtx-position v) (vtx-normal v) (vtx-color v) (vtx-emitted v) m))
-
-;; ===================================================================================================
-;; Shape types
-
-(struct shape ([lazy-passes : (HashTable GL-Context passes)]))
-
-(: lazy-passes (-> (HashTable GL-Context passes)))
-(define lazy-passes make-weak-hasheq)
-
-(struct solid-shape shape () #:transparent)
-
-(struct triangle-shape solid-shape
-  ([vtx1 : vtx]
-   [vtx2 : vtx]
-   [vtx3 : vtx]
-   [back? : Boolean])
-  #:transparent)
-
-(struct rectangle-shape solid-shape
-  ([axial-rect : FlRect3]
-   [color : FlV4]
-   [emitted : FlV4]
-   [material : FlV4]
-   [inside? : Boolean])
-  #:transparent)
-
-(struct sphere-shape solid-shape
-  ([affine : FlAffine3]
-   [color : FlV4]
-   [emitted : FlV4]
-   [material : FlV4]
-   [inside? : Boolean])
-  #:transparent)
-
-(struct light-shape shape ([emitted : FlV4]) #:transparent)
-(struct directional-light-shape light-shape ([direction : FlV3]) #:transparent)
-(struct point-light-shape light-shape ([affine : FlAffine3]
-                                       [min-radius : Flonum]
-                                       [max-radius : Flonum])
-  #:transparent)
-
-(struct indicator-shape shape () #:transparent)
-(struct point-light-shell-shape indicator-shape
-  ([emitted : FlV4]
-   [affine : FlAffine3]
-   [min-radius : Flonum]
-   [max-radius : Flonum])
-  #:transparent)
-
-(struct frozen-scene-shape shape
-  ([scene : Nonempty-Scene])
-  #:transparent)
-
-(define-type Shape
-  (U triangle-shape
-     rectangle-shape
-     sphere-shape
-     directional-light-shape
-     point-light-shape
-     point-light-shell-shape
-     frozen-scene-shape))
 
 ;; ===================================================================================================
 ;; Bounding boxes
@@ -184,6 +95,75 @@
       #t))
 
 ;; ===================================================================================================
+;; Collision detection types
+
+(struct line-hit
+  ([distance : Flonum]
+   [point : FlV3]
+   [normal : (U #f FlV3)])
+  #:transparent)
+
+;; ===================================================================================================
+;; Shape types
+
+(struct shape-functions
+  ([set-color : (-> shape FlV4 shape)]
+   [set-emitted : (-> shape FlV4 shape)]
+   [set-material : (-> shape FlV4 shape)]
+   [get-passes : (-> shape passes)]
+   [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
+   [fast-transform : (-> shape FlAffine3 (U #f shape))]
+   [deep-transform : (-> shape FlAffine3 (U shape (Listof shape)))]
+   [line-intersect : (-> shape FlV3 FlV3 (U #f line-hit))])
+  #:transparent)
+
+(struct shape
+  ([lazy-passes : (HashTable GL-Context passes)]
+   [vtable : shape-functions]))
+
+(: lazy-passes (-> (HashTable GL-Context passes)))
+(define lazy-passes make-weak-hasheq)
+
+(: shape-set-color (-> shape FlV4 shape))
+(define (shape-set-color s c)
+  ((shape-functions-set-color (shape-vtable s)) s c))
+
+(: shape-set-emitted (-> shape FlV4 shape))
+(define (shape-set-emitted s e)
+  ((shape-functions-set-emitted (shape-vtable s)) s e))
+
+(: shape-set-material (-> shape FlV4 shape))
+(define (shape-set-material s m)
+  ((shape-functions-set-material (shape-vtable s)) s m))
+
+(: shape-passes (-> shape passes))
+(define (shape-passes a)
+  (hash-ref!
+   (shape-lazy-passes a)
+   (get-current-managed-gl-context 'shape-passes)
+   (λ () ((shape-functions-get-passes (shape-vtable a)) a))))
+
+(: shape-visible-bbox (-> shape FlAffine3 (U #f bbox)))
+(define (shape-visible-bbox s t)
+  ((shape-functions-get-bbox (shape-vtable s)) s 'visible t))
+
+(: shape-invisible-bbox (-> shape FlAffine3 (U #f bbox)))
+(define (shape-invisible-bbox s t)
+  ((shape-functions-get-bbox (shape-vtable s)) s 'invisible t))
+
+(: shape-fast-transform (-> shape FlAffine3 (U #f shape)))
+(define (shape-fast-transform s t)
+  ((shape-functions-fast-transform (shape-vtable s)) s t))
+
+(: shape-deep-transform (-> shape FlAffine3 (U shape (Listof shape))))
+(define (shape-deep-transform s t)
+  ((shape-functions-deep-transform (shape-vtable s)) s t))
+
+(: shape-line-intersect (-> shape FlV3 FlV3 (U #f line-hit)))
+(define (shape-line-intersect s v dv)
+  ((shape-functions-line-intersect (shape-vtable s)) s v dv))
+
+;; ===================================================================================================
 ;; Scene types
 
 (struct Empty-Scene () #:transparent)
@@ -212,7 +192,7 @@
   #:transparent)
 
 (define-type Nonempty-Scene
-  (U Shape
+  (U shape
      node-scene
      trans-scene
      group-scene))
@@ -236,11 +216,35 @@
                                      (group-scene-tag s))]
         [else  empty-tags]))
 
-;; ===================================================================================================
-;; Ray-scene intersection types
+(: scene-visible-bbox (-> Scene (U #f bbox)))
+(define (scene-visible-bbox s)
+  (cond [(empty-scene? s)  #f]
+        [(node-scene? s)
+         (node-scene-visible-bbox s)]
+        [(trans-scene? s)
+         (maybe-bbox-transform (scene-visible-bbox (trans-scene-scene s))
+                               (trans-scene-affine s))]
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (if (empty-scene? s0) zero-bbox (scene-visible-bbox s0))]
+        [else
+         (shape-visible-bbox s identity-flaffine3)]))
 
-(struct line-hit ([distance : Flonum]
-                  [point : FlV3]
-                  [normal : (U #f FlV3)])
-  #:transparent
-  #:mutable)
+(: scene-invisible-bbox (-> Scene (U #f bbox)))
+(define (scene-invisible-bbox s)
+  (cond [(empty-scene? s)  #f]
+        [(node-scene? s)
+         (node-scene-invisible-bbox s)]
+        [(trans-scene? s)
+         (maybe-bbox-transform (scene-invisible-bbox (trans-scene-scene s))
+                               (trans-scene-affine s))]
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (if (empty-scene? s0) zero-bbox (scene-invisible-bbox s0))]
+        [else
+         (shape-invisible-bbox s identity-flaffine3)]))
+
+(: scene-bbox (-> Scene (U #f bbox)))
+(define (scene-bbox s)
+  (maybe-bbox-join (scene-visible-bbox s)
+                   (scene-invisible-bbox s)))

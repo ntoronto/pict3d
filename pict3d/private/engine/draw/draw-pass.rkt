@@ -1,18 +1,17 @@
 #lang typed/racket/base
 
 (require racket/match
-         racket/list
          racket/unsafe/ops
          typed/opengl
          (except-in typed/opengl/ffi cast ->)
-         "../math.rkt"
+         "../../math.rkt"
+         "../../utils.rkt"
+         "../../gl.rkt"
+         "../../ffi.rkt"
+         "../../utils.rkt"
          "../utils.rkt"
-         "../gl.rkt"
-         "../ffi.rkt"
-         "../utils.rkt"
-         "types.rkt"
-         "utils.rkt"
-         "serialize-vertices.rkt")
+         "../shader.rkt"
+         "types.rkt")
 
 (provide draw-light-pass
          draw-opaque-material-pass

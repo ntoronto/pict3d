@@ -40,7 +40,7 @@
              (sphere pos #i1/16)))
          (light pos (emitted rgb int))))))))
 
-(define frozen-spheres (freeze spheres))
+(define frozen-spheres (time (freeze spheres)))
 
 (define frame (new frame% [label "Sphere Field"] [width 800] [height 600]))
 (define canvas (new pict3d-canvas% [parent frame]))

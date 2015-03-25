@@ -4,10 +4,10 @@
          racket/list
          racket/vector
          (except-in typed/opengl/ffi -> cast)
-         "../gl.rkt"
+         "../../gl.rkt"
+         "../../utils.rkt"
          "../utils.rkt"
-         "types.rkt"
-         "utils.rkt")
+         "types.rkt")
 
 (provide merge-passes)
 

@@ -110,17 +110,17 @@
            
            (define sunlight-pict3ds
              (if add-sunlight?
-                 (list (pict3d standard-over-light-scene)
-                       (pict3d standard-under-light-scene))
+                 (list standard-over-light
+                       standard-under-light)
                  empty))
            
            (define light-pict3ds
              (if add-indicators?
                  (hash-ref! light-indicator-hash scene
-                            (λ () (map pict3d (scene-light-indicators scene))))
+                            (λ () (scene-light-indicators scene)))
                  empty))
            
-           (define axes-pos+scenes
+           (define axes-pos+picts
              (if add-indicators?
                  (let ([h  (hash-ref! axes-indicator-hash scene make-hash)])
                    (hash-ref! h scale
@@ -130,11 +130,11 @@
            
            (define-values (_dx _dy _dz v0) (affine->cols view))
            (define axes-pict3ds
-             (for/fold ([picts empty]) ([pos+scene  (in-list axes-pos+scenes)])
-               (match-define (cons v s) pos+scene)
+             (for/fold ([picts empty]) ([pos+pict  (in-list axes-pos+picts)])
+               (match-define (cons v p) pos+pict)
                (if (< (pos-dist v v0) (* scale 0.015))
                    picts
-                   (cons (pict3d s) picts))))
+                   (cons p picts))))
            
            (draw-pict3ds (append (list (pict3d scene)) sunlight-pict3ds light-pict3ds axes-pict3ds)
                          width

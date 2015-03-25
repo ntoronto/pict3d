@@ -5,30 +5,40 @@
 (require racket/unsafe/ops
          racket/match
          racket/list
-         racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          "../../math.rkt"
-         "../../gl.rkt"
          "../../utils.rkt"
-         "../types.rkt"
-         "../shader-code.rkt"
-         "../serialize-vertices.rkt"
-         "../utils.rkt"
-         "types.rkt")
+         "../shader.rkt"
+         "../draw.rkt"
+         "../scene.rkt"
+         "../utils.rkt")
 
 (provide make-point-light-shell-shape
-         make-point-light-shell-shape-passes
-         point-light-shell-shape-rect
-         point-light-shell-shape-easy-transform
-         )
+         (struct-out point-light-shell-shape))
+
+(struct point-light-shell-shape shape
+  ([emitted : FlV4]
+   [affine : FlAffine3]
+   [min-radius : Flonum]
+   [max-radius : Flonum])
+  #:transparent)
 
 ;; ===================================================================================================
 ;; Constructor
 
 (: make-point-light-shell-shape (-> FlV4 FlAffine3 Flonum Flonum point-light-shell-shape))
 (define (make-point-light-shell-shape e t r0 r1)
-  (point-light-shell-shape (lazy-passes) e t r0 r1))
+  (point-light-shell-shape (lazy-passes) point-light-shell-shape-functions
+                           e t r0 r1))
+
+;; ===================================================================================================
+;; Set attributes
+
+(: set-point-light-shell-shape-emitted (-> shape FlV4 point-light-shell-shape))
+(define (set-point-light-shell-shape-emitted s e)
+  (match-define (point-light-shell-shape _ _ _ t r0 r1) s)
+  (make-point-light-shell-shape e t r0 r1))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -192,9 +202,9 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-point-light-shell-shape-passes (-> point-light-shell-shape passes))
-(define (make-point-light-shell-shape-passes a)
-  (match-define (point-light-shell-shape _ e t r0 r1) a)
+(: get-point-light-shell-shape-passes (-> shape passes))
+(define (get-point-light-shell-shape-passes s)
+  (match-define (point-light-shell-shape _ _ e t r0 r1) s)
   
   (define size (program-code-vao-size point-light-shell-program-code))
   (define data (make-bytes (* 4 size)))
@@ -221,17 +231,30 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: point-light-shell-shape-rect (-> point-light-shell-shape FlAffine3 FlRect3))
-(define (point-light-shell-shape-rect a t)
-  (define t0 (point-light-shell-shape-affine a))
-  (define r1 (point-light-shell-shape-max-radius a))
-  (transformed-sphere-flrect3 (flt3compose t (flt3compose t0 (scale-flt3 (flv3 r1 r1 r1))))))
+(: get-point-light-shell-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-point-light-shell-shape-bbox s t)
+  (match-define (point-light-shell-shape _ _ e t0 r0 r1) s)
+  (bbox (transformed-sphere-flrect3 (flt3compose t (flt3compose t0 (scale-flt3 (flv3 r1 r1 r1)))))
+        0.0))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: point-light-shell-shape-easy-transform (-> point-light-shell-shape FlAffine3
-                                              point-light-shell-shape))
-(define (point-light-shell-shape-easy-transform a t)
-  (match-define (point-light-shell-shape passes e t0 r0 r1) a)
-  (point-light-shell-shape (lazy-passes) e (flt3compose t t0) r0 r1))
+(: point-light-shell-shape-transform (-> shape FlAffine3 point-light-shell-shape))
+(define (point-light-shell-shape-transform s t)
+  (match-define (point-light-shell-shape _ _ e t0 r0 r1) s)
+  (make-point-light-shell-shape e (flt3compose t t0) r0 r1))
+
+;; ===================================================================================================
+
+(: point-light-shell-shape-functions shape-functions)
+(define point-light-shell-shape-functions
+  (shape-functions
+   (λ (s c) s)
+   set-point-light-shell-shape-emitted
+   (λ (s m) s)
+   get-point-light-shell-shape-passes
+   (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shell-shape-bbox s t)))
+   point-light-shell-shape-transform
+   point-light-shell-shape-transform
+   (λ (s v dv) #f)))

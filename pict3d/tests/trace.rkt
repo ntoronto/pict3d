@@ -2,7 +2,6 @@
 
 (require math/flonum
          math/distributions
-         pict3d/private/math/flv3
          pict3d)
 
 (current-pict3d-width 512)

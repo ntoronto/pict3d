@@ -9,32 +9,34 @@
          "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
-         "../utils.rkt"
-         "../shader-code.rkt"
-         "../types.rkt"
-         "types.rkt")
+         "../shader.rkt"
+         "../draw.rkt"
+         "../scene.rkt"
+         "../utils.rkt")
 
 (provide make-directional-light-shape
-         make-directional-light-shape-passes
-         set-directional-light-shape-emitted
-         directional-light-shape-rect
-         directional-light-shape-easy-transform
-         )
+         (struct-out directional-light-shape))
+
+(struct directional-light-shape shape
+  ([emitted : FlV4]
+   [direction : FlV3])
+  #:transparent)
 
 ;; ===================================================================================================
 ;; Constructors
 
 (: make-directional-light-shape (-> FlV4 FlV3 directional-light-shape))
 (define (make-directional-light-shape e dv)
-  (directional-light-shape (lazy-passes) e dv))
+  (directional-light-shape (lazy-passes) directional-light-shape-functions
+                           e dv))
 
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-directional-light-shape-emitted (-> directional-light-shape FlV4 directional-light-shape))
-(define (set-directional-light-shape-emitted a e)
-  (match-define (directional-light-shape _ _ dv) a)
-  (directional-light-shape (lazy-passes) e dv))
+(: set-directional-light-shape-emitted (-> shape FlV4 directional-light-shape))
+(define (set-directional-light-shape-emitted s e)
+  (match-define (directional-light-shape _ _ _ dv) s)
+  (make-directional-light-shape e dv))
 
 ;; ===================================================================================================
 ;; Program for pass 0: light
@@ -116,9 +118,9 @@ code
 (: vertex-ids (Vectorof Index))
 (define vertex-ids #(0 1 2 2 1 3))
 
-(: make-directional-light-shape-passes (-> directional-light-shape passes))
-(define (make-directional-light-shape-passes a)
-  (match-define (directional-light-shape _ e dv) a)
+(: get-directional-light-shape-passes (-> shape passes))
+(define (get-directional-light-shape-passes a)
+  (match-define (directional-light-shape _ _ e dv) a)
   
   (define-values (r g b i)
     (call/flv4-values e values))
@@ -139,13 +141,29 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(define directional-light-shape-rect
-  (flrect3 (flv3 -inf.0 -inf.0 -inf.0)
-           (flv3 +inf.0 +inf.0 +inf.0)))
+(define directional-light-shape-bbox
+  (bbox (flrect3 (flv3 -inf.0 -inf.0 -inf.0)
+                 (flv3 +inf.0 +inf.0 +inf.0))
+        0.0))
 
 ;; ===================================================================================================
 ;; Transform
 
-(: directional-light-shape-easy-transform (-> directional-light-shape FlAffine3
-                                              directional-light-shape))
-(define (directional-light-shape-easy-transform a t) a)
+(: directional-light-shape-transform (-> shape FlAffine3 directional-light-shape))
+(define (directional-light-shape-transform s t)
+  (match-define (directional-light-shape _ _ e dv) s)
+  (make-directional-light-shape e (flt3apply/dir t dv)))
+
+;; ===================================================================================================
+
+(: directional-light-shape-functions shape-functions)
+(define directional-light-shape-functions
+  (shape-functions
+   (λ (s c) s)
+   set-directional-light-shape-emitted
+   (λ (s m) s)
+   get-directional-light-shape-passes
+   (λ (s kind t) (and (eq? kind 'invisible) directional-light-shape-bbox))
+   directional-light-shape-transform
+   directional-light-shape-transform
+   (λ (s v dv) #f)))
