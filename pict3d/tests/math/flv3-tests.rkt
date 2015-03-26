@@ -48,24 +48,40 @@
         [(< r 0.8)  (sample dstr)]
         [else  (ordinal->flonum (random-integer -acc-max +acc-max))]))
 
-(define acc-xs (build-list (+ num-accuracy 8) (λ (_) (random-acc-flonum))))
+(define acc-xs
+  (time
+   (build-list (+ num-accuracy 8) (λ (_) (random-acc-flonum)))))
 
 (define speed-vs
-  (let ([vs  (build-list 10000 (λ (_) (random-speed-flv3)))])
-    (append* (make-list (quotient num-speed 10000) vs))))
+  (time
+   (let ([vs  (build-list 10000 (λ (_) (random-speed-flv3)))])
+     (append* (make-list (quotient num-speed 10000) vs)))))
 
 (define speed-xs
-  (let ([xs  (build-list 10000 (λ (_) (random-speed-flonum)))])
-    (append* (make-list (quotient num-speed 10000) xs))))
+  (time
+   (let ([xs  (build-list 10000 (λ (_) (random-speed-flonum)))])
+     (append* (make-list (quotient num-speed 10000) xs)))))
 
 (define speed-ps
-  (let ([ps  (build-list 10000 (λ (_)
-                                 (define a (random-speed-flonum))
-                                 (define b (random-speed-flonum))
-                                 (define c (random-speed-flonum))
-                                 (define d (random-speed-flonum))
-                                 (assert (flplane3 (flv3 a b c) d) values)))])
-    (append* (make-list (quotient num-speed 10000) ps))))
+  (time
+   (let ([ps  (build-list 10000 (λ (_)
+                                  (define a (random-speed-flonum))
+                                  (define b (random-speed-flonum))
+                                  (define c (random-speed-flonum))
+                                  (define d (random-speed-flonum))
+                                  (assert (flplane3 (flv3 a b c) d) values)))])
+     (append* (make-list (quotient num-speed 10000) ps)))))
+
+(define speed-ts
+  (time
+   (let ([vs  (build-list 10000 (λ (_) (flv3 (- (random) 0.5) (- (random) 0.5) (- (random) 0.5))))])
+     (define ts
+       (for/list : (Listof FlAffine3) ([dx  (in-list vs)]
+                                       [dy  (in-list (rest vs))]
+                                       [dz  (in-list (rest (rest vs)))]
+                                       [p   (in-list (rest (rest (rest vs))))])
+         (cols->flaffine3 dx dy dz p)))
+     (append* (make-list (quotient num-speed 10000) ts)))))
 
 (define vbx (make-flvector 4))
 (define: bx : Any  #f)
@@ -383,6 +399,46 @@
   (newline))
 
 ;; ===================================================================================================
+;; fl4.rkt
+
+(define (test-fl4dot)
+  (printf "Testing fl4dot~n")
+  
+  (for ([_  (in-range 5)])
+    (time (for ([x1  (in-list speed-xs)]
+                [y1  (in-list (rest speed-xs))]
+                [z1  (in-list (rest (rest speed-xs)))]
+                [w1  (in-list (rest (rest (rest speed-xs))))]
+                [x2  (in-list (rest (rest (rest (rest speed-xs)))))]
+                [y2  (in-list (rest (rest (rest (rest (rest speed-xs))))))]
+                [z2  (in-list (rest (rest (rest (rest (rest (rest speed-xs)))))))]
+                [w2  (in-list (rest (rest (rest (rest (rest (rest (rest speed-xs))))))))])
+            (unsafe-flvector-set! vbx 0 (fl4dot x1 y1 z1 w1 x2 y2 z2 w2))))
+    (printf "heap: ~v~n" (current-memory-use)))
+  
+  (for ([x1  (in-list acc-xs)]
+        [y1  (in-list (rest acc-xs))]
+        [z1  (in-list (rest (rest acc-xs)))]
+        [w1  (in-list (rest (rest (rest acc-xs))))]
+        [x2  (in-list (rest (rest (rest (rest acc-xs)))))]
+        [y2  (in-list (rest (rest (rest (rest (rest acc-xs))))))]
+        [z2  (in-list (rest (rest (rest (rest (rest (rest acc-xs)))))))]
+        [w2  (in-list (rest (rest (rest (rest (rest (rest (rest acc-xs))))))))]
+        [i  (in-naturals 1)])
+    (when (zero? (modulo i 10000))
+      (printf "Accuracy iteration i = ~v~n" i))
+    (define m (fl4dot x1 y1 z1 w1 x2 y2 z2 w2))
+    (define m* (+ (* (inexact->exact x1) (inexact->exact x2))
+                  (* (inexact->exact y1) (inexact->exact y2))
+                  (* (inexact->exact z1) (inexact->exact z2))
+                  (* (inexact->exact w1) (inexact->exact w2))))
+    (define e (flulp-error m m*))
+    (when (> e 3.5)
+      (eprintf "~v: ~v ~v ~v ~v ~v ~v ~v ~v~n    ~v ~v~n~n" e x1 y1 z1 w1 x2 y2 z2 w2 m (fl m*))))
+  
+  (newline))
+
+;; ===================================================================================================
 ;; FlV3 tests
 
 (define (test-flv3+)
@@ -390,8 +446,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (set! bx (flv3+ v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3+ v1 v2)))))
   (newline))
 
 (define (test-flv3-)
@@ -399,16 +454,14 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (set! bx (flv3- v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3- v1 v2)))))
   (newline))
 
 (define (test-flv3neg)
   (printf "Testing flv3neg~n")
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)])
-            (set! bx (flv3neg v1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3neg v1)))))
   (newline))
 
 (define (test-flv3*)
@@ -416,8 +469,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [x1  (in-list speed-xs)])
-            (set! bx (flv3* v1 x1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3* v1 x1)))))
   (newline))
 
 (define (test-flv3/)
@@ -425,8 +477,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [x1  (in-list speed-xs)])
-            (set! bx (flv3/ v1 x1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3/ v1 x1)))))
   (newline))
 
 (define (test-flv3fma)
@@ -435,8 +486,7 @@
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))]
                 [x1  (in-list speed-xs)])
-            (set! bx (flv3fma v1 x1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3fma v1 x1 v2)))))
   (newline))
 
 (define (test-flv3dot)
@@ -444,8 +494,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (unsafe-flvector-set! vbx 0 (flv3dot v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (unsafe-flvector-set! vbx 0 (flv3dot v1 v2)))))
   (newline))
 
 (define (test-flv3cross)
@@ -453,32 +502,28 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (set! bx (flv3cross v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3cross v1 v2)))))
   (newline))
 
 (define (test-flv3mag^2)
   (printf "Testing flv3mag^2~n")
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)])
-            (unsafe-flvector-set! vbx 0 (flv3mag^2 v1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (unsafe-flvector-set! vbx 0 (flv3mag^2 v1)))))
   (newline))
 
 (define (test-flv3mag)
   (printf "Testing flv3mag~n")
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)])
-            (unsafe-flvector-set! vbx 0 (flv3mag v1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (unsafe-flvector-set! vbx 0 (flv3mag v1)))))
   (newline))
 
 (define (test-flv3normalize)
   (printf "Testing flv3normalize~n")
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)])
-            (set! bx (flv3normalize v1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flv3normalize v1)))))
   (newline))
 
 (define (test-flv3dist^2)
@@ -486,8 +531,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (unsafe-flvector-set! vbx 0 (flv3dist^2 v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (unsafe-flvector-set! vbx 0 (flv3dist^2 v1 v2)))))
   (newline))
 
 (define (test-flv3dist)
@@ -495,8 +539,7 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [v2  (in-list (rest speed-vs))])
-            (unsafe-flvector-set! vbx 0 (flv3dist v1 v2))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (unsafe-flvector-set! vbx 0 (flv3dist v1 v2)))))
   (newline))
 
 ;; ===================================================================================================
@@ -507,16 +550,14 @@
   (for ([_  (in-range 5)])
     (time (for ([v1  (in-list speed-vs)]
                 [x1  (in-list speed-xs)])
-            (set! bx (flplane3 v1 x1))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flplane3 v1 x1)))))
   (newline))
 
 (define (test-flplane3-flip)
   (printf "Testing flplane3-flip~n")
   (for ([_  (in-range 5)])
     (time (for ([p  (in-list speed-ps)])
-            (set! bx (flplane3-flip p))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (set! bx (flplane3-flip p)))))
   (newline))
 
 (define (test-flplane3-point-dist)
@@ -525,8 +566,25 @@
     (time (for ([p  (in-list speed-ps)]
                 [v  (in-list speed-vs)])
             (define d (flplane3-point-dist p v))
-            (when d (unsafe-flvector-set! vbx 0 d))))
-    (printf "heap: ~v~n" (current-memory-use)))
+            (when d (unsafe-flvector-set! vbx 0 d)))))
+  (newline))
+
+;; ===================================================================================================
+;; FlTransform3 tests
+
+(define (test-flt3inverse)
+  (printf "Testing flt3inverse~n")
+  (for ([_  (in-range 5)])
+    (time (for ([t1  (in-list speed-ts)])
+            (set! bx (flt3inverse t1)))))
+  (newline))
+
+(define (test-flt3compose)
+  (printf "Testing flt3compose~n")
+  (for ([_  (in-range 5)])
+    (time (for ([t1  (in-list speed-ts)]
+                [t2  (in-list (rest speed-ts))])
+            (set! bx (flt3compose t1 t2)))))
   (newline))
 
 ;; ===================================================================================================
@@ -551,6 +609,10 @@
   )
 
 (begin
+  (test-fl4dot)
+  )
+
+(begin
   (test-flv3+)
   (test-flv3-)
   (test-flv3neg)
@@ -570,4 +632,9 @@
   (test-flplane3)
   (test-flplane3-flip)
   (test-flplane3-point-dist)
+  )
+
+(begin
+  (test-flt3inverse)
+  (test-flt3compose)
   )

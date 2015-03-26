@@ -2,19 +2,23 @@
 
 ;; TODO: Change these to call/values convention
 
+(require "fl2.rkt"
+         "fl3.rkt"
+         "fl4.rkt")
+
 (provide (all-defined-out))
 
-;; TODO: This is fl2cross
 (define-syntax-rule (det2 a b c d)
-  (- (* a d) (* b c)))
+  (fl2cross a b c d)
+  #;(- (* a d) (* b c)))
 
-;; TODO: This is fl3dot
 (define-syntax-rule (v3dot x1 y1 z1 x2 y2 z2)
-  (+ (* x1 x2) (* y1 y2) (* z1 z2)))
+  (fl3dot x1 y1 z1 x2 y2 z2)
+  #;(+ (* x1 x2) (* y1 y2) (* z1 z2)))
 
-;; TODO: Don't have one of these yet
 (define-syntax-rule (v4dot m0 m1 m2 m3 v0 v1 v2 v3)
-  (+ (* m0 v0) (* m1 v1) (* m2 v2) (* m3 v3)))
+  (fl4dot m0 m1 m2 m3 v0 v1 v2 v3)
+  #;(+ (* m0 v0) (* m1 v1) (* m2 v2) (* m3 v3)))
 
 ;; ===================================================================================================
 ;; Inversion
@@ -25,7 +29,7 @@
     (define s0 (det2 m01 m02 m11 m12))
     (define s1 (det2 m02 m00 m12 m10))
     (define s2 (det2 m00 m01 m10 m11))
-    (define det (+ (* s0 m20) (* s1 m21) (* s2 m22)))
+    (define det (v3dot s0 s1 s2 m20 m21 m22))
     (values (/ (det2 m11 m12 m21 m22) det)  (/ (det2 m02 m01 m22 m21) det)  (/ s0 det)
             (/ (det2 m12 m10 m22 m20) det)  (/ (det2 m00 m02 m20 m22) det)  (/ s1 det)
             (/ (det2 m10 m11 m20 m21) det)  (/ (det2 m01 m00 m21 m20) det)  (/ s2 det))))
@@ -175,7 +179,7 @@
     (define s0 (det2 m01 m02 m11 m12))
     (define s1 (det2 m02 m00 m12 m10))
     (define s2 (det2 m00 m01 m10 m11))
-    (+ (* s0 m20) (* s1 m21) (* s2 m22))))
+    (v3dot s0 s1 s2 m20 m21 m22)))
 
 (define-syntax-rule (affine3-determinant m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
   (linear3-determinant m00 m01 m02 m10 m11 m12 m20 m21 m22))
