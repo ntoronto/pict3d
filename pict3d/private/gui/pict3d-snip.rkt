@@ -10,6 +10,7 @@
          typed/opengl
          "../gl.rkt"
          "../utils.rkt"
+         "../engine.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
          "pict3d-draw.rkt"
@@ -66,6 +67,23 @@
     [(macosx)  #f]
     [else      #t]))
 
+(define debug-pass-names
+  #hasheq((opaque-material . "Surface Normals + Roughness")
+          (opaque-depth . "Surface Depth")
+          (opaque-diffuse . "Diffuse Light")
+          (opaque-specular . "Specular Light")
+          (opaque-rgba . "Surface RGBA")
+          (transparent-material . "Surface Normals + Roughness")
+          (transparent-depth . "Surface Depth")
+          (transparent-diffuse . "Diffuse Light")
+          (transparent-specular . "Specular Light")
+          (transparent-rgbv . "Surface RGB + Weight")
+          (transparent-alpha . "Surface Alpha")
+          (composite-rgba . "Opaque + Transparent RGBA")
+          (bloom . "Bloom Lighting")
+          (no-bloom . "Final RGBA (no bloom)")
+          (#f . "Final RGBA")))
+
 ;; ===================================================================================================
 ;; Rendering threads
 
@@ -95,10 +113,10 @@
     (define-values (_ cpu real gc)
       (time-apply
        (λ ()
-         (define-values
-           (legacy? check-version?
-                    width height z-near z-far fov background ambient
-                    add-sunlight? add-indicators? auto-camera)
+         (match-define (list debug-pass
+                             legacy? check-version?
+                             width height z-near z-far fov background ambient
+                             add-sunlight? add-indicators? auto-camera)
            (send gui get-render-params))
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy? check-version?)
@@ -136,16 +154,17 @@
                    picts
                    (cons p picts))))
            
-           (draw-pict3ds (append (list (pict3d scene)) sunlight-pict3ds light-pict3ds axes-pict3ds)
-                         width
-                         height
-                         #:camera view
-                         #:z-near z-near
-                         #:z-far z-far
-                         #:fov fov
-                         #:background background
-                         #:ambient ambient
-                         #:bitmap? #t)
+           (parameterize ([current-engine-debug-pass  debug-pass])
+             (draw-pict3ds (append (list (pict3d scene)) sunlight-pict3ds light-pict3ds axes-pict3ds)
+                           width
+                           height
+                           #:camera view
+                           #:z-near z-near
+                           #:z-far z-far
+                           #:fov fov
+                           #:background background
+                           #:ambient ambient
+                           #:bitmap? #t))
            
            ;; Get the resulting pixels and set them into the snip's bitmap
            (define bs (get-the-bytes (* 4 width height)))
@@ -221,8 +240,10 @@
     
     (super-new)
     
+    (define debug-pass #f)
+    
     (define/public (get-render-params)
-      (send pict get-init-params))
+      (cons debug-pass (call-with-values (λ () (send pict get-init-params)) list)))
     
     (define/public (get-scene) (send pict get-scene))
     (define/public (set-argb-pixels bs) (send pict set-argb-pixels bs))
@@ -529,17 +550,15 @@
     (define center-mouse-y 0)
     
     (define (copy-hud-data time)
-      (define str "")
-      #;
       (define str
         (string-join
          (for/list ([item  (in-list hud-items)])
            (match item
-             [(list 'trace-pos v digits width height)
-              (define-values (x y z) (flv3-values v))
+             [(list 'trace-pos v digits)
+              (match-define (pos x y z) v)
               (format "(pos ~a ~a ~a)" x y z)]
-             [(list 'trace-norm n width height)
-              (define-values (dx dy dz) (flv3-values n))
+             [(list 'trace-norm n)
+              (match-define (dir dx dy dz) n)
               (format "(dir ~a ~a ~a)" dx dy dz)]
              [_  ""]))
          "\n"))
@@ -547,8 +566,8 @@
         (send the-clipboard set-clipboard-string str time)))
     
     (define (copy-camera-data time)
-      (define t (send camera get-basis))
-      (define-values (dx dy dz p) (affine->cols (affine-inverse t)))
+      (define t (affine-inverse (camera->view (send camera get-basis))))
+      (define-values (dx dy dz p) (affine->cols t))
       (define str (format "~v~n~v" p (dir-negate dz)))
       (send the-clipboard set-clipboard-string str time))
     
@@ -561,6 +580,50 @@
          [label "Copy Camera Data"]
          [parent right-click-menu]
          [callback  (λ (i e) (copy-camera-data (send e get-time-stamp)))])
+    
+    (new separator-menu-item%
+         [parent right-click-menu])
+    
+    (define debug-pass-submenu
+      (new menu%
+           [label "Show Rendering Pass Result"]
+           [parent right-click-menu]))
+    
+    (define (add-debug-header str separator-before?)
+      (when separator-before?
+        (new separator-menu-item% [parent debug-pass-submenu]))
+      (define item
+        (new menu-item%
+             [label str]
+             [parent debug-pass-submenu]
+             [callback void]))
+      (send item enable #f)
+      (new separator-menu-item% [parent debug-pass-submenu]))
+    
+    (define debug-passes-items
+      (for/list ([pass  (in-list (append engine-debug-passes (list #f)))])
+        (case pass
+          [(opaque-material)  (add-debug-header "Opaque Object Passes" #f)]
+          [(transparent-material)  (add-debug-header "Transparent Object Passes" #t)]
+          [(composite-rgba)  (add-debug-header "Compositing Passes" #t)])
+        
+        (new checkable-menu-item%
+             [label  (hash-ref debug-pass-names pass)]
+             [parent  debug-pass-submenu]
+             [help-string  (if pass (symbol->string pass) "#f")]
+             [checked  (eq? pass #f)]
+             [callback  (λ (i e)
+                          (define str (send i get-help-string))
+                          (define pass
+                            (if (equal? str "#f")
+                                #f
+                                (string->symbol str)))
+                          (set! debug-pass pass)
+                          (force-redraw)
+                          
+                          (for ([item  (in-list debug-passes-items)])
+                            (unless (eq? item i)
+                              (send item check #f))))])))
     
     (define (mouse-moved snip-x snip-y)
       (unless (and (equal? snip-x last-snip-x)
