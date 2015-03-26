@@ -81,8 +81,8 @@
           (transparent-alpha . "Surface Alpha")
           (composite-rgba . "Opaque + Transparent RGBA")
           (bloom . "Bloom Lighting")
-          (no-bloom . "Final RGBA (no bloom)")
-          (#f . "Final RGBA")))
+          (no-bloom . "Gamma-Corrected RGBA (no bloom)")
+          (#f . "Gamma-Corrected RGBA (final)")))
 
 ;; ===================================================================================================
 ;; Rendering threads
@@ -605,7 +605,7 @@
         (case pass
           [(opaque-material)  (add-debug-header "Opaque Object Passes" #f)]
           [(transparent-material)  (add-debug-header "Transparent Object Passes" #t)]
-          [(composite-rgba)  (add-debug-header "Compositing Passes" #t)])
+          [(composite-rgba)  (add-debug-header "Post-Processing Passes" #t)])
         
         (new checkable-menu-item%
              [label  (hash-ref debug-pass-names pass)]
