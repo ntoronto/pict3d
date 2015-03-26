@@ -92,11 +92,11 @@
 ;; ===================================================================================================
 ;; Ray intersection
 
-(: frozen-scene-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
-                                                                 (U #f (Promise surface-data)))))
-(define (frozen-scene-shape-line-intersect s v dv)
+(: frozen-scene-shape-line-intersect (-> shape FlV3 FlV3 Flonum
+                                         (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(define (frozen-scene-shape-line-intersect s v dv max-time)
   (let ([s  (assert s frozen-scene-shape?)])
-    (nonempty-scene-ray-intersect (frozen-scene-shape-scene s) v dv)))
+    (nonempty-scene-ray-intersect (frozen-scene-shape-scene s) v dv max-time)))
 
 ;; ===================================================================================================
 

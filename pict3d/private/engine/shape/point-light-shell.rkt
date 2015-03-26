@@ -257,4 +257,4 @@ code
    (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shell-shape-bbox s t)))
    point-light-shell-shape-transform
    (λ (s t) (list (point-light-shell-shape-transform s t)))
-   (λ (s v dv) (values #f #f))))
+   (λ (s v dv max-time) (values #f #f))))

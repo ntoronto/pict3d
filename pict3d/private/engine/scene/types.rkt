@@ -61,14 +61,6 @@
         [(not b1)  #f]
         [else  (bbox-appx-contains-bbox? b1 b2)]))
 
-(: bbox-appx-line-intersects (-> bbox FlV3 FlV3 (Values (U #f Flonum) (U #f Flonum))))
-(define (bbox-appx-line-intersects b v dv)
-  (flrect3-line-intersects (bbox-rect b) v dv))
-
-(: maybe-bbox-appx-line-intersects (-> (U #f bbox) FlV3 FlV3 (Values (U #f Flonum) (U #f Flonum))))
-(define (maybe-bbox-appx-line-intersects b v dv)
-  (if b (bbox-appx-line-intersects b v dv) (values #f #f)))
-
 (: bbox-appx-classify/planes (-> bbox (Listof FlPlane3) (U 'inside 'outside 'both)))
 (define (bbox-appx-classify/planes b planes)
   (flrect3-classify/planes (bbox-rect b) planes))
@@ -114,7 +106,8 @@
    [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
    [fast-transform : (-> shape FlAffine3 (U #f shape))]
    [deep-transform : (-> shape FlAffine3 (Listof shape))]
-   [line-intersect : (-> shape FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data))))])
+   [line-intersect : (-> shape FlV3 FlV3 Flonum
+                         (Values (U #f Flonum) (U #f (Promise surface-data))))])
   #:transparent)
 
 (struct shape
@@ -159,9 +152,10 @@
 (define (shape-deep-transform s t)
   ((shape-functions-deep-transform (shape-vtable s)) s t))
 
-(: shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data)))))
-(define (shape-line-intersect s v dv)
-  ((shape-functions-line-intersect (shape-vtable s)) s v dv))
+(: shape-line-intersect (-> shape FlV3 FlV3 Flonum
+                            (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(define (shape-line-intersect s v dv max-time)
+  ((shape-functions-line-intersect (shape-vtable s)) s v dv max-time))
 
 ;; ===================================================================================================
 ;; Scene types

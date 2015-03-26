@@ -702,35 +702,23 @@
 
 (: trace (-> Pict3D Pos (U Pos Dir) (U #f Pos)))
 (define (trace p v1 to)
-  (cond
-    [(pos? to)
-     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 (flv3- to v1)))
-     (and time data (<= time 1.0) (flv3->pos (surface-data-point (force data))))]
-    [else
-     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 to))
-     (and time data (flv3->pos (surface-data-point (force data))))]))
+  (define-values (time data)
+    (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
+          [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
+  (and time data (flv3->pos (surface-data-point (force data)))))
 
 (: trace/normal (-> Pict3D Pos (U Pos Dir) (Values (U #f Pos) (U #f Dir))))
 (define (trace/normal p v1 to)
-  (cond
-    [(pos? to)
-     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 (flv3- to v1)))
-     (cond [(and time data (<= time 1.0))
-            (let ([data  (force data)])
-              (define v (surface-data-point data))
-              (define n (surface-data-normal data))
-              (values (flv3->pos v) (and n (flv3->dir n))))]
-           [else
-            (values #f #f)])]
-    [else
-     (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 to))
-     (cond [(and time data)
-            (let ([data  (force data)])
-              (define v (surface-data-point data))
-              (define n (surface-data-normal data))
-              (values (flv3->pos v) (and n (flv3->dir n))))]
-           [else
-            (values #f #f)])]))
+  (define-values (time data)
+    (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
+          [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
+  (cond [(and time data)
+         (let ([data  (force data)])
+           (define v (surface-data-point data))
+           (define n (surface-data-normal data))
+           (values (flv3->pos v) (and n (flv3->dir n))))]
+        [else
+         (values #f #f)]))
 
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)

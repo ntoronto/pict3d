@@ -166,4 +166,4 @@ code
    (λ (s kind t) (and (eq? kind 'invisible) directional-light-shape-bbox))
    directional-light-shape-transform
    (λ (s t) (list (directional-light-shape-transform s t)))
-   (λ (s v dv) (values #f #f))))
+   (λ (s v dv max-time) (values #f #f))))

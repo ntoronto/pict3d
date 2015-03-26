@@ -470,35 +470,34 @@ code
                 [else
                  (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
-                                                             (U #f (Promise surface-data)))))
-(define (triangle-shape-line-intersect s o d)
+(: triangle-shape-line-intersect (-> shape FlV3 FlV3 Flonum
+                                     (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(define (triangle-shape-line-intersect s o d max-time)
   (let ([s  (assert s triangle-shape?)])
-    (define v0 (vtx-position (triangle-shape-vtx1 s)))
-    (define v1 (vtx-position (triangle-shape-vtx2 s)))
-    (define v2 (vtx-position (triangle-shape-vtx3 s)))
+    (define v1 (vtx-position (triangle-shape-vtx1 s)))
+    (define v2 (vtx-position (triangle-shape-vtx2 s)))
+    (define v3 (vtx-position (triangle-shape-vtx3 s)))
     (define back? (triangle-shape-back? s))
-    (let-values ([(v0 v1)  (if back? (values v1 v0) (values v0 v1))])
-      (define time (triangle-intersect-time v0 v1 v2 o d))
-      (cond
-        [(not time)  (values #f #f)]
-        [else
-         (define data
-           (delay (surface-data
-                   (flv3fma d time o)
-                   (let ([n  (flv3triangle-normal v0 v1 v2)])
-                     (and n (if back? (flv3neg n) n))))))
-         (values time data)]))))
+    (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
+      (define time (triangle-intersect-time v1 v2 v3 o d))
+      (cond [(or (not time) (> time max-time))  (values #f #f)]
+            [else
+             (define data
+               (delay (define p (flv3fma d time o))
+                      (define n (let ([n  (flv3triangle-normal v1 v2 v3)])
+                                  (and n (if back? (flv3neg n) n))))
+                      (surface-data p n)))
+             (values time data)]))))
 
-(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
-                                                              (U #f (Promise surface-data)))))
-(define (rectangle-shape-line-intersect s v dv)
+(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 Flonum
+                                      (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(define (rectangle-shape-line-intersect s v dv max-time)
   (let ([s  (assert s rectangle-shape?)])
     (define b (rectangle-shape-axial-rect s))
-    (define-values (tmin tmax) (flrect3-line-intersects b v dv))
+    (define-values (tmin tmax) (flrect3-line-intersects b v dv max-time))
     (define inside? (rectangle-shape-inside? s))
     (define time (if inside? tmax tmin))
-    (cond [(not time)  (values #f #f)]
+    (cond [(or (not time) (> time max-time))  (values #f #f)]
           [else
            (define data
              (delay (define p (flrect3-closest-point b (flv3fma dv time v)))

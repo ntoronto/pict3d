@@ -25,23 +25,31 @@
 
 (define t ((current-pict3d-auto-camera) pict))
 
-(define vs
+(define vdvs
+  (time
+   (for*/list : (Listof (U #f (Pair Pos Dir))) ([x  (in-range 0 512 4)]
+                                                [y  (in-range 0 512 4)])
+     (define-values (v dv) (camera-ray t x y))
+     (and v dv (cons v dv)))))
+
+(define-values (vs dvs)
+  (for/lists ([vs : (Listof Pos)] [dvs : (Listof Dir)]) ([vdv  (in-list vdvs)]
+                                                         #:when vdv)
+    (values (car vdv) (cdr vdv))))
+
+(define ps
   (append*
    (time
-    (for*/list : (Listof (Listof Pos)) ([x  (in-range 0 512 4)]
-                                        [y  (in-range 0 512 4)])
-      (define-values (v dv) (camera-ray t x y))
-      (cond [(and v dv)
-             (define p (trace pict v dv))
-             (if p (list p) empty)]
-            [else
-             empty])))))
+    (for/list : (Listof (Listof Pos)) ([v   (in-list vs)]
+                                       [dv  (in-list dvs)])
+      (define p (trace pict v dv))
+      (if p (list p) empty)))))
 
 (define pts
   (with-color (rgba "chartreuse")
     (combine
-     (for/list : (Listof Pict3D) ([v  (in-list vs)])
-       (sphere v 0.025)))))
+     (for/list : (Listof Pict3D) ([p  (in-list ps)])
+       (sphere p 0.025)))))
 
 (combine (freeze pict)
          (freeze pts))

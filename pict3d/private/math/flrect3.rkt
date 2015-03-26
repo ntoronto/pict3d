@@ -341,14 +341,14 @@
                           (if (> oct-dy 0.0) (/ (- (- new-ymax new-ymin) oct-dy) oct-dy) 0.0)
                           (if (> oct-dz 0.0) (/ (- (- new-zmax new-zmin) oct-dz) oct-dz) 0.0)))))))]))
 
-(: flrect3-line-intersects (-> FlRect3 FlV3 FlV3 (Values (U #f Flonum) (U #f Flonum))))
-(define (flrect3-line-intersects bb v dv)
+(: flrect3-line-intersects (-> FlRect3 FlV3 FlV3 Flonum (Values (U #f Flonum) (U #f Flonum))))
+(define (flrect3-line-intersects bb v dv max-time)
   (define mn (flrect3-min bb))
   (define mx (flrect3-max bb))
   ;; Compute [tmin,tmax], the interval of times for which a point on the ray is in the box
   ;; Main idea: Compute [tmin_i,tmax_i] for each pair of parallel bounding planes, and intersect them
   (let loop ([i : Index  0]               ; Current coordinate
-             [tmin -inf.0] [tmax +inf.0]  ; Accumulator starts at [-inf,+inf]
+             [tmin -inf.0] [tmax max-time]  ; Accumulator starts at [-inf,max-time]
              )
     (cond
       [(< i 3)

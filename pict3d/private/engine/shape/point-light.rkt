@@ -195,4 +195,4 @@ code
    (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shape-bbox s t)))
    point-light-shape-transform
    (λ (s t) (list (point-light-shape-transform s t)))
-   (λ (s v dv) (values #f #f))))
+   (λ (s v dv max-time) (values #f #f))))
