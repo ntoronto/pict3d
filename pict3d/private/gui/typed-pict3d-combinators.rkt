@@ -705,7 +705,7 @@
   (cond
     [(pos? to)
      (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 (flv3- to v1)))
-     (and time data (flv3->pos (surface-data-point (force data))))]
+     (and time data (<= time 1.0) (flv3->pos (surface-data-point (force data))))]
     [else
      (define-values (time data) (scene-ray-intersect (pict3d-scene p) v1 to))
      (and time data (flv3->pos (surface-data-point (force data))))]))
@@ -814,8 +814,8 @@
   (define clip-x (* (- (/ (fl x) (fl (max 1 width))) 0.5) 2.0))
   (define clip-y (* (- (/ (fl y) (fl (max 1 height))) 0.5) 2.0))
   (define dv
-    (let ([dv  (flv3normalize (flt3apply/pos unproj (flv3 clip-x clip-y 0.0)))])
-      (and dv (flv3normalize (flt3apply/dir unview dv)))))
+    (let ([dv  (flt3apply/pos unproj (flv3 clip-x clip-y 0.0))])
+      (flv3normalize (flt3apply/dir unview dv))))
   (if dv
       (values (call/flv3-values v pos)
               (call/flv3-values dv dir))

@@ -87,13 +87,16 @@
 
 (: sphere-shape-line-intersect (-> shape FlV3 FlV3 (Values (U #f Flonum)
                                                            (U #f (Promise surface-data)))))
-(define (sphere-shape-line-intersect a v dv)
-  (let* ([a  (assert a sphere-shape?)]
-         [s : FlAffine3  (flt3inverse (sphere-shape-affine a))]
-         [sv : FlV3  (flt3apply/pos s v)]
-         [sdv : FlV3  (flt3apply/dir s dv)])
+(define (sphere-shape-line-intersect s v dv)
+  (let ([s  (assert s sphere-shape?)])
+    (define t (sphere-shape-affine s))
+    (define inside? (sphere-shape-inside? s))
+    ;; Convert ray to local coordinates
+    (define tinv (flt3inverse t))
+    (define sv (flt3apply/pos tinv v))
+    (define sdv (flt3apply/dir tinv dv))
+    ;; Compute intersection
     (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
-    (define inside? (sphere-shape-inside? a))
     (define time (if inside? tmax tmin))
     (cond [(not time)  (values #f #f)]
           [else
@@ -101,7 +104,7 @@
              (delay (surface-data
                      (flv3fma dv time v)
                      (let ([n  (flv3normalize (flv3fma sdv time sv))])
-                       (and n (flt3apply/norm (flt3inverse s) (if inside? (flv3neg n) n)))))))
+                       (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))))
            (values time data)])))
 
 ;; ===================================================================================================

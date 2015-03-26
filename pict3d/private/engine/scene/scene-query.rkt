@@ -289,48 +289,81 @@
 
 (: transform-surface-data (-> (Promise surface-data) FlAffine3 (Promise surface-data)))
 (define (transform-surface-data data t)
-  (cond [(identity-flaffine3? t)  data]
-        [else
-         (let ([data  (force data)])
-           (delay (surface-data (flt3apply/pos t (surface-data-point data))
-                                (let ([n  (surface-data-normal data)])
-                                  (and n (flt3apply/norm t n))))))]))
+  (let ([data  (force data)])
+    (delay (surface-data (flt3apply/pos t (surface-data-point data))
+                         (let ([n  (surface-data-normal data)])
+                           (and n (flt3apply/norm t n)))))))
 
 (: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3
                                     (Values (U #f Flonum) (U #f (Promise surface-data)))))
 (define (nonempty-scene-ray-intersect s v dv)
   (let loop ([s s] [v v] [dv dv] [t  identity-flaffine3])
-    (define-values (tmin tmax)
-      (let* ([b  (scene-bbox s)]
-             [r  (maybe-bbox-rect b)])
-        (define-values (tmin tmax) (maybe-flrect3-line-intersects r v dv))
-        (if (and b tmin tmax (> (bbox-badness b) 16.0))
-            (let ([r  (maybe-bbox-rect (scene-bbox/badness s 16.0))])
-              (maybe-flrect3-line-intersects r v dv))
-            (values tmin tmax))))
     (cond
-      [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  (values #f #f)]
       [(shape? s)
        (define-values (time data) (shape-line-intersect s v dv))
        (if (or (not time) (not data) (< time 0.0))
            (values #f #f)
-           (values time (transform-surface-data data (flt3inverse t))))]
+           (values time
+                   (if (identity-flaffine3? t)
+                       data
+                       (transform-surface-data data (flt3inverse t)))))]
       [(node-scene? s)
-       (define-values (time1 data1) (loop (node-scene-neg s) v dv t))
-       (define-values (time2 data2) (loop (node-scene-pos s) v dv t))
-       (if (and time1 time2 data1 data2)
-           (if (<= time1 time2)
-               (values time1 data1)
-               (values time2 data2))
-           (if (and time1 data1)
-               (values time1 data1)
-               (values time2 data2)))]
+       (define b (node-scene-visible-bbox s))
+       (cond
+         [(not b)  (values #f #f)]
+         [else
+          (define r (bbox-rect b))
+          (define-values (tmin tmax)
+            (let-values ([(tmin tmax)  (flrect3-line-intersects r v dv)])
+              (if (and tmin tmax (> (bbox-badness b) 16.0))
+                  (let ([r  (maybe-bbox-rect (scene-bbox/badness s 16.0))])
+                    (maybe-flrect3-line-intersects r v dv))
+                  (values tmin tmax))))
+          (cond
+            [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  (values #f #f)]
+            [else
+             (define s1 (node-scene-neg s))
+             (define s2 (node-scene-pos s))
+             
+             (define (brute-force-fallback)
+               (define-values (time1 data1) (loop s1 v dv t))
+               (define-values (time2 data2) (loop s2 v dv t))
+               (if (and time1 time2 data1 data2)
+                   (if (<= time1 time2)
+                       (values time1 data1)
+                       (values time2 data2))
+                   (if (and time1 data1)
+                       (values time1 data1)
+                       (values time2 data2))))
+             
+             (cond
+               [(and (node-scene? s1) (node-scene? s2))
+                (define b1 (node-scene-visible-bbox s1))
+                (define b2 (node-scene-visible-bbox s2))
+                (cond
+                  [(and b1 b2)
+                   (define plane (flrect3-separating-plane (bbox-rect b1) (bbox-rect b2)))
+                   (cond
+                     [plane
+                      (let-values ([(s1 s2)  (if (<= (flplane3-point-dist plane v) 0.0)
+                                                 (values s1 s2)
+                                                 (values s2 s1))])
+                        (define-values (time data) (loop s1 v dv t))
+                        (cond [(and time data)  (values time data)]
+                              [else  (loop s2 v dv t)]))]
+                     [else
+                      (brute-force-fallback)])]
+                  [b1  (loop s1 v dv t)]
+                  [b2  (loop s2 v dv t)]
+                  [else  (values #f #f)])]
+               [else
+                (brute-force-fallback)])])])]
       [(trans-scene? s)
-       (let* ([t0 : FlAffine3  (flt3inverse (trans-scene-affine s))]
-              [v  : FlV3  (flt3apply/pos t0 v)]
-              [dv : FlV3  (flt3apply/dir t0 dv)]
-              [t  : FlAffine3  (flt3compose t0 t)])
-         (loop (trans-scene-scene s) v dv t))]
+       (define t0 (flt3inverse (trans-scene-affine s)))
+       (loop (trans-scene-scene s)
+             (flt3apply/pos t0 v)
+             (flt3apply/dir t0 dv)
+             (flt3compose t0 t))]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (cond [(empty-scene? s0)  (values #f #f)]

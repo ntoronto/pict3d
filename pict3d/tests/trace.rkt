@@ -55,12 +55,12 @@
       (if p
           (combine
            (transform (with-color (rgba 0 1 0 0.75)
-                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
+                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 3))
                       (point-at v p #:normalize? #f))
            (with-emitted (emitted "green" 3.0)
              (sphere p 0.01)))
           (transform (with-color (rgba "red" 0.75)
-                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 8))
+                        (cylinder (pos -0.002 -0.002 0) (pos 0.002 0.002 1) #:segments 3))
                       (point-at v (dir-scale dv 1.5) #:normalize? #f)))))))
 
 (combine shapes traces)
