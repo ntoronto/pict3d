@@ -92,9 +92,9 @@
  cone
  ;; Collision detection
  trace
- trace/normal
+ trace/data
  surface
- surface/normal
+ surface/data
  ;; Camera/view
  canvas-projection
  bitmap-projection
@@ -705,20 +705,14 @@
   (define-values (time data)
     (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
           [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
-  (and time data (flv3->pos (surface-data-point (force data)))))
+  (and time data (flv3->pos (trace-data-pos (force data)))))
 
-(: trace/normal (-> Pict3D Pos (U Pos Dir) (Values (U #f Pos) (U #f Dir))))
-(define (trace/normal p v1 to)
+(: trace/data (-> Pict3D Pos (U Pos Dir) (U #f Surface-Data)))
+(define (trace/data p v1 to)
   (define-values (time data)
     (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
           [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
-  (cond [(and time data)
-         (let ([data  (force data)])
-           (define v (surface-data-point data))
-           (define n (surface-data-normal data))
-           (values (flv3->pos v) (and n (flv3->dir n))))]
-        [else
-         (values #f #f)]))
+  (and time data (trace-data->surface-data (force data))))
 
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)
@@ -740,14 +734,14 @@
            (trace p vin vout)
            (trace p vout vin))))
 
-(: surface/normal (->* [Pict3D Dir] [#:inside? Any] (Values (U #f Pos) (U #f Dir))))
-(define (surface/normal p dv #:inside? [inside? #f])
+(: surface/data (->* [Pict3D Dir] [#:inside? Any] (U #f Surface-Data)))
+(define (surface/data p dv #:inside? [inside? #f])
   (define-values (vin vout) (find-surface-endpoints p dv))
   (if (and vin vout)
       (if inside?
-          (trace/normal p vin vout)
-          (trace/normal p vout vin))
-      (values #f #f)))
+          (trace/data p vin vout)
+          (trace/data p vout vin))
+      #f))
 
 ;; ===================================================================================================
 ;; Camera/view

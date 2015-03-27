@@ -27,8 +27,8 @@
      (for*/list ([ρ  (in-range -81 82 18)]
                  [s  (in-value (exact-ceiling (/ 18 (cos (degrees->radians ρ)))))]
                  [θ  (in-range -180 180 s)])
-       (define-values (v dv) (surface/normal ball (angles->dir θ ρ)))
-       (basis 'shaft (point-at v dv))))))
+       (define data (surface/data ball (angles->dir θ ρ)))
+       (basis 'shaft (point-at (surface-data-pos data) (surface-data-normal data)))))))
 
 (struct cube-state ()
   #:methods gen:world-state

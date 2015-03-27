@@ -90,9 +90,10 @@
 ;; ===================================================================================================
 ;; Collision detection types
 
-(struct surface-data
-  ([point : FlV3]
-   [normal : (U #f FlV3)])
+(struct trace-data
+  ([pos : FlV3]
+   [norm : (U #f FlV3)]
+   [path : (Listof Tag)])
   #:transparent)
 
 ;; ===================================================================================================
@@ -106,8 +107,7 @@
    [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
    [fast-transform : (-> shape FlAffine3 (U #f shape))]
    [deep-transform : (-> shape FlAffine3 (Listof shape))]
-   [line-intersect : (-> shape FlV3 FlV3 Flonum
-                         (Values (U #f Flonum) (U #f (Promise surface-data))))])
+   [line-intersect : (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum) (U #f (Promise trace-data))))])
   #:transparent)
 
 (struct shape
@@ -152,8 +152,8 @@
 (define (shape-deep-transform s t)
   ((shape-functions-deep-transform (shape-vtable s)) s t))
 
-(: shape-line-intersect (-> shape FlV3 FlV3 Flonum
-                            (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(: shape-line-intersect (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum)
+                                                           (U #f (Promise trace-data)))))
 (define (shape-line-intersect s v dv max-time)
   ((shape-functions-line-intersect (shape-vtable s)) s v dv max-time))
 

@@ -97,6 +97,7 @@
 
 (define light-indicator-hash (make-weak-hasheq))
 (define axes-indicator-hash (make-weak-hasheq))
+(define group-box-hash (make-weak-hasheq))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread gui ch)
@@ -113,7 +114,7 @@
     (define-values (_ cpu real gc)
       (time-apply
        (λ ()
-         (match-define (list debug-pass
+         (match-define (list debug-pass path
                              legacy? check-version?
                              width height z-near z-far fov background ambient
                              add-sunlight? add-indicators? auto-camera)
@@ -154,8 +155,18 @@
                    picts
                    (cons p picts))))
            
+           (define boxes
+             (if (empty? path)
+                 empty
+                 (let ([h  (hash-ref! group-box-hash scene make-hash)])
+                   (hash-ref! h path (λ () (group-boxes (pict3d scene) path))))))
+           
            (parameterize ([current-engine-debug-pass  debug-pass])
-             (draw-pict3ds (append (list (pict3d scene)) sunlight-pict3ds light-pict3ds axes-pict3ds)
+             (draw-pict3ds (append (list (pict3d scene)) 
+                                   sunlight-pict3ds
+                                   light-pict3ds
+                                   axes-pict3ds
+                                   boxes)
                            width
                            height
                            #:camera view
@@ -243,7 +254,7 @@
     (define debug-pass #f)
     
     (define/public (get-render-params)
-      (cons debug-pass (call-with-values (λ () (send pict get-init-params)) list)))
+      (list* debug-pass last-trace-path (call-with-values (λ () (send pict get-init-params)) list)))
     
     (define/public (get-scene) (send pict get-scene))
     (define/public (set-argb-pixels bs) (send pict set-argb-pixels bs))
@@ -342,6 +353,7 @@
     (define last-snip-y -1)
     
     (define last-trace-pos #f)
+    (define last-trace-path empty)
     
     (define (hud-timer-tick)
       (define view last-view-matrix)
@@ -366,15 +378,20 @@
           (define y (fl snip-y))
           
           (define-values (v0 dv) (camera-ray view x y))
-          (define-values (v n)
-            (if (and v0 dv)
-                (trace/normal (pict3d (send pict get-scene)) v0 dv)
-                (values #f #f)))
+          (define data
+            (and v0 dv (trace/data (pict3d (send pict get-scene)) v0 dv)))
           
           (define new-hud-items
             (cond
-              [(or (not v) (not n))  empty]
+              [(not data)
+               (when (not (empty? last-trace-path))
+                 (force-redraw))
+               (set! last-trace-path empty)
+               empty]
               [else
+               (define v (surface-data-pos data))
+               (define n (surface-data-normal data))
+               (define path (surface-data-path data))
                (define t (pos-dist v v0))
                ;; Compute an approximation of the change in position values per window coordinate at
                ;; the intersection point
@@ -384,12 +401,20 @@
                (define-values (_y2 dv4) (camera-ray view x (+ y 0.5)))
                (define d (max (pos-dist (pos+ v0 dv1 t) (pos+ v0 dv2 t))
                               (pos-dist (pos+ v0 dv3 t) (pos+ v0 dv4 t))))
+               
+               (when (not (equal? path last-trace-path))
+                 (force-redraw))
+               (set! last-trace-path path)
+               
                (append
                 (cond [(and (rational? d) (> d 0))
                        (set! last-trace-pos v)
                        (list (list 'trace-pos v (exact-floor (/ (log d) (log 10.0)))))]
                       [else  empty])
-                (if n (list (list 'trace-norm n)) empty))]))
+                (cond [(not n)  empty]
+                      [else  (list (list 'trace-norm n))])
+                (cond [(empty? path)  empty]
+                      [else  (list (list 'trace-path path))]))]))
           
           (when (not (equal? hud-items new-hud-items))
             (set! hud-items new-hud-items)
@@ -432,7 +457,9 @@
           [(list 'trace-pos v digits)
            (draw-hud-vector dc v digits width height "pos" 2)]
           [(list 'trace-norm n)
-           (draw-hud-vector dc n -2 width height "dir" 1)])))
+           (draw-hud-vector dc n -2 width height "dir" 1)]
+          [(list 'trace-path path)
+           (void)])))
     
     (define scale-x-min -1)
     (define scale-x-mid -1)
@@ -550,20 +577,21 @@
     (define center-mouse-y 0)
     
     (define (copy-hud-data time)
-      (define str
-        (string-join
-         (for/list ([item  (in-list hud-items)])
-           (match item
-             [(list 'trace-pos v digits)
-              (match-define (pos x y z) v)
-              (format "(pos ~a ~a ~a)" x y z)]
-             [(list 'trace-norm n)
-              (match-define (dir dx dy dz) n)
-              (format "(dir ~a ~a ~a)" dx dy dz)]
-             [_  ""]))
-         "\n"))
-      (when (not (equal? str ""))
-        (send the-clipboard set-clipboard-string str time)))
+      (with-handlers ([exn?  (λ (e) (printf "exception: ~e" e))])
+        (define pos-item (assq 'trace-pos hud-items))
+        (define str
+          (cond
+            [pos-item
+             (define norm-item (assq 'trace-norm hud-items))
+             (define path-item (assq 'trace-path hud-items))
+             (define v (second pos-item))
+             (define n (and norm-item (second norm-item)))
+             (define path (if path-item (second path-item) empty))
+             (format "~v" (surface-data v #:normal n #:path path))]
+            [else
+             ""]))
+        (when (not (equal? str ""))
+          (send the-clipboard set-clipboard-string str time))))
     
     (define (copy-camera-data time)
       (define t (affine-inverse (camera->view (send camera get-basis))))

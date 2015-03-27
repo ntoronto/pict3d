@@ -287,25 +287,29 @@
 ;; ===================================================================================================
 ;; Scene-ray-intersection
 
-(: transform-surface-data (-> (Promise surface-data) FlAffine3 (Promise surface-data)))
-(define (transform-surface-data data t)
-  (let ([data  (force data)])
-    (delay (surface-data (flt3apply/pos t (surface-data-point data))
-                         (let ([n  (surface-data-normal data)])
-                           (and n (flt3apply/norm t n)))))))
+(: fix-trace-data (-> (Promise trace-data) FlAffine3 (Listof Tag) (Promise trace-data)))
+(define (fix-trace-data data t path)
+  (delay (let ([data  (force data)])
+           (trace-data (flt3apply/pos t (trace-data-pos data))
+                       (let ([n  (trace-data-norm data)])
+                         (and n (flt3apply/norm t n)))
+                       (reverse path)))))
 
 (: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3 Flonum
-                                    (Values (U #f Flonum) (U #f (Promise surface-data)))))
+                                    (Values (U #f Flonum) (U #f (Promise trace-data)))))
 (define (nonempty-scene-ray-intersect s v dv max-time)
-  (let loop ([s s] [v v] [dv dv] [t identity-flaffine3] [max-time max-time])
+  (let loop ([s s]
+             [v v]
+             [dv dv]
+             [t identity-flaffine3]
+             [path : (Listof Tag)  empty]
+             [max-time max-time])
     (cond
       [(shape? s)
        (define-values (time data) (shape-line-intersect s v dv max-time))
        (if (or (not time) (not data) (< time 0.0))
            (values #f #f)
-           (values time (if (identity-flaffine3? t)
-                            data
-                            (transform-surface-data data (flt3inverse t)))))]
+           (values time (fix-trace-data data (flt3inverse t) path)))]
       [(node-scene? s)
        (define b (node-scene-visible-bbox s))
        (cond
@@ -326,9 +330,9 @@
              
              (define brute-force-fallback
                (λ ([s1 : Nonempty-Scene] [s2 : Nonempty-Scene])
-                 (define-values (time1 data1) (loop s1 v dv t max-time))
+                 (define-values (time1 data1) (loop s1 v dv t path max-time))
                  (let ([max-time  (if time1 (min time1 max-time) max-time)])
-                   (define-values (time2 data2) (loop s2 v dv t max-time))
+                   (define-values (time2 data2) (loop s2 v dv t path max-time))
                    (if (and time1 time2 data1 data2)
                        (if (<= time1 time2)
                            (values time1 data1)
@@ -349,17 +353,17 @@
                       (let-values ([(s1 s2)  (if (<= (flplane3-point-dist plane v) 0.0)
                                                  (values s1 s2)
                                                  (values s2 s1))])
-                        (define-values (time data) (loop s1 v dv t max-time))
+                        (define-values (time data) (loop s1 v dv t path max-time))
                         (cond [(and time data)  (values time data)]
-                              [else  (loop s2 v dv t max-time)]))]
+                              [else  (loop s2 v dv t path max-time)]))]
                      [else
                       (let-values ([(s1 s2)  (if (<= (flv3dist v (flrect3-center (bbox-rect b1)))
                                                      (flv3dist v (flrect3-center (bbox-rect b2))))
                                                  (values s1 s2)
                                                  (values s2 s1))])
                         (brute-force-fallback s1 s2))])]
-                  [b1  (loop s1 v dv t max-time)]
-                  [b2  (loop s2 v dv t max-time)]
+                  [b1  (loop s1 v dv t path max-time)]
+                  [b2  (loop s2 v dv t path max-time)]
                   [else  (values #f #f)])]
                [else
                 (brute-force-fallback s1 s2)])])])]
@@ -369,17 +373,18 @@
              (flt3apply/pos t0 v)
              (flt3apply/dir t0 dv)
              (flt3compose t0 t)
+             path
              max-time)]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (cond [(empty-scene? s0)  (values #f #f)]
-             [else  (loop s0 v dv t max-time)])])))
+             [else  (loop s0 v dv t (cons (group-scene-tag s) path) max-time)])])))
 
-(: scene-ray-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(: scene-ray-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise trace-data)))))
 (define (scene-ray-intersect s v dv)
   (if (empty-scene? s) (values #f #f) (nonempty-scene-ray-intersect s v dv +inf.0)))
 
-(: scene-line-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(: scene-line-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise trace-data)))))
 (define (scene-line-intersect s v dv)
   (if (empty-scene? s)
       (values #f #f)

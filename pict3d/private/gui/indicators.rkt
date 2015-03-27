@@ -15,7 +15,9 @@
          standard-under-light
          scene-light-indicators
          scene-origin-indicator
-         scene-basis-indicators)
+         scene-basis-indicators
+         group-box
+         group-boxes)
 
 (: affine-position (-> Affine Pos))
 (define (affine-position t)
@@ -168,3 +170,79 @@
          (cons (flv3->pos (affine-position t0))
                (transform basis-axes (affine-compose t0 t))))
        (scene-group-transforms scene 'all)))
+
+(define (make-group-box)
+  (define edge
+    (parameterize ([current-color    (rgba 0 0.25)]
+                   [current-emitted  (emitted 1 1 0.5 2)])
+      (combine
+       (for/list : (Listof Pict3D) ([z  (in-range (- 3/8 1) (- 1 2/8) 1/2)])
+         (rectangle (pos 1 1 z) (pos (+ 1 1/32) (+ 1 1/32) (+ z 1/8)))))))
+  
+  (define edges
+    (let* ([edges  (combine edge (rotate-z edge 90))]
+           [edges2  (combine edges (rotate-z edges 180))]
+           [edges3  (combine edges2 (rotate-x edges2 90))])
+      (combine edges3 (rotate-y edges2 90))))
+  
+  (define face
+    (parameterize ([current-color    (rgba 0 0.25)]
+                   [current-emitted  (emitted 0.5 1 1 2)])
+      (combine
+       (rectangle (pos (+ 1 1/64) 0 0)
+                  (dir 1/128 1/128 1/8))
+       (rectangle (pos (+ 1 1/64) 0 0)
+                  (dir 1/128 1/8 1/128)))))
+  
+  (define faces
+    (let* ([faces  (combine face (rotate-z face 90))]
+           [faces  (combine faces (rotate-z face -90))])
+      (combine faces (rotate-x (rotate-y faces 180) 90))))
+  
+  (define corner
+    (let* ([out  (+ 1 1/32)]
+           [in  (- 1 1/4)]
+           [c   (pos out out out)]
+           [cx  (pos in out out)]
+           [cy  (pos out in out)]
+           [cz  (pos out out in)])
+      (combine
+       (parameterize ([current-color    (rgba 0 0.25)]
+                      [current-emitted  (emitted 1 0.5 1 2)])
+         (combine (triangle c cz cx)
+                  (triangle c cx cy)
+                  (triangle c cy cz)))
+       (parameterize ([current-color  (rgba 1 0 1 0.25)])
+         (combine (triangle c cz cx #:back? #t)
+                  (triangle c cx cy #:back? #t)
+                  (triangle c cy cz #:back? #t))))))
+  
+  (define corners
+    (let* ([corners  (combine corner (rotate-z corner 90))]
+           [corners  (combine corners (rotate-z corners 180))])
+      (combine corners (rotate-x corners 180))))
+  
+  (freeze
+   (combine corners edges faces)))
+
+(define group-box (make-group-box))
+
+
+(: group-boxes (-> Pict3D (Listof Tag) (Listof Pict3D)))
+(define (group-boxes pict path)
+  (define trs
+    (map-group/transform
+     pict path
+     (λ ([t : Affine] [p : Pict3D])
+       (define-values (v1 v2) (bounding-rectangle p))
+       (list t v1 v2))))
+  
+  (for/fold ([picts : (Listof Pict3D)  empty]) ([tr  (in-list trs)])
+   (match-define (list t v1 v2) tr)
+   (cond [(and v1 v2)
+          (define t1 (scale (dir-scale (pos- v2 v1) 0.5)))
+          (define t2 (move (pos- (pos-between v1 v2 0.5) origin)))
+          (define t0 (affine-compose t2 t1))
+          (cons (transform group-box (affine-compose t t0)) picts)]
+         [else
+          picts])))

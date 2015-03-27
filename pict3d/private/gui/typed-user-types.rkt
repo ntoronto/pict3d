@@ -100,6 +100,15 @@
  transform-pos
  transform-dir
  transform-norm
+ ;; Surface data
+ (rename-out [-Surface-Data Surface-Data])
+ trace-data->surface-data
+ surface-data
+ make-surface-data
+ surface-data?
+ surface-data-pos
+ surface-data-normal
+ surface-data-path
  )
 
 ;; ===================================================================================================
@@ -608,3 +617,37 @@
 (define (transform-norm v t)
   (define n (flt3apply/norm t v))
   (and n (flv3->dir n)))
+
+;; ===================================================================================================
+;; Surface data
+
+(: print-surface-data (-> Surface-Data Output-Port (U #t #f 0 1) Void))
+(define (print-surface-data surf port mode)
+  (match-define (Surface-Data v n path) surf)
+  (write-string (format "(surface-data ~v" v) port)
+  (when n (write-string (format " #:normal ~v" n) port))
+  (when (not (empty? path)) (write-string (format " #:path ~v" path) port))
+  (write-string ")" port)
+  (void))
+
+(struct Surface-Data ([pos : Pos] [normal : (U #f Dir)] [path : (Listof Tag)])
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-surface-data)
+
+(define-type -Surface-Data Surface-Data)
+(define make-surface-data Surface-Data)
+(define surface-data? Surface-Data?)
+(define surface-data-pos Surface-Data-pos)
+(define surface-data-normal Surface-Data-normal)
+(define surface-data-path Surface-Data-path)
+
+(: trace-data->surface-data (-> trace-data Surface-Data))
+(define (trace-data->surface-data data)
+  (match-define (trace-data v n path) data)
+  (make-surface-data (flv3->pos v) (and n (flv3->dir n)) path))
+
+(: surface-data (->* [Pos] [#:normal (U #f Dir) #:path (Listof Tag)] Surface-Data))
+(define (surface-data v #:normal [n #f] #:path [path empty])
+  (let ([n  (and n (dir-normalize n))])
+    (make-surface-data v n path)))

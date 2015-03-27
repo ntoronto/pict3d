@@ -19,8 +19,10 @@
           flv3->pos
           flv3->dir
           flaffine3->affine
+          trace-data->surface-data
           make-material
           make-vertex
+          make-surface-data
           -pos
           -dir
           -rgba

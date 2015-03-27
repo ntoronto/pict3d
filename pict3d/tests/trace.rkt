@@ -33,7 +33,7 @@
 (define (random-sphere-point)
   (assert (dir-normalize (dir (flnormal-sample 0.0 1.0 3))) values))
 
-(define n 200)
+(define n 2000)
 (define vs (build-list n (λ (_) (pos+ origin (dir-scale (random-sphere-point) 2.0)))))
 (define dvs
   (map (λ ([v : Pos])

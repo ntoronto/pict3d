@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require racket/match
+         racket/list
          racket/promise
          typed/opengl
          math/flonum
@@ -85,8 +86,8 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> shape FlV3 FlV3 Flonum
-                                   (Values (U #f Flonum) (U #f (Promise surface-data)))))
+(: sphere-shape-line-intersect (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum)
+                                                                  (U #f (Promise trace-data)))))
 (define (sphere-shape-line-intersect s v dv max-time)
   (let ([s  (assert s sphere-shape?)])
     (define t (sphere-shape-affine s))
@@ -104,7 +105,7 @@
              (delay (define p (flv3fma dv time v))
                     (define n (let ([n  (flv3normalize (flv3fma sdv time sv))])
                                 (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))
-                    (surface-data p n)))
+                    (trace-data p n empty)))
            (values time data)])))
 
 ;; ===================================================================================================

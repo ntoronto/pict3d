@@ -2,14 +2,6 @@
 
 (require pict3d)
 
-(require/typed
- profile
- [profile-thunk  (All (A) (-> (-> A) A))])
-
-(require/typed
- contract-profile
- [contract-profile-thunk  (All (A) (-> (-> A) A))])
-
 (printf "starting...~n")
 
 (current-pict3d-width 512)

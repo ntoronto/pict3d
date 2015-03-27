@@ -909,9 +909,11 @@ Pict3D tries to reduce the burden by
 For example, the following code defines a @deftech{basis}, which is an empty group, on the left side
 of the ellipsoid @racket[p1], pointing away from the surface.
 @interaction[#:eval pict3d-eval
-                    (define left (let-values ([(v dv)  (surface/normal p1 +x)])
-                                   (basis 'left (point-at v dv))))]
-Here, the @racket[surface/normal] function finds a point on the surface of @racket[p1] in the
+                    (define data (surface/data p1 +x))
+                    (define v (surface-data-pos data))
+                    (define dv (surface-data-normal data))
+                    (define left (basis 'left (point-at v dv)))]
+Here, the @racket[surface/data] function finds a point on the surface of @racket[p1] in the
 direction @racket[+x].
 It returns that point and a @deftech{surface normal}, which is the direction perpendicular to the
 surface at that point.
@@ -935,7 +937,7 @@ Now we'll create a cube to attach onto that basis.
                     (define p2/top (move-z (combine p2 top) 4))
                     (eval:alts p2/top ((λ () p2/top)))]
 (Again, we've moved it upward, away from the origin's axes.)
-This time, we used @racket[surface] instead of @racket[surface/normal] because we know the surface
+This time, we used @racket[surface] instead of @racket[surface/data] because we know the surface
 normal: @racket[+z].
 But we haven't applied @racket[point-at] to @racket[+z], we've used @racket[-z] instead, causing the
 blue arrow to point in the direction opposite the surface normal: downward, into the cube.
@@ -1358,7 +1360,8 @@ with an extended example.
                  (define-values (vs dvs)
                    (for*/lists (vs dvs) ([dx  (in-range -1 5/4 1/4)]
                                          [dy  (in-range -1 5/4 1/4)])
-                     (surface/normal pict (dir dx dy 1))))
+                     (define data (surface/data pict (dir dx dy 1)))
+                     (values (surface-data-pos data) (surface-data-normal data))))
                  
                  (combine
                   pict
@@ -1415,7 +1418,27 @@ If there are none, returns @racket[#f].
 
 @section[#:tag "collision"]{Collision Detection}
 
-TODO: exposition about rudimentary intersection tests, etc.
+TODO: exposition about intersection tests, @deftech{surface data}, etc.
+
+@deftogether[(@defidform[#:kind "type" Surface-Data]
+              @defthing[#:kind "predicate" surface-data? (-> Any Boolean : Surface-Data)])]{
+The type and predicate of @tech{surface data}.
+}
+
+@defproc[(surface-data [pos Pos]
+                       [#:normal normal (U #f Dir) #f]
+                       [#:path path (Listof Tag) empty])
+         Surface-Data]{
+Constructs surface data. Usually, you would receive such data from @racket[trace/data]
+or @racket[surface/data], rather than constructing it yourself.
+}
+
+@deftogether[(@defproc[(surface-data-pos [data Surface-Data]) Pos]
+              @defproc[(surface-data-normal [data Surface-Data]) (U #f Dir)]
+              @defproc[(surface-data-path [data Surface-Data]) (Listof Tag)])]{
+Return the attributes of @racket[data].
+}
+
 
 @defproc*[([(trace [pict Pict3D] [v Pos] [dv Dir]) (U #f Pos)]
            [(trace [pict Pict3D] [v1 Pos] [v2 Pos]) (U #f Pos)])]{
@@ -1443,13 +1466,13 @@ otherwise it returns @racket[#f].
                     (sphere (surface pict (angles->dir θ ρ)) 0.01)))]
 }
 
-@defproc*[([(trace/normal [pict Pict3D] [v Pos] [dv Dir]) (Values (U #f Pos) (U #f Dir))]
-           [(trace/normal [pict Pict3D] [v1 Pos] [v2 Pos]) (Values (U #f Pos) (U #f Dir))])]{
-Like @racket[trace], but additionally returns the surface normal.
+@defproc*[([(trace/data [pict Pict3D] [v Pos] [dv Dir]) (U #f Surface-Data)]
+           [(trace/data [pict Pict3D] [v1 Pos] [v2 Pos]) (U #f Surface-Data)])]{
+Like @racket[trace], but additionally returns @tech{surface data}.
 }
 
-@defproc[(surface/normal [pict Pict3D] [dv Dir] [#:inside? inside? Any #f]) (U #f Pos)]{
-Like @racket[surface], but additionally returns the surface normal.
+@defproc[(surface/data [pict Pict3D] [dv Dir] [#:inside? inside? Any #f]) (U #f Surface-Data)]{
+Like @racket[surface], but additionally returns @tech{surface data}.
 }
 
 @defproc[(bounding-rectangle [pict Pict3D]) (Values (U #f Pos) (U #f Pos))]{
