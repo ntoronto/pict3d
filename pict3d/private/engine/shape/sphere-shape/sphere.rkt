@@ -99,14 +99,16 @@
     ;; Compute intersection
     (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
     (define time (if inside? tmax tmin))
-    (cond [(or (not time) (< time 0.0) (> time max-time))   (values #f #f)]
-          [else
+    (cond [(and time (>= time 0.0) (<= time max-time))
+           ;; Note: time can't be +nan.0 (which can happen when dv is zero-flv3)
            (define data
              (delay (define p (flv3fma dv time v))
                     (define n (let ([n  (flv3normalize (flv3fma sdv time sv))])
                                 (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))
                     (trace-data p n empty)))
-           (values time data)])))
+           (values time data)]
+          [else
+           (values #f #f)])))
 
 ;; ===================================================================================================
 

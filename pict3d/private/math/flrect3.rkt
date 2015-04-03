@@ -38,6 +38,8 @@
 ;; ===================================================================================================
 
 (define zero-flrect3 (FlRect3 zero-flv3 zero-flv3))
+(define inf-flrect3 (FlRect3 (flv3 -inf.0 -inf.0 -inf.0)
+                             (flv3 +inf.0 +inf.0 +inf.0)))
 
 (: flrect3 (case-> (-> FlV3 FlRect3)
                    (-> FlV3 FlV3 FlRect3)
@@ -246,100 +248,111 @@
   (cond
     [(identity-flaffine3? t)  bb]
     [else
-     (call/flaffine3-forward t
-       (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-         (call/flrect3-values bb
-           (λ (xmin ymin zmin xmax ymax zmax)
-             (define new-xmin
-               (+ (min (* m00 xmin) (* m00 xmax))
-                  (min (* m01 ymin) (* m01 ymax))
-                  (min (* m02 zmin) (* m02 zmax))
-                  m03))
-             (define new-xmax
-               (+ (max (* m00 xmin) (* m00 xmax))
-                  (max (* m01 ymin) (* m01 ymax))
-                  (max (* m02 zmin) (* m02 zmax))
-                  m03))
-             (define new-ymin
-               (+ (min (* m10 xmin) (* m10 xmax))
-                  (min (* m11 ymin) (* m11 ymax))
-                  (min (* m12 zmin) (* m12 zmax))
-                  m13))
-             (define new-ymax
-               (+ (max (* m10 xmin) (* m10 xmax))
-                  (max (* m11 ymin) (* m11 ymax))
-                  (max (* m12 zmin) (* m12 zmax))
-                  m13))
-             (define new-zmin
-               (+ (min (* m20 xmin) (* m20 xmax))
-                  (min (* m21 ymin) (* m21 ymax))
-                  (min (* m22 zmin) (* m22 zmax))
-                  m23))
-             (define new-zmax
-               (+ (max (* m20 xmin) (* m20 xmax))
-                  (max (* m21 ymin) (* m21 ymax))
-                  (max (* m22 zmin) (* m22 zmax))
-                  m23))
-             (FlRect3 (flv3 new-xmin new-ymin new-zmin)
-                      (flv3 new-xmax new-ymax new-zmax))))))]))
+     (call/flrect3-values bb
+       (λ (xmin ymin zmin xmax ymax zmax)
+         (cond
+           [(or (= -inf.0 (min xmin ymin zmin xmax ymax zmax))
+                (= +inf.0 (max xmin ymin zmin xmax ymax zmax)))
+            inf-flrect3]
+           [else
+            (call/flaffine3-forward t
+              (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+                (define new-xmin
+                  (+ (min (* m00 xmin) (* m00 xmax))
+                     (min (* m01 ymin) (* m01 ymax))
+                     (min (* m02 zmin) (* m02 zmax))
+                     m03))
+                (define new-xmax
+                  (+ (max (* m00 xmin) (* m00 xmax))
+                     (max (* m01 ymin) (* m01 ymax))
+                     (max (* m02 zmin) (* m02 zmax))
+                     m03))
+                (define new-ymin
+                  (+ (min (* m10 xmin) (* m10 xmax))
+                     (min (* m11 ymin) (* m11 ymax))
+                     (min (* m12 zmin) (* m12 zmax))
+                     m13))
+                (define new-ymax
+                  (+ (max (* m10 xmin) (* m10 xmax))
+                     (max (* m11 ymin) (* m11 ymax))
+                     (max (* m12 zmin) (* m12 zmax))
+                     m13))
+                (define new-zmin
+                  (+ (min (* m20 xmin) (* m20 xmax))
+                     (min (* m21 ymin) (* m21 ymax))
+                     (min (* m22 zmin) (* m22 zmax))
+                     m23))
+                (define new-zmax
+                  (+ (max (* m20 xmin) (* m20 xmax))
+                     (max (* m21 ymin) (* m21 ymax))
+                     (max (* m22 zmin) (* m22 zmax))
+                     m23))
+                (FlRect3 (flv3 new-xmin new-ymin new-zmin)
+                         (flv3 new-xmax new-ymax new-zmax))))])))]))
 
 (: flrect3-transform/badness (-> FlRect3 FlAffine3 (Values FlRect3 Nonnegative-Flonum)))
 (define (flrect3-transform/badness bb t)
   (cond
     [(identity-flaffine3? t)  (values bb 0.0)]
     [else
-     (call/flaffine3-forward t
-       (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-         (call/flrect3-values bb
-           (λ (xmin ymin zmin xmax ymax zmax)
-             (define new-xmin
-               (+ (min (* m00 xmin) (* m00 xmax))
-                  (min (* m01 ymin) (* m01 ymax))
-                  (min (* m02 zmin) (* m02 zmax))
-                  m03))
-             (define new-xmax
-               (+ (max (* m00 xmin) (* m00 xmax))
-                  (max (* m01 ymin) (* m01 ymax))
-                  (max (* m02 zmin) (* m02 zmax))
-                  m03))
-             (define new-ymin
-               (+ (min (* m10 xmin) (* m10 xmax))
-                  (min (* m11 ymin) (* m11 ymax))
-                  (min (* m12 zmin) (* m12 zmax))
-                  m13))
-             (define new-ymax
-               (+ (max (* m10 xmin) (* m10 xmax))
-                  (max (* m11 ymin) (* m11 ymax))
-                  (max (* m12 zmin) (* m12 zmax))
-                  m13))
-             (define new-zmin
-               (+ (min (* m20 xmin) (* m20 xmax))
-                  (min (* m21 ymin) (* m21 ymax))
-                  (min (* m22 zmin) (* m22 zmax))
-                  m23))
-             (define new-zmax
-               (+ (max (* m20 xmin) (* m20 xmax))
-                  (max (* m21 ymin) (* m21 ymax))
-                  (max (* m22 zmin) (* m22 zmax))
-                  m23))
-             (define dx (- xmax xmin))
-             (define dy (- ymax ymin))
-             (define dz (- zmax zmin))
-             (define oct-xmin (min (* dx m00) (* dy m01) (* dz m02)))
-             (define oct-xmax (max (* dx m00) (* dy m01) (* dz m02)))
-             (define oct-ymin (min (* dx m10) (* dy m11) (* dz m12)))
-             (define oct-ymax (max (* dx m10) (* dy m11) (* dz m12)))
-             (define oct-zmin (min (* dx m20) (* dy m21) (* dz m22)))
-             (define oct-zmax (max (* dx m20) (* dy m21) (* dz m22)))
-             (define oct-dx (* 0.5 (- (max oct-xmax (- oct-xmin)) (min oct-xmin (- oct-xmax)))))
-             (define oct-dy (* 0.5 (- (max oct-ymax (- oct-ymin)) (min oct-ymin (- oct-ymax)))))
-             (define oct-dz (* 0.5 (- (max oct-zmax (- oct-zmin)) (min oct-zmin (- oct-zmax)))))
-             (values (FlRect3 (flv3 new-xmin new-ymin new-zmin)
-                              (flv3 new-xmax new-ymax new-zmax))
-                     (max 0.0
-                          (if (> oct-dx 0.0) (/ (- (- new-xmax new-xmin) oct-dx) oct-dx) 0.0)
-                          (if (> oct-dy 0.0) (/ (- (- new-ymax new-ymin) oct-dy) oct-dy) 0.0)
-                          (if (> oct-dz 0.0) (/ (- (- new-zmax new-zmin) oct-dz) oct-dz) 0.0)))))))]))
+     (call/flrect3-values bb
+       (λ (xmin ymin zmin xmax ymax zmax)
+         (cond
+           [(or (= -inf.0 (min xmin ymin zmin xmax ymax zmax))
+                (= +inf.0 (max xmin ymin zmin xmax ymax zmax)))
+            (values inf-flrect3 (if (equal? bb inf-flrect3) 0.0 +inf.0))]
+           [else
+            (call/flaffine3-forward t
+              (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+                (define new-xmin
+                  (+ (min (* m00 xmin) (* m00 xmax))
+                     (min (* m01 ymin) (* m01 ymax))
+                     (min (* m02 zmin) (* m02 zmax))
+                     m03))
+                (define new-xmax
+                  (+ (max (* m00 xmin) (* m00 xmax))
+                     (max (* m01 ymin) (* m01 ymax))
+                     (max (* m02 zmin) (* m02 zmax))
+                     m03))
+                (define new-ymin
+                  (+ (min (* m10 xmin) (* m10 xmax))
+                     (min (* m11 ymin) (* m11 ymax))
+                     (min (* m12 zmin) (* m12 zmax))
+                     m13))
+                (define new-ymax
+                  (+ (max (* m10 xmin) (* m10 xmax))
+                     (max (* m11 ymin) (* m11 ymax))
+                     (max (* m12 zmin) (* m12 zmax))
+                     m13))
+                (define new-zmin
+                  (+ (min (* m20 xmin) (* m20 xmax))
+                     (min (* m21 ymin) (* m21 ymax))
+                     (min (* m22 zmin) (* m22 zmax))
+                     m23))
+                (define new-zmax
+                  (+ (max (* m20 xmin) (* m20 xmax))
+                     (max (* m21 ymin) (* m21 ymax))
+                     (max (* m22 zmin) (* m22 zmax))
+                     m23))
+                (define dx (- xmax xmin))
+                (define dy (- ymax ymin))
+                (define dz (- zmax zmin))
+                (define oct-xmin (min (* dx m00) (* dy m01) (* dz m02)))
+                (define oct-xmax (max (* dx m00) (* dy m01) (* dz m02)))
+                (define oct-ymin (min (* dx m10) (* dy m11) (* dz m12)))
+                (define oct-ymax (max (* dx m10) (* dy m11) (* dz m12)))
+                (define oct-zmin (min (* dx m20) (* dy m21) (* dz m22)))
+                (define oct-zmax (max (* dx m20) (* dy m21) (* dz m22)))
+                (define oct-dx (* 0.5 (- (max oct-xmax (- oct-xmin)) (min oct-xmin (- oct-xmax)))))
+                (define oct-dy (* 0.5 (- (max oct-ymax (- oct-ymin)) (min oct-ymin (- oct-ymax)))))
+                (define oct-dz (* 0.5 (- (max oct-zmax (- oct-zmin)) (min oct-zmin (- oct-zmax)))))
+                (values (FlRect3 (flv3 new-xmin new-ymin new-zmin)
+                                 (flv3 new-xmax new-ymax new-zmax))
+                        (max 0.0
+                             (if (> oct-dx 0.0) (/ (- (- new-xmax new-xmin) oct-dx) oct-dx) 0.0)
+                             (if (> oct-dy 0.0) (/ (- (- new-ymax new-ymin) oct-dy) oct-dy) 0.0)
+                             (if (> oct-dz 0.0) (/ (- (- new-zmax new-zmin) oct-dz) oct-dz) 0.0)))
+                ))])))]))
 
 (: flrect3-line-intersects (-> FlRect3 FlV3 FlV3 Flonum Flonum (Values (U #f Flonum) (U #f Flonum))))
 (define (flrect3-line-intersects bb v dv min-time max-time)

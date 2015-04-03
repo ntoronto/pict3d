@@ -587,7 +587,13 @@
              (define v (second pos-item))
              (define n (and norm-item (second norm-item)))
              (define path (if path-item (second path-item) empty))
-             (format "~v" (surface-data v #:normal n #:path path))]
+             (define strs
+               (append (list (format "~v" v))
+                       (if n (list (format "~v" n)) empty)
+                       (if (and path (not (empty? path)))
+                           (list (format "~v" path))
+                           empty)))
+             (string-join strs "\n")]
             [else
              ""]))
         (when (not (equal? str ""))

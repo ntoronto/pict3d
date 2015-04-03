@@ -14,6 +14,7 @@
 Pict3D is written in Typed Racket, but can be used in untyped Racket without significant performance
 loss.
 
+
 @defmodule[pict3d]
 
 Pict3D provides a purely functional interface to rendering hardware, and is intended to be a
@@ -683,6 +684,10 @@ Constructs a @tech{direction vector} from its components @racket[dx], @racket[dy
 converts a vector @racket[v] in another representation to a direction vector.
 }
 
+@defthing[zero-dir Dir #:value (dir 0 0 0)]{
+The zero direction. Analogous to @racket[origin].
+}
+
 @deftogether[(@defthing[+x Dir #:value (dir  1  0  0)]
               @defthing[-x Dir #:value (dir -1  0  0)]
               @defthing[+y Dir #:value (dir  0  1  0)]
@@ -777,14 +782,33 @@ Returns the @hyperlink["http://en.wikipedia.org/wiki/Dot_product"]{dot product} 
 @racket[dv2].
 }
 
-@defproc[(dir-proj [dv1 Dir] [dv2 Dir]) (U #f Dir)]{
+@defproc[(dir-cross [dv1 Dir] [dv2 Dir]) Dir]{
+Returns the @hyperlink["http://en.wikipedia.org/wiki/Cross_product"]{cross product} of @racket[dv1]
+and @racket[dv2].
+}
+
+@defproc[(dir-project [dv1 Dir] [dv2 Dir]) (U #f Dir)]{
 Returns the @hyperlink["http://en.wikipedia.org/wiki/Vector_projection"]{projection} of @racket[dv1]
 onto @racket[dv2], or @racket[#f] if @racket[dv2] is @racket[(dir 0 0 0)].
 }
 
-@defproc[(dir-cross [dv1 Dir] [dv2 Dir]) Dir]{
-Returns the @hyperlink["http://en.wikipedia.org/wiki/Cross_product"]{cross product} of @racket[dv1]
-and @racket[dv2].
+@defproc[(dir-reject [dv1 Dir] [dv2 Dir] [s Real 1]) Dir]{
+Returns the @hyperlink["http://en.wikipedia.org/wiki/Vector_projection"]{rejection} of @racket[dv1]
+from @racket[dv2].
+Equivalent to
+@racketblock[(dir- dv (dir-scale (dir-project dv1 dv2) s))]
+when @racket[(dir-project dv1 dv2)] doesn't return @racket[#f].
+}
+
+@defproc[(dir-reflect [dv1 Dir] [dv2 Dir]) Dir]{
+Reflects @racket[dv1] in the direction @racket[dv2].
+Equivalent to @racket[(dir-reject dv1 dv2 2)].
+
+If @racket[dv] is the velocity of an object that hits an immovable surface with normal @racket[n],
+then @racket[(dir-reject dv n)] is the object's new velocity, assuming an ideal
+@hyperlink["http://en.wikipedia.org/wiki/Elastic_collision"]{elastic collision}.
+
+In other words, use this function to bounce things off walls in games.
 }
 
 @defproc[(angles->dir [yaw Real] [pitch Real]) Dir]{
@@ -824,7 +848,7 @@ converts a vector @racket[v] in another representation to a position vector.
 }
 
 @defthing[origin Pos #:value (pos 0 0 0)]{
-The origin. If 3D space has a center, this is it.
+The origin. If 3D space has a center, this is it. Analogous to @racket[zero-dir].
 }
 
 @defproc[(pos+ [v Pos] [dv Dir] [s Real 1.0]) Pos]{
@@ -1425,7 +1449,8 @@ TODO: exposition about intersection tests, @deftech{surface data}, etc.
 The type and predicate of @tech{surface data}.
 }
 
-@defproc[(surface-data [pos Pos]
+@defproc[(surface-data [dist Nonnegative-Flonum]
+                       [pos Pos]
                        [#:normal normal (U #f Dir) #f]
                        [#:path path (Listof Tag) empty])
          Surface-Data]{
@@ -1433,7 +1458,8 @@ Constructs surface data. Usually, you would receive such data from @racket[trace
 or @racket[surface/data], rather than constructing it yourself.
 }
 
-@deftogether[(@defproc[(surface-data-pos [data Surface-Data]) Pos]
+@deftogether[(@defproc[(surface-data-dist [data Surface-Data]) Nonnegative-Flonum]
+              @defproc[(surface-data-pos [data Surface-Data]) Pos]
               @defproc[(surface-data-normal [data Surface-Data]) (U #f Dir)]
               @defproc[(surface-data-path [data Surface-Data]) (Listof Tag)])]{
 Return the attributes of @racket[data].
@@ -1473,6 +1499,16 @@ Like @racket[trace], but additionally returns @tech{surface data}.
 
 @defproc[(surface/data [pict Pict3D] [dv Dir] [#:inside? inside? Any #f]) (U #f Surface-Data)]{
 Like @racket[surface], but additionally returns @tech{surface data}.
+}
+
+@defproc*[([(trace/normal [pict Pict3D] [v Pos] [dv Dir]) (Values (U False Pos) (U False Dir))]
+           [(trace/normal [pict Pict3D] [v1 Pos] [v2 Pos]) (Values (U False Pos) (U False Dir))])]{
+Like @racket[trace/data], but only additionally returns a @tech{surface normal}.
+}
+
+@defproc[(surface/normal [pict Pict3D] [dv Dir] [#:inside? inside? Any #f]) (Values (U False Pos)
+                                                                                    (U False Dir))]{
+Like @racket[surface/data], but only additionally returns a @tech{surface normal}.
 }
 
 @defproc[(bounding-rectangle [pict Pict3D]) (Values (U #f Pos) (U #f Pos))]{

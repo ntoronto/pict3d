@@ -557,8 +557,10 @@
                   #:up [up +z]
                   #:normalize? [normalize? #t])
   (define z-axis (if (dir? to) to (pos- to from)))
-  (flaffine3->affine
-   (point-at-flt3 from z-axis (degrees->radians (fl angle)) up (and normalize? #t))))
+  (if (= (dir-dist z-axis) 0.0)
+      (raise-argument-error 'point-at "nonzero look direction" 1 from to)
+      (flaffine3->affine
+       (point-at-flt3 from z-axis (degrees->radians (fl angle)) up (and normalize? #t)))))
 
 ;; ===================================================================================================
 ;; Combining scenes

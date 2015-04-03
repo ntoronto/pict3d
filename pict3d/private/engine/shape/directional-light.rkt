@@ -142,9 +142,7 @@ code
 ;; Bounding box
 
 (define directional-light-shape-bbox
-  (bbox (flrect3 (flv3 -inf.0 -inf.0 -inf.0)
-                 (flv3 +inf.0 +inf.0 +inf.0))
-        0.0))
+  (bbox inf-flrect3 0.0))
 
 ;; ===================================================================================================
 ;; Transform

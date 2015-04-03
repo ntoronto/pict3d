@@ -422,11 +422,15 @@
 (define (invent-orthogonal-axes z)
   (call/flv3-values z
     (λ (dx dy dz)
-      (let* ([x : FlV3  (flv3 dz dx dy)]
-             [y : FlV3  (flv3cross z x)]
-             [x : FlV3  (flv3cross y z)])
-        (values (assert (flv3normalize x) values)
-                (assert (flv3normalize y) values))))))
+      (cond
+        [(= 0.0 (min (abs dx) (abs dy) (abs dz)))
+         (values +x-flv3 +y-flv3)]
+        [else
+         (let* ([x : FlV3  (flv3 dz dx dy)]
+                [y : FlV3  (flv3cross z x)]
+                [x : FlV3  (flv3cross y z)])
+           (values (assert (flv3normalize x) values)
+                   (assert (flv3normalize y) values)))]))))
 
 (: point-at-flt3 (->* [FlV3 FlV3] [Flonum FlV3 Boolean] FlAffine3))
 (define (point-at-flt3 from z-axis [angle 0.0] [up +z-flv3] [normalize? #t])
@@ -436,17 +440,21 @@
           [up      (if (not up)     +z-flv3 up)])
       (let* ([x-axis : FlV3         (flv3cross z-axis up)]
              [x-axis : (U #f FlV3)  (flv3normalize x-axis)])
+        (define (fail)
+          (define-values (x-axis y-axis) (invent-orthogonal-axes z-axis))
+          (let ([x-axis : FlV3  x-axis]
+                [y-axis : FlV3  y-axis])
+            (cols->flaffine3 x-axis y-axis z-axis from)))
         (define t
           (cond
             [x-axis
-             (let* ([y-axis : FlV3  (flv3cross z-axis x-axis)]
-                    [y-axis : FlV3  (assert (flv3normalize y-axis) values)])
-               (cols->flaffine3 x-axis y-axis z-axis from))]
+             (let* ([y-axis : FlV3         (flv3cross z-axis x-axis)]
+                    [y-axis : (U #f FlV3)  (flv3normalize y-axis)])
+               (cond
+                 [y-axis  (cols->flaffine3 x-axis y-axis z-axis from)]
+                 [else  (fail)]))]
             [else
-             (define-values (x-axis y-axis) (invent-orthogonal-axes z-axis))
-             (let ([x-axis : FlV3  x-axis]
-                   [y-axis : FlV3  y-axis])
-               (cols->flaffine3 x-axis y-axis z-axis from))]))
+             (fail)]))
         (let ([t  : FlAffine3  t]
               [t0 : FlAffine3  (rotate-z-flt3 angle)])
           (flt3compose t t0))))))

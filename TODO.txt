@@ -23,8 +23,6 @@ Make dir+ and dir- take multiple arguments
 
 Allow big-bang3d's frame-delay argument to be zero
 
-Fix assertion failure in flt3.rkt when (arrow v dv) and dv = 0
-
 ======================================================================================================
 Medium
 
