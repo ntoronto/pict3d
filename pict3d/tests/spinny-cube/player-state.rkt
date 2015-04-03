@@ -104,6 +104,8 @@
 (define jump-cooldown-time 300.0)
 ;; Forced wait time between wall bounce and arrowing back that direction (milliseconds)
 (define arrow-cooldown-time 100.0)
+;; Forced wait time between a jump and changing direction
+(define jump->arrow-cooldown-time 25.0)
 
 (: jump-mag (-> Dir Dir Flonum))
 ;; Jump magnitude; depends on velocity
@@ -375,29 +377,29 @@
     (> (dir-dot d1 d2) 0.9999)))
 
 (: jump-normal? (-> Flonum Dir (Listof (Pair Flonum Dir)) Boolean))
-(define (jump-normal? time n last-jumps)
-  (let loop ([last-jumps last-jumps])
-    (cond [(empty? last-jumps)  #t]
+(define (jump-normal? time n jumps)
+  (let loop ([jumps jumps])
+    (cond [(empty? jumps)  #t]
           [else
-           (define tn (first last-jumps))
+           (define tn (first jumps))
            (cond  [(and (<= (- time (car tn)) jump-cooldown-time)
                         (dir-near? n (cdr tn)))
                    #f]
-                  [else  (loop (rest last-jumps))])])))
+                  [else  (loop (rest jumps))])])))
 
 (: find-jump-dir (-> Pict3D Flonum Flonum Pos Dir Dir
                      (Listof (Pair Flonum Dir))
                      (Listof (Pair Flonum Dir))
                      (Values (U #f Dir) (Listof (Pair Flonum Dir)))))
-(define (find-jump-dir coll-pict time mag v dv down tns last-jumps)
-  ;(printf "jump: tns = ~v~n" last-jumps)
+(define (find-jump-dir coll-pict time mag v dv down hits jumps)
+  ;(printf "jump: hits = ~v~n" hits)
   
   ;; Consider every normal we hit on this frame as a jump direction
-  (define max-time (apply max -inf.0 (map (inst car Flonum Dir) tns)))
+  (define max-time (apply max -inf.0 (map (inst car Flonum Dir) hits)))
   (define ns
-    (for/fold ([ns : (Listof Dir)  empty]) ([tn  (in-list tns)])
+    (for/fold ([ns : (Listof Dir)  empty]) ([tn  (in-list hits)])
       (if (and (= max-time (car tn))
-               (jump-normal? time (cdr tn) last-jumps))
+               (jump-normal? time (cdr tn) jumps))
           (cons (cdr tn) ns)
           ns)))
   
@@ -409,7 +411,7 @@
        (define face-n (dir-negate face))
        (define n (ormap (λ ([n : Dir]) (and (< (abs (dir-dot face-n n)) 1e-8) n)) ns))
        (cond [(not n)  slide-ns]
-             [(not (jump-normal? time n last-jumps))  slide-ns]
+             [(not (jump-normal? time n jumps))  slide-ns]
              [else
               (define ps (trace-face coll-pict v (dir-scale face 0.51) n))
               (define p (ormap (λ ([p : (U #f Pos)]) p) ps))
@@ -417,15 +419,27 @@
                     [else  (list* n face-n slide-ns)])]))
      dir-near?))
   
-  (define ns* (remove* slide-ns ns dir-near?))
+  (define bounce-ns (remove* slide-ns ns dir-near?))
+  #;
+  (add-debug-pict!
+   (combine
+    (with-emitted (emitted 1 0.5 1 3)
+      (combine
+       (for/list : (Listof Pict3D) ([n  (in-list slide-ns)])
+         (arrow v (dir-scale n 0.5)))))
+    (with-emitted (emitted 0.5 1 0.5 3)
+      (combine
+       (for/list : (Listof Pict3D) ([n  (in-list bounce-ns)])
+         (arrow v (dir-scale n 0.5))))))
+   2000.0)
   
-  (define slide-n
+  (define slide-dv
     (for/fold ([nsum : Dir  zero-dir]) ([n  (in-list slide-ns)])
       (dir+ nsum (dir-scale n (* slide-jump-multiplier mag)))))
   
-  (define len (fl (length ns*)))
-  (define bounce-n
-    (for/fold ([nsum : Dir  zero-dir]) ([n  (in-list ns*)])
+  (define len (fl (length bounce-ns)))
+  (define bounce-dv
+    (for/fold ([nsum : Dir  zero-dir]) ([n  (in-list bounce-ns)])
       ;; Find out how much it already will have bounced
       (define c (min 1.0 (restitution-coef down n)))
       (dir+
@@ -433,9 +447,21 @@
        (dir-scale n (* (/ mag len) (- 1.0 c)))
        ;; Add jump in the up direction for bouncy surfaces
        (dir-scale down (* (- (/ min-jump-mag len)) c)))))
+  #;
+  (add-debug-pict!
+   (combine
+    (if (> (dir-dist slide-dv) 0.0)
+        (with-emitted (emitted 0.5 1 1 3)
+          (arrow v (dir-scale slide-dv 0.125)))
+        empty-pict3d)
+    (if (> (dir-dist bounce-dv) 0.0)
+        (with-emitted (emitted 1 1 0.5 3)
+          (arrow v (dir-scale bounce-dv 0.125)))
+        empty-pict3d))
+   2000.0)
   
-  (values (dir+ slide-n bounce-n)
-          (map (λ ([n : Dir]) (cons time n)) (append slide-ns ns*))))
+  (values (dir+ slide-dv bounce-dv)
+          (map (λ ([n : Dir]) (cons time n)) (append slide-ns bounce-ns))))
 
 (: player-state-maybe-jump (-> player-state Pict3D Flonum Flonum player-state))
 (define (player-state-maybe-jump pstate coll-pict time dsecs)
@@ -452,11 +478,17 @@
         (cond [jump-dir
                (define axis (let ([axis  (dir-normalize (dir-cross jump-dir dv))])
                               (if axis axis zero-dir)))
-               (define new-man
-                 (moving (snap-velocity (dir+ dv jump-dir) ddv)
-                         (dir-scale axis (jump-spin-speed dv ddv))
-                         #t))
-               (player-state v ddv t (timers keys hits (append new-jumps jumps)) new-man)]
+               (define new-dv (snap-velocity (dir+ dv jump-dir) ddv))
+               #;
+               (when (> (dir-dist new-dv) 0.0)
+                 (add-debug-pict!
+                  (with-emitted (emitted 1 3)
+                    (arrow v (dir-scale new-dv 0.125)))
+                  2000.0))
+               (define new-da (dir-scale axis (jump-spin-speed dv ddv)))
+               (define new-man (moving new-dv new-da #t))
+               (define new-tm (timers keys hits (append new-jumps jumps)))
+               (player-state v ddv t new-tm new-man)]
               [else  pstate])]
        [_  pstate])]
     [else  pstate]))
@@ -471,7 +503,7 @@
     [(> (hash-ref keys key (λ () 0.0)) 0.0)
      (match man
        [(moving dv da jumping?)
-        ;(printf "arrow: tns = ~v~n" tns)
+        ;(printf "arrow: hits = ~v~n" hits)
         (define d
           (for/fold ([d : Dir  req-d]) ([tn  (in-list hits)])
             (if (<= (- time (car tn)) arrow-cooldown-time)
@@ -479,6 +511,10 @@
                 d)))
         (cond
           [(not d)  #f]
+          [(ormap (λ ([tn : (Pair Flonum Dir)])
+                    (<= (- time (car tn)) jump->arrow-cooldown-time))
+                  jumps)
+           pstate]
           [else
            (define down (assert (dir-normalize ddv) values))
            ;; Vertical velocity
@@ -487,6 +523,12 @@
            (define dh (dir- dv dz))
            (define speed (dir-dist dh))
            (define new-dv (dir+ dz (dir-scale d (max user-speed speed))))
+           #;
+           (when (> (dir-dist new-dv) 0.0)
+             (add-debug-pict!
+              (with-emitted (emitted 1 3)
+                (arrow v (dir-scale new-dv 0.125)))
+              2000.0))
            (player-state v ddv t tm (moving new-dv da jumping?))])]
        [_  pstate])]
     [else  pstate]))
