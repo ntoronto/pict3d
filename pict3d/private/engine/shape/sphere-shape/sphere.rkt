@@ -86,9 +86,9 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
-(: sphere-shape-line-intersect (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum)
-                                                                  (U #f (Promise trace-data)))))
-(define (sphere-shape-line-intersect s v dv max-time)
+(: sphere-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                                  (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
+(define (sphere-shape-ray-intersect s v dv max-time)
   (let ([s  (assert s sphere-shape?)])
     (define t (sphere-shape-affine s))
     (define inside? (sphere-shape-inside? s))
@@ -99,7 +99,7 @@
     ;; Compute intersection
     (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
     (define time (if inside? tmax tmin))
-    (cond [(or (not time) (> time max-time))   (values #f #f)]
+    (cond [(or (not time) (< time 0.0) (> time max-time))   (values #f #f)]
           [else
            (define data
              (delay (define p (flv3fma dv time v))
@@ -119,4 +119,4 @@
    (λ (s kind t) (and (eq? kind 'visible) (get-sphere-shape-bbox s t)))
    sphere-shape-transform
    (λ (s t) (list (sphere-shape-transform s t)))
-   sphere-shape-line-intersect))
+   sphere-shape-ray-intersect))

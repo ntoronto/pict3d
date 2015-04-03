@@ -92,9 +92,10 @@
 ;; ===================================================================================================
 ;; Ray intersection
 
-(: frozen-scene-shape-line-intersect (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum)
-                                                                        (U #f (Promise trace-data)))))
-(define (frozen-scene-shape-line-intersect s v dv max-time)
+(: frozen-scene-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                                        (Values (U #f Nonnegative-Flonum)
+                                                (U #f (Promise trace-data)))))
+(define (frozen-scene-shape-ray-intersect s v dv max-time)
   (let ([s  (assert s frozen-scene-shape?)])
     (nonempty-scene-ray-intersect (frozen-scene-shape-scene s) v dv max-time)))
 
@@ -109,4 +110,4 @@
    get-frozen-scene-shape-bbox
    (λ (s t) #f)  ; no fast, tight transform
    frozen-scene-shape-deep-transform
-   frozen-scene-shape-line-intersect))
+   frozen-scene-shape-ray-intersect))

@@ -107,7 +107,8 @@
    [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
    [fast-transform : (-> shape FlAffine3 (U #f shape))]
    [deep-transform : (-> shape FlAffine3 (Listof shape))]
-   [line-intersect : (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum) (U #f (Promise trace-data))))])
+   [ray-intersect : (-> shape FlV3 FlV3 Nonnegative-Flonum
+                        (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data))))])
   #:transparent)
 
 (struct shape
@@ -152,10 +153,10 @@
 (define (shape-deep-transform s t)
   ((shape-functions-deep-transform (shape-vtable s)) s t))
 
-(: shape-line-intersect (-> shape FlV3 FlV3 Flonum (Values (U #f Flonum)
-                                                           (U #f (Promise trace-data)))))
-(define (shape-line-intersect s v dv max-time)
-  ((shape-functions-line-intersect (shape-vtable s)) s v dv max-time))
+(: shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                           (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
+(define (shape-ray-intersect s v dv max-time)
+  ((shape-functions-ray-intersect (shape-vtable s)) s v dv max-time))
 
 ;; ===================================================================================================
 ;; Scene types

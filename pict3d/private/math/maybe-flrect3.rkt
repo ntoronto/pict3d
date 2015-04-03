@@ -21,10 +21,10 @@
         [(not b1)  #f]
         [else  (flrect3-contains-rect? b1 b2)]))
 
-(: maybe-flrect3-line-intersects (-> (U #f FlRect3) FlV3 FlV3 Flonum
+(: maybe-flrect3-line-intersects (-> (U #f FlRect3) FlV3 FlV3 Flonum Flonum
                                      (Values (U #f Flonum) (U #f Flonum))))
-(define (maybe-flrect3-line-intersects bb v dv max-time)
-  (if bb (flrect3-line-intersects bb v dv max-time) (values #f #f)))
+(define (maybe-flrect3-line-intersects bb v dv min-time max-time)
+  (if bb (flrect3-line-intersects bb v dv min-time max-time) (values #f #f)))
 
 (: maybe-flrect3-classify/planes (-> (U #f FlRect3) (Listof FlPlane3) (U 'inside 'outside 'both)))
 (define (maybe-flrect3-classify/planes bb planes)

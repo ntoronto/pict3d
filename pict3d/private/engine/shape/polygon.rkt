@@ -470,9 +470,9 @@ code
                 [else
                  (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-line-intersect (-> shape FlV3 FlV3 Flonum
-                                     (Values (U #f Flonum) (U #f (Promise trace-data)))))
-(define (triangle-shape-line-intersect s o d max-time)
+(: triangle-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                                    (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
+(define (triangle-shape-ray-intersect s o d max-time)
   (let ([s  (assert s triangle-shape?)])
     (define v1 (vtx-position (triangle-shape-vtx1 s)))
     (define v2 (vtx-position (triangle-shape-vtx2 s)))
@@ -480,29 +480,33 @@ code
     (define back? (triangle-shape-back? s))
     (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
       (define time (triangle-intersect-time v1 v2 v3 o d))
-      (cond [(or (not time) (> time max-time))  (values #f #f)]
+      (cond [(or (not time) (< time 0.0) (> time max-time))  (values #f #f)]
             [else
              (define data
                (delay (define p (flv3fma d time o))
-                      (define n (let ([n  (flv3triangle-normal v1 v2 v3)])
-                                  (and n (if back? (flv3neg n) n))))
+                      ;; No need to flip normal because vertices are already reversed
+                      (define n (flv3triangle-normal v1 v2 v3))
                       (trace-data p n empty)))
              (values time data)]))))
 
-(: rectangle-shape-line-intersect (-> shape FlV3 FlV3 Flonum
-                                      (Values (U #f Flonum) (U #f (Promise trace-data)))))
-(define (rectangle-shape-line-intersect s v dv max-time)
+(: rectangle-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                                     (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
+(define (rectangle-shape-ray-intersect s v dv max-time)
   (let ([s  (assert s rectangle-shape?)])
     (define b (rectangle-shape-axial-rect s))
-    (define-values (tmin tmax) (flrect3-line-intersects b v dv max-time))
     (define inside? (rectangle-shape-inside? s))
+    (define-values (tmin tmax)
+      ;; Determine the initial interval
+      (let-values ([(min-time max-time)  (cond [inside?  (values 0.0 +inf.0)]
+                                               [else     (values -inf.0 max-time)])])
+        (flrect3-line-intersects b v dv min-time max-time)))
     (define time (if inside? tmax tmin))
-    (cond [(or (not time) (> time max-time))  (values #f #f)]
+    (cond [(or (not time) (< time 0.0) (> time max-time))  (values #f #f)]
           [else
            (define data
              (delay (define p (flrect3-closest-point b (flv3fma dv time v)))
-                    (define n (let ([n  (assert (flrect3-point-normal b p) values)])
-                                (if inside? (flv3neg n) n)))
+                    (define n (let ([n  (flrect3-point-normal b p)])
+                                (and n (if inside? (flv3neg n) n))))
                     (trace-data p n empty)))
            (values time data)])))
 
@@ -517,7 +521,7 @@ code
    (λ (s kind t) (and (eq? kind 'visible) (get-triangle-shape-bbox s t)))
    triangle-shape-transform
    (λ (s t) (list (triangle-shape-transform s t)))
-   triangle-shape-line-intersect))
+   triangle-shape-ray-intersect))
 
 (define rectangle-shape-functions
   (shape-functions
@@ -528,4 +532,4 @@ code
    (λ (s kind t) (and (eq? kind 'visible) (get-rectangle-shape-bbox s t)))
    (λ (s t) #f)
    rectangle-shape-deep-transform
-   rectangle-shape-line-intersect))
+   rectangle-shape-ray-intersect))

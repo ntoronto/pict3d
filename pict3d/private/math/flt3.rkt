@@ -107,6 +107,14 @@
 
 ;; ===================================================================================================
 
+(: check-flvector (-> Symbol FlVector FlVector))
+(define (check-flvector name vs)
+  (for ([i : Nonnegative-Fixnum  (in-range (flvector-length vs))])
+    (define v (unsafe-flvector-ref vs i))
+    (unless (< -inf.0 v +inf.0)
+      (error name "expected rationals; given ~e" vs)))
+  vs)
+
 #;
 (: flaffine3
    (-> Flonum Flonum Flonum Flonum 
@@ -125,15 +133,19 @@
              n00 n01 n02 n03
              n10 n11 n12 n13
              n20 n21 n22 n23
-             det
-             1/det)
-  (FlAffine3
-   (flvector m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-   (flvector n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
-   det
-   1/det
-   #f
-   #f))
+             det-stx 1/det-stx)
+  (let ([  det : Flonum    det-stx]
+        [1/det : Flonum  1/det-stx])
+    (if (and (< -inf.0 (min det 1/det))
+             (< (max det 1/det) +inf.0))
+        (FlAffine3
+         (check-flvector 'flaffine3 (flvector m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23))
+         (check-flvector 'flaffine3 (flvector n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23))
+         det
+         1/det
+         #f
+         #f)
+        (error 'flaffine3 "expected rational determinants; given ~e ~e" det 1/det))))
 
 (define identity-flaffine3
   (flaffine3 1.0 0.0 0.0 0.0
@@ -171,15 +183,21 @@
                  n10 n11 n12 n13
                  n20 n21 n22 n23
                  n30 n31 n32 n33
-                 det
-                 1/det)
-  (FlProjective3
-   (flvector m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
-   (flvector n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
-   det
-   1/det
-   #f
-   #f))
+                 det-stx 1/det-stx)
+  (let ([  det : Flonum    det-stx]
+        [1/det : Flonum  1/det-stx])
+    (if (and (< -inf.0 (min det 1/det))
+             (< (max det 1/det) +inf.0))
+        (FlProjective3
+         (check-flvector 'flprojective3
+                         (flvector m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33))
+         (check-flvector 'flprojective3
+                         (flvector n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33))
+         det
+         1/det
+         #f
+         #f)
+        (error 'flprojective3 "expected rational determinants; given ~e ~e" det 1/det))))
 
 (define identity-flprojective3
   (flprojective3 1.0 0.0 0.0 0.0

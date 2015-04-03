@@ -17,18 +17,22 @@ OpenGL >= 3.2 render paths
 
 Reorder arguments in `call-with-*` functions and macros
 
-? pict3d-game-canvas%
+Fragment shader to draw grid at scale
+
+Make dir+ and dir- take multiple arguments
+
+Allow big-bang3d's frame-delay argument to be zero
+
+Fix assertion failure in flt3.rkt when (arrow v dv) and dv = 0
 
 ======================================================================================================
 Medium
 
-Raise errors when given +nan.0, and never produce one
+Never produce +nan.0
 
 Automate marshaling vertex data
 
 Add networking to pict3d/universe
-
-Speed up vector operations (settle for < 4 ulps error)
 
 Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
@@ -45,6 +49,8 @@ New shape constructors
 ? Physically-based transparency (i.e. proper transmission fractions)
 
 ? Special-case transformation matrix struct for translation and rotation
+
+? Pause big-bang3d programs to get an interactive GUI
 
 ======================================================================================================
 Hard

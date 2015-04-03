@@ -341,44 +341,46 @@
                           (if (> oct-dy 0.0) (/ (- (- new-ymax new-ymin) oct-dy) oct-dy) 0.0)
                           (if (> oct-dz 0.0) (/ (- (- new-zmax new-zmin) oct-dz) oct-dz) 0.0)))))))]))
 
-(: flrect3-line-intersects (-> FlRect3 FlV3 FlV3 Flonum (Values (U #f Flonum) (U #f Flonum))))
-(define (flrect3-line-intersects bb v dv max-time)
+(: flrect3-line-intersects (-> FlRect3 FlV3 FlV3 Flonum Flonum (Values (U #f Flonum) (U #f Flonum))))
+(define (flrect3-line-intersects bb v dv min-time max-time)
   (define mn (flrect3-min bb))
   (define mx (flrect3-max bb))
   ;; Compute [tmin,tmax], the interval of times for which a point on the ray is in the box
   ;; Main idea: Compute [tmin_i,tmax_i] for each pair of parallel bounding planes, and intersect them
-  (let loop ([i : Index  0]               ; Current coordinate
-             [tmin -inf.0] [tmax max-time]  ; Accumulator starts at [-inf,max-time]
-             )
-    (cond
-      [(< i 3)
-       (define x (unsafe-flv3-ref v i))
-       (define dx (unsafe-flv3-ref dv i))
-       (define x1 (unsafe-flv3-ref mn i))
-       (define x2 (unsafe-flv3-ref mx i))
-       (cond [(< (abs dx) +max-subnormal.0)
-              ;; The ray is approximately parallel to slab i
-              (if (not (<= x1 x x2))
-                  ;; It's outside slab i, so it can't intersect
-                  (values #f #f)
-                  ;; It's inside slab i, so interval i is [-inf,+inf]
-                  (loop (+ i 1) tmin tmax))]
-             [else
-              ;; Compute interval [tmin_i,tmax_i] for slab i
-              (define t1 (/ (- x1 x) dx))
-              (define t2 (/ (- x2 x) dx))
-              (define tmin_i (min t1 t2))
-              (define tmax_i (max t1 t2))
-              ;; Compute [tmin,tmax] ∩ [tmin_i,tmax_i]
-              (let ([tmin  (max tmin_i tmin)]
-                    [tmax  (min tmax_i tmax)])
-                (if (> tmin tmax)
-                    ;; Intersection is empty: fail
-                    (values #f #f)
-                    ;; Intersection is nonempty, so keep going with new accumulator
-                    (loop (+ i 1) tmin tmax)))])]
-      [else
-       (values tmin tmax)])))
+  (if (> min-time max-time)
+      ;; Intersection starts empty: fail
+      (values #f #f)
+      (let loop ([i : Index  0]                    ; Current coordinate index
+                 [tmin min-time] [tmax max-time])  ; Accumulator starts at [min-time,max-time]
+        (cond
+          [(< i 3)
+           (define x (unsafe-flv3-ref v i))
+           (define dx (unsafe-flv3-ref dv i))
+           (define x1 (unsafe-flv3-ref mn i))
+           (define x2 (unsafe-flv3-ref mx i))
+           (cond [(< (abs dx) +max-subnormal.0)
+                  ;; The ray is approximately parallel to slab i
+                  (if (not (<= x1 x x2))
+                      ;; It's outside slab i, so it can't intersect
+                      (values #f #f)
+                      ;; It's inside slab i, so interval i is [-inf,+inf]
+                      (loop (+ i 1) tmin tmax))]
+                 [else
+                  ;; Compute interval [tmin_i,tmax_i] for slab i
+                  (define t1 (/ (- x1 x) dx))
+                  (define t2 (/ (- x2 x) dx))
+                  (define tmin_i (min t1 t2))
+                  (define tmax_i (max t1 t2))
+                  ;; Compute [tmin,tmax] ∩ [tmin_i,tmax_i]
+                  (let ([tmin  (max tmin_i tmin)]
+                        [tmax  (min tmax_i tmax)])
+                    (if (> tmin tmax)
+                        ;; Intersection is empty: fail
+                        (values #f #f)
+                        ;; Intersection is nonempty, so keep going with new accumulator
+                        (loop (+ i 1) tmin tmax)))])]
+          [else
+           (values tmin tmax)]))))
 
 (: flrect3-closest-point (-> FlRect3 FlV3 FlV3))
 (define (flrect3-closest-point bb v)

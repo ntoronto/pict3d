@@ -295,19 +295,19 @@
                          (and n (flt3apply/norm t n)))
                        (reverse path)))))
 
-(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3 Flonum
-                                    (Values (U #f Flonum) (U #f (Promise trace-data)))))
+(: nonempty-scene-ray-intersect (-> Nonempty-Scene FlV3 FlV3 Nonnegative-Flonum
+                                    (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
 (define (nonempty-scene-ray-intersect s v dv max-time)
   (let loop ([s s]
              [v v]
              [dv dv]
              [t identity-flaffine3]
              [path : (Listof Tag)  empty]
-             [max-time max-time])
+             [max-time : Nonnegative-Flonum  max-time])
     (cond
       [(shape? s)
-       (define-values (time data) (shape-line-intersect s v dv max-time))
-       (if (or (not time) (not data) (< time 0.0))
+       (define-values (time data) (shape-ray-intersect s v dv max-time))
+       (if (or (not time) (not data))
            (values #f #f)
            (values time (fix-trace-data data (flt3inverse t) path)))]
       [(node-scene? s)
@@ -317,17 +317,20 @@
          [else
           (define r (bbox-rect b))
           (define-values (tmin tmax)
-            (let-values ([(tmin tmax)  (flrect3-line-intersects r v dv max-time)])
+            (let-values ([(tmin tmax)  (flrect3-line-intersects r v dv 0.0 max-time)])
+              ;; If we hit a really loose bbox...
               (if (and tmin tmax (> (bbox-badness b) 16.0))
+                  ;; ... recompute a tighter bbox and try again
                   (let ([r  (maybe-bbox-rect (scene-bbox/badness s 16.0))])
-                    (maybe-flrect3-line-intersects r v dv max-time))
+                    (maybe-flrect3-line-intersects r v dv 0.0 max-time))
                   (values tmin tmax))))
           (cond
-            [(or (not tmin) (not tmax) (and (< tmin 0.0) (< tmax 0.0)))  (values #f #f)]
+            [(or (not tmin) (not tmax))  (values #f #f)]
             [else
              (define s1 (node-scene-neg s))
              (define s2 (node-scene-pos s))
              
+             ;; Brute-force: try intersecting one subscene, then the other
              (define brute-force-fallback
                (λ ([s1 : Nonempty-Scene] [s2 : Nonempty-Scene])
                  (define-values (time1 data1) (loop s1 v dv t path max-time))
@@ -350,13 +353,17 @@
                    (define plane (flrect3-separating-plane (bbox-rect b1) (bbox-rect b2)))
                    (cond
                      [plane
+                      ;; Make sure s1 is on our side of the separating plane
                       (let-values ([(s1 s2)  (if (<= (flplane3-point-dist plane v) 0.0)
                                                  (values s1 s2)
                                                  (values s2 s1))])
+                        ;; Now any hit in s2 MUST be farther away than any hit in s1
                         (define-values (time data) (loop s1 v dv t path max-time))
-                        (cond [(and time data)  (values time data)]
-                              [else  (loop s2 v dv t path max-time)]))]
+                        (if (and time data)
+                            (values time data)
+                            (loop s2 v dv t path max-time)))]
                      [else
+                      ;; Order by distance to center and try brute force
                       (let-values ([(s1 s2)  (if (<= (flv3dist v (flrect3-center (bbox-rect b1)))
                                                      (flv3dist v (flrect3-center (bbox-rect b2))))
                                                  (values s1 s2)
@@ -380,18 +387,41 @@
        (cond [(empty-scene? s0)  (values #f #f)]
              [else  (loop s0 v dv t (cons (group-scene-tag s) path) max-time)])])))
 
-(: scene-ray-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise trace-data)))))
+(: scene-ray-intersect (-> Scene FlV3 FlV3 (Values (U #f Nonnegative-Flonum)
+                                                   (U #f (Promise trace-data)))))
 (define (scene-ray-intersect s v dv)
-  (if (empty-scene? s) (values #f #f) (nonempty-scene-ray-intersect s v dv +inf.0)))
+  (cond
+    [(empty-scene? s)  (values #f #f)]
+    [(= (flv3mag^2 v) +inf.0)
+     (raise-argument-error 'scene-ray-intersect "FlV3 with finite squared magnitude"
+                           1 s v dv)]
+    [(= (flv3mag^2 dv) +inf.0)
+     (raise-argument-error 'scene-ray-intersect "FlV3 with finite squared magnitude"
+                           2 s v dv)]
+    [else
+     (define-values (time data) (nonempty-scene-ray-intersect s v dv +inf.0))
+     ;; Basic sanity check
+     (if (and time data)
+         (values time data)
+         (values #f #f))]))
 
-(: scene-line-intersect (-> Scene FlV3 FlV3 (Values (U #f Flonum) (U #f (Promise trace-data)))))
+(: scene-line-intersect (-> Scene FlV3 FlV3 (Values (U #f Nonnegative-Flonum)
+                                                    (U #f (Promise trace-data)))))
 (define (scene-line-intersect s v dv)
-  (if (empty-scene? s)
-      (values #f #f)
-      (let-values ([(time data)  (nonempty-scene-ray-intersect s v dv 1.0)])
-        (if (and time (<= time 1.0))
-            (values time data)
-            (values #f #f)))))
+  (cond
+    [(empty-scene? s)  (values #f #f)]
+    [(= (flv3mag^2 v) +inf.0)
+     (raise-argument-error 'scene-line-intersect "FlV3 with finite squared magnitude"
+                           1 s v dv)]
+    [(= (flv3mag^2 dv) +inf.0)
+     (raise-argument-error 'scene-line-intersect "FlV3 with finite squared magnitude"
+                           2 s v dv)]
+    [else
+     (define-values (time data) (nonempty-scene-ray-intersect s v dv 1.0))
+     ;; Basic sanity check + distance check
+     (if (and time data (<= time 1.0))
+         (values time data)
+         (values #f #f))]))
 
 ;; ===================================================================================================
 ;; Scene drawing

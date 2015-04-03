@@ -92,8 +92,10 @@
  cone
  ;; Collision detection
  trace
+ trace/normal
  trace/data
  surface
+ surface/normal
  surface/data
  ;; Camera/view
  canvas-projection
@@ -702,6 +704,10 @@
 
 (: trace (-> Pict3D Pos (U Pos Dir) (U #f Pos)))
 (define (trace p v1 to)
+  (when (= +inf.0 (flv3mag^2 v1))
+    (raise-argument-error 'trace "Pos with finite squared magnitude" 1 p v1 to))
+  (when (= +inf.0 (flv3mag^2 to))
+    (raise-argument-error 'trace "Pos or Dir with finite squared magnitude" 2 p v1 to))
   (define-values (time data)
     (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
           [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
@@ -709,10 +715,21 @@
 
 (: trace/data (-> Pict3D Pos (U Pos Dir) (U #f Surface-Data)))
 (define (trace/data p v1 to)
+  (when (= +inf.0 (flv3mag^2 v1))
+    (raise-argument-error 'trace/data "Pos with finite squared magnitude" 1 p v1 to))
+  (when (= +inf.0 (flv3mag^2 to))
+    (raise-argument-error 'trace/data "Pos or Dir with finite squared magnitude" 2 p v1 to))
   (define-values (time data)
     (cond [(pos? to)  (scene-line-intersect (pict3d-scene p) v1 (flv3- to v1))]
           [else       (scene-ray-intersect  (pict3d-scene p) v1 to)]))
-  (and time data (trace-data->surface-data (force data))))
+  (and time data (trace-data->surface-data time (force data))))
+
+(: trace/normal (-> Pict3D Pos (U Pos Dir) (Values (U #f Pos) (U #f Dir))))
+(define (trace/normal p v1 to)
+  (define data (trace/data p v1 to))
+  (cond [data  (values (surface-data-pos data)
+                       (surface-data-normal data))]
+        [else  (values #f #f)]))
 
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)
@@ -742,6 +759,13 @@
           (trace/data p vin vout)
           (trace/data p vout vin))
       #f))
+
+(: surface/normal (->* [Pict3D Dir] [#:inside? Any] (Values (U #f Pos) (U #f Dir))))
+(define (surface/normal p dv #:inside? [inside? #f])
+  (define data (surface/data  p dv #:inside? inside?))
+  (cond [data  (values (surface-data-pos data)
+                       (surface-data-normal data))]
+        [else  (values #f #f)]))
 
 ;; ===================================================================================================
 ;; Camera/view

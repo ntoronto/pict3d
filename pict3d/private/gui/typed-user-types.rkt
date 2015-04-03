@@ -2,6 +2,8 @@
 
 (require (for-syntax racket/base
                      racket/syntax)
+         (only-in racket/unsafe/ops
+                  unsafe-flvector-ref)
          racket/match
          racket/vector
          racket/list
@@ -60,6 +62,7 @@
  dir-dx
  dir-dy
  dir-dz
+ zero-dir
  dir+
  dir-
  dir-negate
@@ -68,8 +71,10 @@
  dir-dist
  dir-normalize
  dir-dot
- dir-proj
  dir-cross
+ dir-project
+ dir-reject
+ dir-reflect
  angles->dir
  dir->angles
  pos+
@@ -106,6 +111,7 @@
  surface-data
  make-surface-data
  surface-data?
+ surface-data-dist
  surface-data-pos
  surface-data-normal
  surface-data-path
@@ -297,21 +303,34 @@
 (define (flv3-values v)
   (call/flv3-values v values))
 
-(define print-vector
+(define print-vector-value
   (λ ([name : Symbol])
     (make-constructor-style-printer
      (λ ([v : FlV3]) name)
      (λ ([v : FlV3]) (call/flv3-values v list)))))
 
+(: print-pos (-> Pos Output-Port (U Boolean Zero One) Void))
+(define (print-pos v port mode)
+  (cond [(equal? v origin)  (write-string "origin" port)
+                            (void)]
+        [else  ((print-vector-value 'pos) v port mode)]))
+
+(: print-dir (-> Dir Output-Port (U Boolean Zero One) Void))
+(define (print-dir dv port mode)
+  (define name (hash-ref dir-names dv #f))
+  (cond [name  (write-string name port)
+               (void)]
+        [else  ((print-vector-value 'dir) dv port mode)]))
+
 (struct Pos FlV3 ()
   #:transparent
   #:property prop:custom-print-quotable 'never
-  #:property prop:custom-write (print-vector 'pos))
+  #:property prop:custom-write print-pos)
 
 (struct Dir FlV3 ()
   #:transparent
   #:property prop:custom-print-quotable 'never
-  #:property prop:custom-write (print-vector 'dir))
+  #:property prop:custom-write print-dir)
 
 (define-type -Pos Pos)
 (define-type -Dir Dir)
@@ -328,6 +347,9 @@
 
 (define origin (flv3->pos zero-flv3))
 
+(: dir-names (HashTable Dir String))
+(define dir-names (make-hash))
+
 (define-syntax (define/provide-unit-vectors stx)
   (define/with-syntax ([name val] ...)
     (for*/list ([nx  (in-list '("-x" "" "+x"))]
@@ -339,24 +361,33 @@
             (format-id stx "~a-flv3" str))))
   #'(begin
       (define name (flv3->dir val)) ...
+      (hash-set! dir-names name (symbol->string 'name)) ...
       (provide name ...)))
 
 (define/provide-unit-vectors)
 
-(: ->flv3 (-> Symbol (U FlVector (Listof Real) (Vectorof Real)) FlV3))
-(define (->flv3 name v)
+(: rational-flvector3 (-> Symbol Flonum Flonum Flonum FlVector))
+(define (rational-flvector3 name x y z)
+  (if (and (< -inf.0 (min x y z))
+           (< (max x y z) +inf.0))
+      (flvector x y z)
+      (error name "expected rational coordinates; given ~e ~e ~e" x y z)))
+
+(: ->flvector3 (-> Symbol (U FlVector (Listof Real) (Vectorof Real)) FlVector))
+(define (->flvector3 name v)
   (cond [(flvector? v)
          (if (= 3 (flvector-length v))
-             (flv3 (flvector-ref v 0)
-                   (flvector-ref v 1)
-                   (flvector-ref v 2))
+             (rational-flvector3 name
+                                 (unsafe-flvector-ref v 0)
+                                 (unsafe-flvector-ref v 1)
+                                 (unsafe-flvector-ref v 2))
              (raise-argument-error name "length-3 flvector, list or vector" v))]
         [else
          (match v
            [(vector x y z)
-            (flv3 (fl x) (fl y) (fl z))]
+            (rational-flvector3 name (fl x) (fl y) (fl z))]
            [(list x y z)
-            (flv3 (fl x) (fl y) (fl z))]
+            (rational-flvector3 name (fl x) (fl y) (fl z))]
            [_
             (raise-argument-error name "length-3 flvector, list or vector" v)])]))
 
@@ -364,15 +395,15 @@
                (-> Real Real Real Pos)))
 (define pos
   (case-lambda
-    [(v)  (flv3->pos (->flv3 'pos v))]
-    [(x y z)  (flv3->pos (flv3 (fl x) (fl y) (fl z)))]))
+    [(v)  (Pos (->flvector3 'pos v))]
+    [(x y z)  (Pos (rational-flvector3 'pos (fl x) (fl y) (fl z)))]))
 
 (: dir (case-> (-> (U FlVector (Listof Real) (Vectorof Real)) Dir)
                (-> Real Real Real Dir)))
 (define dir
   (case-lambda
-    [(dv)  (flv3->dir (->flv3 'dir dv))]
-    [(dx dy dz)  (flv3->dir (flv3 (fl dx) (fl dy) (fl dz)))]))
+    [(dv)  (Dir (->flvector3 'dir dv))]
+    [(dx dy dz)  (Dir (rational-flvector3 'dir (fl dx) (fl dy) (fl dz)))]))
 
 (define pos-x (λ ([v : Pos]) (flv3-ref v 0)))
 (define pos-y (λ ([v : Pos]) (flv3-ref v 1)))
@@ -381,6 +412,8 @@
 (define dir-dx (λ ([dv : Dir]) (flv3-ref dv 0)))
 (define dir-dy (λ ([dv : Dir]) (flv3-ref dv 1)))
 (define dir-dz (λ ([dv : Dir]) (flv3-ref dv 2)))
+
+(define zero-dir (dir 0 0 0))
 
 (: dir+ (-> Dir Dir Dir))
 (define (dir+ dv1 dv2)
@@ -415,15 +448,24 @@
 (define (dir-dot dv1 dv2)
   (flv3dot dv1 dv2))
 
-(: dir-proj (-> Dir Dir (U #f Dir)))
-(define (dir-proj A B)
+(: dir-cross (-> Dir Dir Dir))
+(define (dir-cross dv1 dv2)
+  (flv3->dir (flv3cross dv1 dv2)))
+
+(: dir-project (-> Dir Dir (U #f Dir)))
+(define (dir-project A B)
   (define d (dir-dist^2 B))
   (cond [(= d 0.0)  #f]
         [else  (dir-scale B (/ (dir-dot A B) d))]))
 
-(: dir-cross (-> Dir Dir Dir))
-(define (dir-cross dv1 dv2)
-  (flv3->dir (flv3cross dv1 dv2)))
+(: dir-reject (->* [Dir Dir] [Real] Dir))
+(define (dir-reject dv n [s 1.0])
+  (define proj (dir-project dv n))
+  (if proj (dir- dv (dir-scale proj s)) dv))
+
+(: dir-reflect (-> Dir Dir Dir))
+(define (dir-reflect dv n)
+  (dir-reject dv n 2.0))
 
 (: angles->dir (-> Real Real Dir))
 (define (angles->dir ang alt)
@@ -623,14 +665,17 @@
 
 (: print-surface-data (-> Surface-Data Output-Port (U #t #f 0 1) Void))
 (define (print-surface-data surf port mode)
-  (match-define (Surface-Data v n path) surf)
-  (write-string (format "(surface-data ~v" v) port)
+  (match-define (Surface-Data t v n path) surf)
+  (write-string (format "(surface-data ~v ~v" t v) port)
   (when n (write-string (format " #:normal ~v" n) port))
   (when (not (empty? path)) (write-string (format " #:path ~v" path) port))
   (write-string ")" port)
   (void))
 
-(struct Surface-Data ([pos : Pos] [normal : (U #f Dir)] [path : (Listof Tag)])
+(struct Surface-Data ([dist : Nonnegative-Flonum]
+                      [pos : Pos]
+                      [normal : (U #f Dir)]
+                      [path : (Listof Tag)])
   #:transparent
   #:property prop:custom-print-quotable 'never
   #:property prop:custom-write print-surface-data)
@@ -638,16 +683,17 @@
 (define-type -Surface-Data Surface-Data)
 (define make-surface-data Surface-Data)
 (define surface-data? Surface-Data?)
+(define surface-data-dist Surface-Data-dist)
 (define surface-data-pos Surface-Data-pos)
 (define surface-data-normal Surface-Data-normal)
 (define surface-data-path Surface-Data-path)
 
-(: trace-data->surface-data (-> trace-data Surface-Data))
-(define (trace-data->surface-data data)
+(: trace-data->surface-data (-> Nonnegative-Flonum trace-data Surface-Data))
+(define (trace-data->surface-data time data)
   (match-define (trace-data v n path) data)
-  (make-surface-data (flv3->pos v) (and n (flv3->dir n)) path))
+  (make-surface-data time (flv3->pos v) (and n (flv3->dir n)) path))
 
-(: surface-data (->* [Pos] [#:normal (U #f Dir) #:path (Listof Tag)] Surface-Data))
-(define (surface-data v #:normal [n #f] #:path [path empty])
+(: surface-data (->* [Real Pos] [#:normal (U #f Dir) #:path (Listof Tag)] Surface-Data))
+(define (surface-data time v #:normal [n #f] #:path [path empty])
   (let ([n  (and n (dir-normalize n))])
-    (make-surface-data v n path)))
+    (make-surface-data (max 0.0 (fl time)) v n path)))

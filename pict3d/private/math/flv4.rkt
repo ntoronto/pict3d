@@ -38,7 +38,10 @@
   
   (: flv4 (-> Flonum Flonum Flonum Flonum FlV4))
   (define (flv4 x y z w)
-    (FlV4 (flvector x y z w)))
+    (if (and (<= -inf.0 (min x y z w))
+             (<= (max x y z w) +inf.0))
+        (FlV4 (flvector x y z w))
+        (error 'flv4 "expected non-NaNs; given ~e ~e ~e ~e" x y z w)))
 
   (: unsafe-flv4-ref (-> FlV4 Index Flonum))
   (define (unsafe-flv4-ref v i)

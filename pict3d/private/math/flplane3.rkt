@@ -47,7 +47,8 @@
     (call/fl3plane-normalize a b c d
       (λ ([a : Flonum] [b : Flonum] [c : Flonum] [d : Flonum])
         (if (or (= 0.0 (max (abs a) (abs b) (abs c)))
-                (not (< -inf.0 d +inf.0)))
+                (not (and (< -inf.0 (min a b c d))
+                          (< (max a b c d) +inf.0))))
             #f
             (unsafe-flplane3 a b c d)))))
   

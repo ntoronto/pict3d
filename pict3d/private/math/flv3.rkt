@@ -43,7 +43,10 @@
   
   (: flv3 (-> Flonum Flonum Flonum FlV3))
   (define (flv3 x y z)
-    (FlV3 (flvector x y z)))
+    (if (and (<= -inf.0 (min x y z))
+             (<= (max x y z) +inf.0))
+        (FlV3 (flvector x y z))
+        (error 'flv3 "expected non-NaNs; given ~e ~e ~e~n" x y z)))
   
   (: flnorm3 (-> Flonum Flonum Flonum (U #f FlV3)))
   (define (flnorm3 x y z)
