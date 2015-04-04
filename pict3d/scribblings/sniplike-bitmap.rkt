@@ -12,6 +12,7 @@
 (define (pict3d->sniplike-bitmap p width height)
   (define add-sunlight? (current-pict3d-add-sunlight?))
   (define add-indicators? (current-pict3d-add-indicators?))
+  (define add-grid? (current-pict3d-add-grid?))
   
   (define s (pict3d-scene p))
   (define scale 1.0)
@@ -31,6 +32,14 @@
     (if add-indicators?
         (cons (cons origin (scene-origin-indicator scale))
               (scene-basis-indicators s scale))
+        empty))
+  
+  (define grid-pict3ds
+    (if add-grid?
+        (list (light-grid (emitted 1.0 0.6 0.6 2.0)
+                          (emitted 0.5 1.5 0.5 2.0)
+                          (emitted 0.7 0.7 1.0 2.0)
+                          scale))
         empty))
   
   (define view

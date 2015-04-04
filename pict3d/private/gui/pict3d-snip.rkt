@@ -117,7 +117,7 @@
          (match-define (list debug-pass path
                              legacy? check-version?
                              width height z-near z-far fov background ambient
-                             add-sunlight? add-indicators? auto-camera)
+                             add-sunlight? add-indicators? add-grid? auto-camera)
            (send gui get-render-params))
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy? check-version?)
@@ -147,6 +147,14 @@
                                           (scene-basis-indicators scene scale)))))
                  empty))
            
+           (define grid-pict3ds
+             (if add-grid?
+                 (list (light-grid (emitted 1.0 0.6 0.6 2.0)
+                                   (emitted 0.5 1.5 0.5 2.0)
+                                   (emitted 0.7 0.7 1.0 2.0)
+                                   scale))
+                 empty))
+           
            (define-values (_dx _dy _dz v0) (affine->cols view))
            (define axes-pict3ds
              (for/fold ([picts empty]) ([pos+pict  (in-list axes-pos+picts)])
@@ -166,6 +174,7 @@
                                    sunlight-pict3ds
                                    light-pict3ds
                                    axes-pict3ds
+                                   grid-pict3ds
                                    boxes)
                            width
                            height
@@ -214,16 +223,42 @@
   (send dc set-origin (+ orig-x x 2) (+ orig-y y 2))
   (send dc set-pen "black" 0.5 'solid)
   (send dc set-brush white 'solid)
-  (send dc draw-ellipse 9 9 6 6)
+  (send dc draw-ellipse 7 9 6 6)
   (for ([ang  (in-list '(150 30 -90))]
         [color  (in-list (list red green blue))])
     (define c (cos (degrees->radians ang)))
     (define s (sin (degrees->radians ang)))
     (send dc set-pen "black" 5 'solid)
-    (send dc draw-line (+ 12 (* c 5)) (+ 12 (* s 5)) (+ 12 (* c 10)) (+ 12 (* s 10)))
+    (send dc draw-line (+ 10 (* c 5)) (+ 12 (* s 5)) (+ 10 (* c 10)) (+ 12 (* s 10)))
     (send dc set-pen color 4 'solid)
-    (send dc draw-line (+ 12 (* c 5)) (+ 12 (* s 5)) (+ 12 (* c 10)) (+ 12 (* s 10))))
+    (send dc draw-line (+ 10 (* c 5)) (+ 12 (* s 5)) (+ 10 (* c 10)) (+ 12 (* s 10))))
   (send dc set-origin orig-x orig-y))
+
+(define (draw-grid-icon-lines dc x y color width style)
+  (define-values (orig-x orig-y) (send dc get-origin))
+  (send dc set-origin (+ orig-x x) (+ orig-y y))
+  (send dc set-pen color width style)
+  (for ([ang  (in-range -180 180 90)])
+    (define c1 (cos (degrees->radians ang)))
+    (define s1 (* 0.5 (sin (degrees->radians ang))))
+    (define c2 (cos (degrees->radians (+ ang 90))))
+    (define s2 (* 0.5 (sin (degrees->radians (+ ang 90)))))
+    (send dc draw-line (+ 12 (* c1 8)) (+ 8 (* s1 8)) (+ 12 (* c2 8)) (+ 8 (* s2 8))))
+  (for ([ang  (in-range -0 270 90)])
+    (define c1 (cos (degrees->radians ang)))
+    (define s1 (* 0.5 (sin (degrees->radians ang))))
+    (send dc draw-line (+ 12 (* c1 8)) (+ 8 (* s1 8)) (+ 12 (* c1 8)) (+ 16 (* s1 8))))
+  (for ([ang  (in-range 0 180 90)])
+    (define c1 (cos (degrees->radians ang)))
+    (define s1 (* 0.5 (sin (degrees->radians ang))))
+    (define c2 (cos (degrees->radians (+ ang 90))))
+    (define s2 (* 0.5 (sin (degrees->radians (+ ang 90)))))
+    (send dc draw-line (+ 12 (* c1 8)) (+ 16 (* s1 8)) (+ 12 (* c2 8)) (+ 16 (* s2 8))))
+  (send dc set-origin orig-x orig-y))
+
+(define (draw-grid-icon dc x y color)
+  (draw-grid-icon-lines dc x y "black" 3 'solid)
+  (draw-grid-icon-lines dc x y color 2 'short-dash))
 
 (define (draw-outlined-text dc str x y)
   (define path (new dc-path%))
@@ -365,7 +400,7 @@
         (define-values
           (legacy? check-version?
                    width height z-near z-far fov background ambient
-                   add-sunlight? add-indicators? auto-camera)
+                   add-sunlight? add-indicators? add-grid? auto-camera)
           (send pict get-init-params))
         
         (parameterize ([current-pict3d-width   width]
@@ -449,7 +484,7 @@
       (define-values
         (legacy? check-version?
                  width height z-near z-far fov background ambient
-                 add-sunlight? add-indicators? auto-camera)
+                 add-sunlight? add-indicators? add-grid? auto-camera)
         (send pict get-init-params))
       
       (for ([item  (in-list hud-items)])
@@ -510,7 +545,10 @@
                  (draw-sunlight-icon dc 0 0 gray))
              (if (send pict get-add-indicators?)
                  (draw-axes-icon dc 24 0 "white" red green blue)
-                 (draw-axes-icon dc 24 0 gray gray gray gray)))
+                 (draw-axes-icon dc 24 0 gray gray gray gray))
+             (if (send pict get-add-grid?)
+                 (draw-grid-icon dc 48 0 "white")
+                 (draw-grid-icon dc 48 0 gray)))
            
            (unless (eq? mouse-mode 'capturing)
              (draw-hud-items dc))
@@ -699,6 +737,8 @@
               (send pict toggle-add-sunlight?)]
              [(and (<= 24 snip-x (+ 24 24)) (<= 0 snip-y 24))
               (send pict toggle-add-indicators?)]
+             [(and (<= 48 snip-x (+ 48 24)) (<= 0 snip-y 24))
+              (send pict toggle-add-grid?)]
              [(and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max))
               (cond [(< snip-x scale-x-mid)
                      (set! scale-index (min (+ scale-index 1) max-scale-index))]
@@ -757,7 +797,7 @@
         [(eq? mouse-mode 'capturing)  blank-cursor]
         [else
          (mouse-moved snip-x snip-y)
-         (if (or (and (<= 0 snip-x (+ 24 24)) (<= 0 snip-y 24))
+         (if (or (and (<= 0 snip-x (* 24 3)) (<= 0 snip-y 24))
                  (and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max)))
              arrow-cursor
              cross-cursor)]))
@@ -928,6 +968,7 @@
                 ambient
                 add-sunlight?
                 add-indicators?
+                add-grid?
                 auto-camera)
     
     (super-make-object)
@@ -937,10 +978,13 @@
     
     (define/public (get-add-sunlight?) add-sunlight?)
     (define/public (get-add-indicators?) add-indicators?)
+    (define/public (get-add-grid?) add-grid?)
     (define/public (set-add-sunlight? b) (set! add-sunlight? b))
     (define/public (set-add-indicators? b) (set! add-indicators? b))
+    (define/public (set-add-grid? b) (set! add-grid? b))
     (define/public (toggle-add-sunlight?) (set! add-sunlight? (not add-sunlight?)))
     (define/public (toggle-add-indicators?) (set! add-indicators? (not add-indicators?)))
+    (define/public (toggle-add-grid?) (set! add-grid? (not add-grid?)))
     
     (define/public (get-scene) scene)
     
@@ -951,7 +995,7 @@
     (define/override (copy)
       (make-object pict3d% scene legacy? check-version?
         width height z-near z-far fov background ambient
-        add-sunlight? add-indicators? auto-camera))
+        add-sunlight? add-indicators? add-grid? auto-camera))
     
     (define scroll-step #f)
     (define (calc-scroll-step)
@@ -999,7 +1043,7 @@
     (define/public (get-init-params)
       (values legacy? check-version?
               width height z-near z-far fov background ambient
-              add-sunlight? add-indicators? auto-camera))
+              add-sunlight? add-indicators? add-grid? auto-camera))
     
     (define/public (refresh)
       (queue-callback
@@ -1093,6 +1137,7 @@
     (current-pict3d-ambient)
     (current-pict3d-add-sunlight?)
     (current-pict3d-add-indicators?)
+    (current-pict3d-add-grid?)
     (current-pict3d-auto-camera)))
 
 (define (pict3d%->scene p)

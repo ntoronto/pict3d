@@ -84,5 +84,8 @@
 (: current-pict3d-add-indicators? (Parameterof Boolean))
 (define current-pict3d-add-indicators? (make-parameter #t))
 
+(: current-pict3d-add-grid? (Parameterof Boolean))
+(define current-pict3d-add-grid? (make-parameter #f))
+
 (: current-pict3d-auto-camera (Parameterof (-> Pict3D Affine)))
 (define current-pict3d-auto-camera (make-parameter default-pict3d-auto-camera))

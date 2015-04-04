@@ -9,12 +9,14 @@
               rect-cull
               pict3d
               pict3d-scene
+              current-pict3d-add-grid?
               current-pict3d-print-converter
               current-pict3d-custom-write
               canvas-projection
               bitmap-projection
               camera->view
               camera-ray
+              light-grid
               ))
 
 (check-docs 'pict3d/universe

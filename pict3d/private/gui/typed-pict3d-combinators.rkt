@@ -11,6 +11,7 @@
          "typed-user-types.rkt"
          "pict3d-struct.rkt"
          "parameters.rkt"
+         "light-grid.rkt"
          )
 
 (provide
@@ -102,6 +103,8 @@
  bitmap-projection
  camera->view
  camera-ray
+ ;;
+ light-grid
  )
 
 ;; ===================================================================================================
@@ -828,3 +831,9 @@
       (values (call/flv3-values v pos)
               (call/flv3-values dv dir))
       (values #f #f)))
+
+;; ===================================================================================================
+
+(: light-grid (->* [Emitted Emitted Emitted] [Real] Pict3D))
+(define (light-grid ex ey ez [s 1.0])
+  (pict3d (make-light-grid-shape ex ey ez (real->double-flonum s))))
