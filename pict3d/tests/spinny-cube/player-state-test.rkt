@@ -61,6 +61,7 @@
    (player-state-advance pstate world-geometry (* frame-delay (fl n)) (/ frame-delay 1000.0)))
  #:on-draw
  (λ ([pstate : player-state] [n : Natural] [_ : Flonum])
+   (define time (/ (* n frame-delay) 1000.0))
    (match-define (player-state v ddv t tm man) pstate)
    
    (define c (camera-pos v ddv))
