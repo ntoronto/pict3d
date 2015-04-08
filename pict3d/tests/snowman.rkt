@@ -114,7 +114,7 @@
        (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 8 #:smooth? #t)))))
 
 (define arm
-  (freeze (weld arm-segment '(top) arm-segment)))
+  (freeze (weld* arm-segment '(top) arm-segment)))
 
 (define (snowman t)
   (let* ([snowman  (scale-z snowman-bottom (+ 1.0 (* 0.01 (sin (/ t 100.0)))))]

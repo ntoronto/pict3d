@@ -12,7 +12,7 @@
 (define (build-tree n)
   (ungroup
    (for/fold ([p branch]) ([_  (in-range n)])
-     (weld p '(top) branch '(base)))
+     (weld* p '(top) branch '(base)))
    '(top)))
 
 (define (combine/bounds t)

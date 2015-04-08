@@ -45,7 +45,7 @@
   #:methods gen:world-state
   [(define (world-state-draw s n t)
      (combine (rectangle (pos -2 -2 -2) (pos 2 2 -1))
-              (pin spiky '(shaft) (rotate-z blades (/ t 5)))
+              (pin* spiky '(shaft) (rotate-z blades (/ t 5)))
               (sunlight (dir 0 -1/2 -1))
               (basis 'camera (ball-state-tr s))))
    

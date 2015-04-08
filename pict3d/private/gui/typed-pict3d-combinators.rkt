@@ -39,6 +39,8 @@
  remove-in-group
  map-group
  map-group/transform
+ find-group-transforms
+ find-group-transform
  ;; Basic shapes
  triangle
  quad
@@ -212,6 +214,21 @@
       (list (f identity-affine p))
       (scene-map-group/transform (pict3d-scene p) n (λ ([t : FlAffine3] [s : group-scene])
                                                       (f (flaffine3->affine t) (pict3d s))))))
+
+(: find-group-transforms (-> Pict3D (Listof Tag) (Listof Affine)))
+(define (find-group-transforms p n)
+  (map-group/transform p n (λ ([t : Affine] _) t)))
+
+(: find-group-transform (-> Pict3D (Listof Tag) Affine))
+(define (find-group-transform p n)
+  (: fail (-> Index Nothing))
+  (define (fail m)
+    (error 'find-group-transform "expected one group with path ~e; given a Pict3D with ~a such groups"
+           n m))
+  (define ts (find-group-transforms p n))
+  (cond [(empty? ts)  (fail 0)]
+        [(empty? (rest ts))  (first ts)]
+        [else  (fail (length ts))]))
 
 ;; ===================================================================================================
 ;; Information
@@ -404,24 +421,6 @@
   (case-lambda
     [(v)  (flaffine3->affine (f v))]
     [(p v)  (transform p (flaffine3->affine (f v)))]))
-
-(: find-group-transforms : (-> Pict3D (Listof Tag) (Listof Affine)))
-(define (find-group-transforms p n)
-  (map-group/transform p n (λ ([t : Affine] _) t)))
-
-(: find-group-transform : (-> Pict3D (Listof Tag) Affine))
-(define (find-group-transform p n)
-  (: fail (-> Index Nothing))
-  (define (fail m)
-    (error 'find-group-transform "expected one group ~e; given a Pict3D with ~a groups tagged ~e" n m n))
-  (define ts (find-group-transforms p n))
-  (cond [(empty? ts)  (fail 0)]
-        [(empty? (rest ts))  (first ts)]
-        [else  (fail (length ts))]))
-
-(: set-origin (-> Pict3D (Listof Tag) Pict3D))
-(define (set-origin p n)
-  (transform p (affine-inverse (find-group-transform p n))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale

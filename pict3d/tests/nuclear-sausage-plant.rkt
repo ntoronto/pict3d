@@ -22,9 +22,9 @@
 
 (define (segment-chain n)
   (cond [(= n 0)  (set-emitted (make-segment n) (emitted "green" 0.25))]
-        [else  (pin (segment-chain (- n 1)) (make-list n 'top)
-                    (set-emitted (make-segment n) (emitted "green" 0.25))
-                    '(bottom))]))
+        [else  (pin* (segment-chain (- n 1)) (make-list n 'top)
+                     (set-emitted (make-segment n) (emitted "green" 0.25))
+                     '(bottom))]))
 
 (define chain (segment-chain 18))
 
