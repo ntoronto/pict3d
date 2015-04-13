@@ -86,8 +86,10 @@
  pin
  weld
  join
- join*
  glue
+ pin*
+ weld*
+ join*
  glue*
  ;; Testing
  plane-cull
@@ -582,15 +584,18 @@
 ;; ===================================================================================================
 ;; Combining scenes
 
-(: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
-(define (pin p1 n1 p2 [n2 empty])
+(: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (pin* p1 n1 p2 [n2 empty])
   (let ([p2  (ungroup (set-origin p2 n2) n2)])
     (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))
 
-(: weld (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
-(define (weld p1 n1 p2 [n2 empty])
+(: weld* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (weld* p1 n1 p2 [n2 empty])
   (let ([p2  (ungroup (set-origin p2 n2) n2)])
     (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
+
+(define pin pin*)
+(define weld weld*)
 
 (: join (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (join p1 n1 p2 [n2 empty])
