@@ -594,8 +594,26 @@
   (let ([p2  (ungroup (set-origin p2 n2) n2)])
     (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
 
-(define pin pin*)
-(define weld weld*)
+(: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (pin p1 n1 p2 [n2 empty])
+  (check-pin-multi 'pin p1 n1)
+  (pin* p1 n1 p2 n2))
+
+(: weld (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (weld p1 n1 p2 [n2 empty])
+  (check-pin-multi 'weld p1 n1)
+  (weld* p1 n1 p2 n2))
+
+(: check-pin-multi : Symbol Pict3D (Listof Tag) -> Void)
+(define (check-pin-multi pin p1 n1)
+  (define ps (map-group p1 n1 (λ ([p : Pict3D]) p)))
+  (define n (length ps))
+  (unless (= n 1)
+    (eprintf (string-append "~a: warning: ~v groups with path ~v exist\n"
+                            "  if this is intentional, use ~a* instead\n"
+                            "  given: ~v\n"
+                            "  with groups: ~v\n")
+             pin n n1 pin p1 ps)))
 
 (: join (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (join p1 n1 p2 [n2 empty])
