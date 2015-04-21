@@ -23,6 +23,8 @@
          (struct-out triangle-shape)
          (struct-out rectangle-shape))
 
+(define nonnegative-flonum? (make-predicate Nonnegative-Flonum))
+
 ;; ===================================================================================================
 ;; Vertex data
 
@@ -480,7 +482,7 @@ code
     (define back? (triangle-shape-back? s))
     (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
       (define time (triangle-intersect-time v1 v2 v3 o d))
-      (cond [(or (not time) (< time 0.0) (> time max-time))  (values #f #f)]
+      (cond [(or (not (nonnegative-flonum? time)) (> time max-time))  (values #f #f)]
             [else
              (define data
                (delay (define p (flv3fma d time o))
@@ -501,7 +503,7 @@ code
                                                [else     (values -inf.0 max-time)])])
         (flrect3-line-intersects b v dv min-time max-time)))
     (define time (if inside? tmax tmin))
-    (cond [(or (not time) (< time 0.0) (> time max-time))  (values #f #f)]
+    (cond [(or (not (nonnegative-flonum? time)) (> time max-time))  (values #f #f)]
           [else
            (define data
              (delay (define p (flrect3-closest-point b (flv3fma dv time v)))
