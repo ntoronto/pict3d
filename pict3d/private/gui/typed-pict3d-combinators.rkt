@@ -74,6 +74,8 @@
  scale-z/center
  scale/center
  set-origin
+ find-group-transforms
+ find-group-transform
  point-at
  ;; Information
  camera-transform
@@ -83,6 +85,12 @@
  combine
  pin
  weld
+ join
+ glue
+ pin*
+ weld*
+ join*
+ glue*
  ;; Testing
  plane-cull
  rect-cull
@@ -397,15 +405,23 @@
     [(v)  (flaffine3->affine (f v))]
     [(p v)  (transform p (flaffine3->affine (f v)))]))
 
-(: set-origin (-> Pict3D (Listof Tag) Pict3D))
-(define (set-origin p n)
+(: find-group-transforms : (-> Pict3D (Listof Tag) (Listof Affine)))
+(define (find-group-transforms p n)
+  (map-group/transform p n (λ ([t : Affine] _) t)))
+
+(: find-group-transform : (-> Pict3D (Listof Tag) Affine))
+(define (find-group-transform p n)
   (: fail (-> Index Nothing))
   (define (fail m)
-    (error 'set-origin "expected one group ~e; given a Pict3D with ~a groups tagged ~e" n m n))
-  (define ts (map-group/transform p n (λ ([t : Affine] _) t)))
+    (error 'find-group-transform "expected one group ~e; given a Pict3D with ~a groups tagged ~e" n m n))
+  (define ts (find-group-transforms p n))
   (cond [(empty? ts)  (fail 0)]
-        [(empty? (rest ts))  (transform p (affine-inverse (first ts)))]
+        [(empty? (rest ts))  (first ts)]
         [else  (fail (length ts))]))
+
+(: set-origin (-> Pict3D (Listof Tag) Pict3D))
+(define (set-origin p n)
+  (transform p (affine-inverse (find-group-transform p n))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
@@ -568,15 +584,66 @@
 ;; ===================================================================================================
 ;; Combining scenes
 
-(: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
-(define (pin p1 n1 p2 [n2 empty])
+(: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (pin* p1 n1 p2 [n2 empty])
   (let ([p2  (ungroup (set-origin p2 n2) n2)])
     (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))
 
-(: weld (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
-(define (weld p1 n1 p2 [n2 empty])
+(: weld* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (weld* p1 n1 p2 [n2 empty])
   (let ([p2  (ungroup (set-origin p2 n2) n2)])
     (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
+
+(: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (pin p1 n1 p2 [n2 empty])
+  (check-pin-multi 'pin p1 n1)
+  (pin* p1 n1 p2 n2))
+
+(: weld (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (weld p1 n1 p2 [n2 empty])
+  (check-pin-multi 'weld p1 n1)
+  (weld* p1 n1 p2 n2))
+
+(: check-pin-multi : Symbol Pict3D (Listof Tag) -> Void)
+(define (check-pin-multi pin p1 n1)
+  (define ps (map-group p1 n1 (λ ([p : Pict3D]) p)))
+  (define n (length ps))
+  (unless (= n 1)
+    (eprintf (string-append "~a: warning: ~v groups with path ~v exist\n"
+                            "  if this is intentional, use ~a* instead\n"
+                            "  given: ~v\n"
+                            "  with groups: ~v\n")
+             pin n n1 pin p1 ps)))
+
+(: join (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (join p1 n1 p2 [n2 empty])
+  (combine
+   p1
+   (relocate p2
+             (find-group-transform p2 n2)
+             (find-group-transform p1 n1))))
+
+(: glue (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (glue p1 n1 p2 [n2 empty])
+  (combine
+   (ungroup p1 n1)
+   (relocate (ungroup p2 n2)
+             (find-group-transform p2 n2)
+             (find-group-transform p1 n1))))
+
+(: join* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (join* p1 n1 p2 [n2 empty])
+  (let ([p2 (set-origin p2 n2)])
+    (combine
+     p1
+     (map-group/transform p1 n1 (λ ([t1 : Affine] _) (transform p2 t1))))))
+
+(: glue* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(define (glue* p1 n1 p2 [n2 empty])
+  (let ([p2 (ungroup (set-origin p2 n2) n2)])
+    (combine
+     (ungroup p1 n1)
+     (map-group/transform p1 n1 (λ ([t1 : Affine] _) (transform p2 t1))))))
 
 ;; ===================================================================================================
 ;; Testing combinators

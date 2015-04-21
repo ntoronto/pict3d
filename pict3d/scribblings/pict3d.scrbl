@@ -1101,20 +1101,16 @@ Transforms @racket[pict] so that the group with the given path is aligned with t
 If there is more than one group with the given path, @racket[set-origin] raises an error.
 }
 
-@defproc[(pin [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
-Does three things:
+@defproc[(join [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+Does two things:
 @itemlist[#:style 'ordered
  @item{Transforms @racket[pict2] so that its group with path @racket[path2] aligns with the group 
        in @racket[pict1] with path @racket[path1].}
- @item{Ungroups the group in @racket[pict2] with path @racket[path2].}
  @item{Combines the result with @racket[pict1].}
  ]
 
-If there is more than one group in @racket[pict1] with path @racket[path1], @racket[pict2] is pinned
-to all of them.
-
-If there is more than one group in @racket[pict2] with path @racket[path2],
-@racket[pin] raises an error.
+If there is more than one group with @racket[path1] in @racket[pict1], @racket[join] raises an error,
+and likewise for @racket[path2] in @racket[pict2].
 
 Recall that the @tech{tag path} @racket['()] represents the entire @racket[Pict3D].
 Thus, when @racket[path2] is @racket['()] or is omitted, the origin and coordinate axes are used for
@@ -1126,10 +1122,29 @@ alignment.
                  (eval:alts p1 ((λ () p1)))
                  (define p2 (cone origin 1/2))
                  (eval:alts p2 ((λ () p2)))
-                 (pin p1 '(top) (move-z p2 1/2))
-                 (pin p1 '(top)
-                      (combine p2 (basis 'bot (point-at (pos 0 0 -1/2) +z)))
-                      '(bot))]
+                 (join p1 '(top) (move-z p2 1/2))
+                 (join p1 '(top)
+                       (combine p2 (basis 'bot (point-at (pos 0 0 -1/2) +z)))
+                       '(bot))]
+
+In code, @racket[(join pict1 path1 pict2 path2)] is equivalent to
+@racketblock[(combine
+              pict1
+              (relocate pict2
+                        (find-group-transform pict2 path2)
+                        (find-group-transform pict1 path1)))]
+}
+
+@defproc[(pin [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+Similar to @racket[join], but also adds the transformed @racket[pict2] as a subgroup of the group
+with path @racket[path1] in @racket[pict1], and ungroups the group @racket[path2] in @racket[pict2]
+first.
+
+Also, if there is more than one group in @racket[pict1] with path @racket[path1], @racket[pict2] is
+pinned to all of them (this may change in the future, so use @racket[pin*] instead for that).
+
+If there is more than one group in @racket[pict2] with path @racket[path2],
+@racket[pin] raises an error.
 
 In code, @racket[(pin pict1 path1 pict2 path2)] is equivalent to
 @racketblock[(let ([pict2  (ungroup (set-origin pict2 path2) path2)])
@@ -1147,6 +1162,22 @@ place a roof on top of a house.
 (Unless you intend to blow up the house later. Then you'll need to pin the roof.)
 }
 
+@defproc[(glue [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+Like @racket[(join pict1 path1 pict2 path2)], but, like @racket[weld], ungroups all groups in
+@racket[pict1] that have path @racket[path1].
+}
+
+@deftogether[[
+  @defproc[(pin* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
+  @defproc[(join* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
+  @defproc[(weld* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
+  @defproc[(glue* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
+]]{
+Like @racket[pin], @racket[join], @racket[weld], and @racket[glue], but if multiple groups with path
+@racket[path1] exist in @racket[pict1], @racket[pict2] is pinned, joined, welded, or glued to all of
+them.
+}
+
 @defproc[(map-group [pict Pict3D] [path (Listof Tag)] [f (-> Pict3D A)]) (Listof A)]{
 Applies @racket[f] to every group with the given path in @racket[pict], and returns the results in a
 list.
@@ -1156,11 +1187,23 @@ The list is in no particular order.
 @defproc[(map-group/transform [pict Pict3D] [path (Listof Tag)] [f (-> Affine Pict3D A)]) (Listof A)]{
 Like @racket[(map-group pict name f)], but @racket[f] is additionally supplied the transformation
 from world coordinates to group coordinates.
+}
 
-For example, part of @racket[set-origin]'s implementation is
-@racketblock[(define ts (map-group/transform pict path (λ ([t : Affine] _) t)))]
-If @racket[ts] contains exactly one transform @racket[t], then @racket[set-origin] returns
-@racket[(transform pict (affine-inverse t))].
+@defproc[(find-group-transform [pict Pict3D] [path (Listof Tag)]) Affine]{
+Finds the group within @racket[pict] with @racket[path], and returns the transformation from world
+coordinates to that group's coordinates.
+
+If multiple groups with @racket[path] exist, @racket[find-group-transform] raises an error.
+
+This is used in the implementations of functions like @racket[join] and @racket[set-origin].
+}
+
+@defproc[(find-group-transforms [pict Pict3D] [path (Listof Tag)]) (Listof Affine)]{
+Like @racket[find-group-transform], but if multiple groups with @racket[path] exist, returns a
+transformation for each of them.
+
+Equivalent to:
+@racketblock[(map-group/transform pict path (λ ([t : Affine] _) t))]
 }
 
 @subsection[#:tag "affine"]{Scene Transformations}
