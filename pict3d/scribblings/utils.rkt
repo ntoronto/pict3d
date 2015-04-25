@@ -19,6 +19,7 @@
                     racket/class
                     racket/flonum
                     racket/match
+                    images/flomap
                     (only-in 2htdp/universe
                              big-bang)
                     (only-in typed/racket/base
@@ -45,6 +46,7 @@
                      racket/class
                      racket/flonum
                      racket/match
+                     images/flomap
                      2htdp/universe
                      typed/racket/base
                      pict3d
@@ -74,11 +76,13 @@
                (serializable-bitmap (orig-pict3d->bitmap v) 'png))
              
              (define (render-pict3d v)
-               (if (pict3d? v)
-                   (serializable-bitmap
-                    (pict3d->sniplike-bitmap v (current-pict3d-width) (current-pict3d-height))
-                    'jpeg)
-                   v))
+               (cond [(pict3d? v)
+                      (serializable-bitmap
+                       (pict3d->sniplike-bitmap v (current-pict3d-width) (current-pict3d-height))
+                       'jpeg)]
+                     [(is-a? v bitmap%)
+                      (serializable-bitmap v 'jpeg)]
+                     [else  v]))
              
              (define-syntax (render-pict3ds stx)
                (syntax-case stx ()

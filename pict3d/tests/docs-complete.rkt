@@ -15,7 +15,6 @@
               canvas-projection
               bitmap-projection
               camera->view
-              camera-ray
               light-grid
               affine->cols
               cols->affine

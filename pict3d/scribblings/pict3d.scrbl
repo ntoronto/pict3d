@@ -1216,7 +1216,7 @@ The type and predicate for parallel-line-preserving transformations.
 }
 
 @defproc[(affine [dx Dir] [dy Dir] [dz Dir] [p Pos]) Affine]{
-Convert three axes and an origin into an @tech{affine transformation}.
+Converts three axes and an origin into an @tech{affine transformation}.
 }
 
 @deftogether[(@defproc[(affine-x-axis [t Affine]) Dir]
@@ -1488,6 +1488,58 @@ A transformation is consistent when its matrix determinant is positive.
 Returns the camera used to orient the initial view, if at least one @racket['camera] @tech{basis} is
 in @racket[pict].
 If there are none, returns @racket[#f].
+}
+
+@defproc[(camera-ray-dir [t Affine]
+                         [#:width width Integer (current-pict3d-width)]
+                         [#:height height Integer (current-pict3d-height)]
+                         [#:z-near z-near Real (current-pict3d-z-near)]
+                         [#:z-far z-far Real (current-pict3d-z-far)]
+                         [#:fov fov Real (current-pict3d-fov)])
+         (-> Real Real Dir)]{
+Creates a function that accepts screen coordinates and returns the direction of the ray from the
+camera's origin to those coordinates in the camera's local coordinate space.
+
+If @racket[(<= 0 x width)] and @racket[(<= 0 y height)], then the position
+@racket[(pos+ (affine-origin t) ((camera-ray-dir t) x y))] lies on the z-near plane.
+
+A common use of @racket[camera-ray-dir] is to find objects under a mouse cursor in a rendered
+@racket[Pict3D].
+
+A less common use is to build a ray tracer in very few lines of code, such as the following.
+
+@interaction[#:eval pict3d-eval
+                    (define p (combine
+                               (cube origin 1/2)
+                               (for*/list ([i  (in-range -1 2)]
+                                           [j  (in-range -1 2)]
+                                           [k  (in-range -1 2)])
+                                 (sphere (pos (* 0.35 i) (* 0.35 j) (* 0.35 k)) 0.2))))
+                    (eval:alts p ((λ () p)))
+                    (define t ((current-pict3d-auto-camera) p))
+                    (define v0 (affine-origin t))
+                    (define ray-dir (camera-ray-dir t))
+                    (define l (pos 1.0 1.5 2.0))
+                    (require images/flomap)
+                    (flomap->bitmap
+                     (build-flomap
+                      1 (current-pict3d-width) (current-pict3d-height)
+                      (code:comment "for each screen coordinate on a grayscale surface...")
+                      (λ (_ x y)
+                        (code:comment "trace from the camera origin through the screen at x,y")
+                        (define-values (v n) (trace/normal p v0 (ray-dir x y)))
+                        (cond [(and v n)
+                               (code:comment "direction from surface point to light source")
+                               (define dl (pos- l v))
+                               (code:comment "distance squared to light source")
+                               (define m^2 (dir-dist^2 dl))
+                               (code:comment "3.0 brightness, inverse-square attenuation")
+                               (define a (/ 3.0 m^2))
+                               (code:comment "Lambert's cosine law (fully diffuse material)")
+                               (define b (max 0.0 (/ (dir-dot n dl) (sqrt m^2))))
+                               (code:comment "compute brightness, apply gamma correction")
+                               (expt (* a b) (/ 1.0 2.2))]
+                              [else  0.0]))))]
 }
 
 @;{===================================================================================================

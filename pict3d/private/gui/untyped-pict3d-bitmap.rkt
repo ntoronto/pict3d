@@ -33,7 +33,7 @@
        ;; Lock everything up for drawing
        (with-gl-context (get-master-gl-context (current-pict3d-legacy?)
                                                (current-pict3d-check-version?))
-         (draw-pict3ds (list pict) width height #:bitmap? #t)
+         (draw-pict3ds (list pict) #:width width #:height height #:bitmap? #t)
          ;; Get the resulting pixels and set them into the bitmap
          (define bs (get-the-bytes (* 4 width height)))
          (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)

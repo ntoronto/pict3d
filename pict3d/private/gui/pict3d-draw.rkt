@@ -10,8 +10,8 @@
 (provide draw-pict3ds)
 
 (: draw-pict3ds (->* [(Listof Pict3D)]
-                     [Integer
-                      Integer
+                     [#:width Integer
+                      #:height Integer
                       #:camera (U Affine (-> Pict3D Affine))
                       #:z-near Real
                       #:z-far Real
@@ -21,8 +21,8 @@
                       #:bitmap? Any]
                      Void))
 (define (draw-pict3ds picts
-                      [width (current-pict3d-width)]
-                      [height (current-pict3d-height)]
+                      #:width [width (current-pict3d-width)]
+                      #:height [height (current-pict3d-height)]
                       #:camera [camera (current-pict3d-auto-camera)]
                       #:z-near [z-near (current-pict3d-z-near)]
                       #:z-far [z-far (current-pict3d-z-far)]
@@ -41,6 +41,6 @@
                         (if t t (camera (first picts))))])))
       
       (define make-proj (if bitmap? bitmap-projection canvas-projection))
-      (define proj (make-proj width height #:z-near z-near #:z-far z-far #:fov fov))
+      (define proj (make-proj #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov))
       
       (draw-scenes (map pict3d-scene picts) width height view proj background ambient))))

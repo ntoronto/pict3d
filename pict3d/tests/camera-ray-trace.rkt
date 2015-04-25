@@ -16,24 +16,19 @@
      5)))
 
 (define t ((current-pict3d-auto-camera) pict))
+(define v (affine-origin t))
+(define ray-dir (camera-ray-dir t))
 
-(define vdvs
+(define dvs
   (time
-   (for*/list : (Listof (U #f (Pair Pos Dir))) ([x  (in-range 0 512 4)]
-                                                [y  (in-range 0 512 4)])
-     (define-values (v dv) (camera-ray t x y))
-     (and v dv (cons v dv)))))
-
-(define-values (vs dvs)
-  (for/lists ([vs : (Listof Pos)] [dvs : (Listof Dir)]) ([vdv  (in-list vdvs)]
-                                                         #:when vdv)
-    (values (car vdv) (cdr vdv))))
+   (for*/list : (Listof Dir) ([x  (in-range 2 512 4)]
+                              [y  (in-range 2 512 4)])
+     (ray-dir x y))))
 
 (define ps
   (append*
    (time
-    (for/list : (Listof (Listof Pos)) ([v   (in-list vs)]
-                                       [dv  (in-list dvs)])
+    (for/list : (Listof (Listof Pos)) ([dv  (in-list dvs)])
       (define p (trace pict v dv))
       (if p (list p) empty)))))
 

@@ -176,8 +176,8 @@
                                    axes-pict3ds
                                    grid-pict3ds
                                    boxes)
-                           width
-                           height
+                           #:width width
+                           #:height height
                            #:camera view
                            #:z-near z-near
                            #:z-far z-far
@@ -412,9 +412,11 @@
           (define x (fl snip-x))
           (define y (fl snip-y))
           
-          (define-values (v0 dv) (camera-ray view x y))
+          (define v0 (affine-origin view))
+          (define ray-dir (camera-ray-dir view))
+          (define dv (ray-dir x y))
           (define data
-            (and v0 dv (trace/data (pict3d (send pict get-scene)) v0 dv)))
+            (and dv (trace/data (pict3d (send pict get-scene)) v0 dv)))
           
           (define new-hud-items
             (cond
@@ -430,10 +432,10 @@
                (define t (pos-dist v v0))
                ;; Compute an approximation of the change in position values per window coordinate at
                ;; the intersection point
-               (define-values (_x1 dv1) (camera-ray view (- x 0.5) y))
-               (define-values (_x2 dv2) (camera-ray view (+ x 0.5) y))
-               (define-values (_y1 dv3) (camera-ray view x (- y 0.5)))
-               (define-values (_y2 dv4) (camera-ray view x (+ y 0.5)))
+               (define dv1 (ray-dir (- x 0.5) y))
+               (define dv2 (ray-dir (+ x 0.5) y))
+               (define dv3 (ray-dir x (- y 0.5)))
+               (define dv4 (ray-dir x (+ y 0.5)))
                (define d (max (pos-dist (pos+ v0 dv1 t) (pos+ v0 dv2 t))
                               (pos-dist (pos+ v0 dv3 t) (pos+ v0 dv4 t))))
                

@@ -112,7 +112,7 @@
  canvas-projection
  bitmap-projection
  camera->view
- camera-ray
+ camera-ray-dir
  ;;
  light-grid
  )
@@ -843,9 +843,12 @@
 ;; ===================================================================================================
 ;; Camera/view
 
-(: canvas-projection (->* [] [Integer Integer #:z-near Real #:z-far Real #:fov Real] FlTransform3))
-(define (canvas-projection [width (current-pict3d-width)]
-                           [height (current-pict3d-height)]
+(: canvas-projection
+   (->* []
+        [#:width Integer #:height Integer #:z-near Real #:z-far Real #:fov Real]
+        FlTransform3))
+(define (canvas-projection #:width [width (current-pict3d-width)]
+                           #:height [height (current-pict3d-height)]
                            #:z-near [z-near (current-pict3d-z-near)]
                            #:z-far [z-far (current-pict3d-z-far)]
                            #:fov [fov (current-pict3d-fov)])
@@ -856,15 +859,19 @@
         [fov     (max 1.0 (min 179.0 (fl fov)))])
     (perspective-flt3/viewport width height (degrees->radians fov) z-near z-far)))
 
-(: bitmap-projection (->* [] [Integer Integer #:z-near Real #:z-far Real #:fov Real] FlTransform3))
+(: bitmap-projection
+   (->* []
+        [#:width Integer #:height Integer #:z-near Real #:z-far Real #:fov Real]
+        FlTransform3))
 ;; Like canvas projection but upside-down because OpenGL origin is lower-left
-(define (bitmap-projection [width (current-pict3d-width)]
-                           [height (current-pict3d-height)]
+(define (bitmap-projection #:width [width (current-pict3d-width)]
+                           #:height [height (current-pict3d-height)]
                            #:z-near [z-near (current-pict3d-z-near)]
                            #:z-far [z-far (current-pict3d-z-far)]
                            #:fov [fov (current-pict3d-fov)])
-  (flt3compose (scale-flt3 +x-y+z-flv3)
-               (canvas-projection width height #:z-near z-near #:z-far z-far #:fov fov)))
+  (flt3compose
+   (scale-flt3 +x-y+z-flv3)
+   (canvas-projection #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
 
 (: camera->view (-> Affine Affine))
 ;; Inverts a camera basis to get a view transform; also negates the y and z axes
@@ -875,30 +882,33 @@
    (flt3compose (scale-flt3 +x-y-z-flv3)
                 (flt3inverse t))))
 
-(: camera-ray (->* [Affine Real Real]
-                   [Integer Integer #:z-near Real #:z-far Real #:fov Real]
-                   (Values (U #f Pos) (U #f Dir))))
-(define (camera-ray t x y
-                    [width (current-pict3d-width)]
-                    [height (current-pict3d-height)]
-                    #:z-near [z-near (current-pict3d-z-near)]
-                    #:z-far [z-far (current-pict3d-z-far)]
-                    #:fov [fov (current-pict3d-fov)])
+(: camera-ray-dir
+   (->* [Affine]
+        [#:width Integer #:height Integer #:z-near Real #:z-far Real #:fov Real]
+        (-> Real Real Dir)))
+(define (camera-ray-dir t
+                        #:width [width (current-pict3d-width)]
+                        #:height [height (current-pict3d-height)]
+                        #:z-near [z-near (current-pict3d-z-near)]
+                        #:z-far [z-far (current-pict3d-z-far)]
+                        #:fov [fov (current-pict3d-fov)])
   (define unview (flt3inverse (camera->view t)))
   (define unproj
-    (flt3inverse (bitmap-projection width height #:z-near z-near #:z-far z-far #:fov fov)))
-  ;; View position
-  (define v (flt3apply/pos unview zero-flv3))
-  ;; View direction
-  (define clip-x (* (- (/ (fl x) (fl (max 1 width))) 0.5) 2.0))
-  (define clip-y (* (- (/ (fl y) (fl (max 1 height))) 0.5) 2.0))
-  (define dv
-    (let ([dv  (flt3apply/pos unproj (flv3 clip-x clip-y 0.0))])
-      (flv3normalize (flt3apply/dir unview dv))))
-  (if dv
-      (values (call/flv3-values v pos)
-              (call/flv3-values dv dir))
-      (values #f #f)))
+    (flt3inverse
+     (bitmap-projection #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
+  (define w (fl (max 1 width)))
+  (define h (fl (max 1 height)))
+  (λ (x y)
+    ;; View direction
+    (define clip-x (* (- (/ (fl x) w) 0.5) 2.0))
+    (define clip-y (* (- (/ (fl y) h) 0.5) 2.0))
+    (define dv
+      (let ([dv  (flt3apply/pos unproj (flv3 clip-x clip-y -1.0))])
+        (flt3apply/dir unview dv)))
+    (define n (flv3normalize dv))
+    (if n
+        (call/flv3-values dv dir)
+        (error 'camera-ray-dir "view transform inverse ~e returned zero direction ~e" unview dv))))
 
 ;; ===================================================================================================
 

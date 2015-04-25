@@ -45,8 +45,8 @@
        
        (with-gl-context (send canvas get-managed-gl-context)
          (draw-pict3ds (list pict)
-                       width
-                       height
+                       #:width width
+                       #:height height
                        #:camera auto-camera
                        #:z-near z-near
                        #:z-far z-far
