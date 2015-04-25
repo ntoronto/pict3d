@@ -37,7 +37,8 @@
        (rotate-x -90)))
     
     (define/public (set-basis t)
-      (define-values (_dx _dy dz v) (affine->cols t))
+      (define dz (affine-z-axis t))
+      (define v (affine-origin t))
       (match-define (dir m02 m12 m22) dz)
       (match-define (pos m03 m13 m23) v)
       (set! position v)

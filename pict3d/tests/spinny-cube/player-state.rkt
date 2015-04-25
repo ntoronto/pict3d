@@ -151,9 +151,8 @@
 
 (: affine->arrow-axes (-> Affine Dir (Values Dir Dir)))
 (define (affine->arrow-axes t down)
-  (define-values (dx dy dz _) (affine->cols t))
-  (values (closest-axis (dir-reject dx down))
-          (closest-axis (dir-reject dy down))))
+  (values (closest-axis (dir-reject (affine-x-axis t) down))
+          (closest-axis (dir-reject (affine-y-axis t) down))))
 
 (: round-half (-> Flonum Flonum))
 (define (round-half x)
@@ -273,12 +272,12 @@
 
 (: near-axial? (->* [Affine] [Flonum] Boolean))
 (define (near-axial? t [thresh 0.999])
-  (define-values (dx dy dz p) (affine->cols t))
+  (match-define (affine dx dy dz _) t)
   (and (near-axis? dx thresh) (near-axis? dy thresh) (near-axis? dz thresh)))
 
 (: nearest-axial (-> Affine Affine))
 (define (nearest-axial t)
-  (define-values (dx dy dz p) (affine->cols t))
+  (match-define (affine dx dy dz p) t)
   (match-define (dir m00 m10 m20) dx)
   (match-define (dir m01 m11 m21) dy)
   (match-define (dir m02 m12 m22) dz)
@@ -296,11 +295,11 @@
           [(= ix 1)  (dir 0.0 0.0 (sgn m21))]
           [else      (dir (sgn m01) 0.0 0.0)]))
   (define az (dir-cross ax ay))
-  (cols->affine ax ay az p))
+  (affine ax ay az p))
 
 (: affine->axis-angle (-> Affine (Values Dir Flonum)))
 (define (affine->axis-angle t)
-  (define-values (dx dy dz _) (affine->cols t))
+  (match-define (affine dx dy dz _) t)
   (match-define (dir m00 m10 m20) dx)
   (match-define (dir m01 m11 m21) dy)
   (match-define (dir m02 m12 m22) dz)

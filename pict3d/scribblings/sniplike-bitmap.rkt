@@ -46,7 +46,7 @@
     (let ([t  (camera-transform p)])
       (if t t ((current-pict3d-auto-camera) p))))
   
-  (define-values (_dx _dy _dz v0) (affine->cols view))
+  (define v0 (affine-origin view))
   (define axes-pict3ds
     (for/fold (;[picts : (Listof Pict3D)  empty]
                [picts empty]

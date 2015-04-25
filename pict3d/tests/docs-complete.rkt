@@ -17,6 +17,8 @@
               camera->view
               camera-ray
               light-grid
+              affine->cols
+              cols->affine
               ))
 
 (check-docs 'pict3d/universe

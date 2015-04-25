@@ -155,7 +155,7 @@
                                    scale))
                  empty))
            
-           (define-values (_dx _dy _dz v0) (affine->cols view))
+           (define v0 (affine-origin view))
            (define axes-pict3ds
              (for/fold ([picts empty]) ([pos+pict  (in-list axes-pos+picts)])
                (match-define (cons v p) pos+pict)
@@ -639,7 +639,7 @@
     
     (define (copy-camera-data time)
       (define t (affine-inverse (camera->view (send camera get-basis))))
-      (define-values (dx dy dz p) (affine->cols t))
+      (match-define (affine dx dy dz p) t)
       (define str (format "~v~n~v" p (dir-negate dz)))
       (send the-clipboard set-clipboard-string str time))
     

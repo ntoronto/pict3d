@@ -1215,8 +1215,35 @@ TODO: exposition about @deftech{affine transformations}
 The type and predicate for parallel-line-preserving transformations.
 }
 
+@defproc[(affine [dx Dir] [dy Dir] [dz Dir] [p Pos]) Affine]{
+Convert three axes and an origin into an @tech{affine transformation}.
+}
+
+@deftogether[(@defproc[(affine-x-axis [t Affine]) Dir]
+              @defproc[(affine-y-axis [t Affine]) Dir]
+              @defproc[(affine-z-axis [t Affine]) Dir]
+              @defproc[(affine-origin [t Affine]) Pos])]{
+Return the axes and origin of @racket[t] separately; i.e.
+@racketblock[(match-define (affine dx dy dz p) t)]
+is equivalent to
+@racketblock[(define dx (affine-x-axis t))
+             (define dy (affine-y-axis t))
+             (define dz (affine-z-axis t))
+             (define p  (affine-origin t))]
+}
+
+@defproc[(affine-compose [t Affine] ...) Affine]{
+Compose any number of @tech{affine transformations}.
+Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
+}
+
+@defproc[(affine-inverse [t Affine]) Affine]{
+Returns the inverse of the transformation @racket[t].
+Because @racket[Affine] instances store their inverses, this operation is cheap.
+}
+
 @defthing[identity-affine Affine]{
-The identity transformation.
+The identity transformation: each axis is a coordinate axis, and its origin is @racket[origin].
 }
 
 @defproc[(transform [pict Pict3D] [t Affine]) Pict3D]{
@@ -1349,21 +1376,6 @@ When the @italic{z} axis is parallel to @racket[up], the rotation is arbitrary b
 This function is really more intuitive than the above discription might suggest.
 It's best used to place basis groups and cameras, and to stretch shapes between two points
 (see @racket[relocate]).
-}
-
-@deftogether[(@defproc[(affine->cols [t Affine]) (Values Dir Dir Dir Pos)]
-              @defproc[(cols->affine [x Dir] [y Dir] [z Dir] [p Pos]) Affine])]{
-Convert an @tech{affine transformation} into its basis vectors and back.
-}
-
-@defproc[(affine-compose [t Affine] ...) Affine]{
-Compose any number of @tech{affine transformations}.
-Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
-}
-
-@defproc[(affine-inverse [t Affine]) Affine]{
-Returns the inverse of the transformation @racket[t].
-Because @racket[Affine] instances store their inverses, this operation is cheap.
 }
 
 @defproc*[([(relocate [t1 Affine] [t2 Affine]) Affine]

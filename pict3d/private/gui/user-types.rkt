@@ -8,7 +8,8 @@
           [rgba  -rgba]
           [emitted  -emitted]
           [pos  -pos]
-          [dir  -dir]))
+          [dir  -dir]
+          [affine  -affine]))
 
 (provide (except-out
           (all-from-out "typed-user-types.rkt")
@@ -26,11 +27,14 @@
           -pos
           -dir
           -rgba
-          -emitted)
+          -emitted
+          -affine
+          affine->cols*)
          pos
          dir
          rgba
-         emitted)
+         emitted
+         affine)
 
 (define-for-syntax (make-head-expander id)
   (λ (stx)
@@ -69,3 +73,11 @@
        (syntax/loc stx
          (? emitted? (app flv4-values r g b i)))]))
   (make-head-expander #'-emitted))
+
+(define-match-expander affine
+  (λ (stx)
+    (syntax-case stx ()
+      [(_ dx dy dz p)
+       (syntax/loc stx
+         (? affine? (app affine->cols* dx dy dz p)))]))
+  (make-head-expander #'-affine))

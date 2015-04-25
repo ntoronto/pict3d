@@ -97,8 +97,14 @@
  flaffine3->affine
  affine?
  identity-affine
+ affine
+ affine->cols*
  cols->affine
  affine->cols
+ affine-x-axis
+ affine-y-axis
+ affine-z-axis
+ affine-origin
  affine-compose
  affine-inverse
  affine-consistent?
@@ -571,14 +577,12 @@
 
 (define print-affine
   (make-constructor-style-printer
-   (λ ([t : Affine]) 'cols->affine)
+   (λ ([t : Affine]) 'affine)
    (λ ([t : Affine])
-     (call/flaffine3-forward t
-       (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-         (list (Dir (flvector m00 m10 m20))
-               (Dir (flvector m01 m11 m21))
-               (Dir (flvector m02 m12 m22))
-               (Pos (flvector m03 m13 m23))))))))
+     (list (affine-x-axis t)
+           (affine-y-axis t)
+           (affine-z-axis t)
+           (affine-origin t)))))
 
 (: affine-equal? (-> Affine Affine (-> Any Any Boolean) Boolean))
 (define (affine-equal? t1 t2 _)
@@ -634,18 +638,63 @@
 (define (affine-consistent? t)
   (flt3consistent? t))
 
-(: cols->affine (-> Dir Dir Dir Pos Affine))
-(define (cols->affine x y z p)
+(: affine (-> Dir Dir Dir Pos Affine))
+(define (affine x y z p)
   (flaffine3->affine (cols->flaffine3 x y z p)))
 
-(: affine->cols (-> Affine (Values Dir Dir Dir Pos)))
-(define (affine->cols t)
+(: affine->cols* (-> Affine (Values Dir Dir Dir Pos)))
+(define (affine->cols* t)
   (call/flaffine3-forward t
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (values (dir m00 m10 m20)
               (dir m01 m11 m21)
               (dir m02 m12 m22)
               (pos m03 m13 m23)))))
+
+(: warning-hash (HashTable Symbol Void))
+(define warning-hash (make-hasheq))
+
+(: deprecation-warning! (-> Symbol String Void))
+(define (deprecation-warning! old new)
+  (hash-ref! warning-hash old
+             (λ () (eprintf "~a is deprecated and will be removed soon
+  please use ~a instead\n"
+                            old new))))
+
+(: cols->affine (-> Dir Dir Dir Pos Affine))
+(define (cols->affine dx dy dz p)
+  (deprecation-warning! 'cols->affine "affine")
+  (affine dx dy dz p))
+
+(: affine->cols (-> Affine (Values Dir Dir Dir Pos)))
+(define (affine->cols t)
+  (deprecation-warning! 'affine->cols "(match (affine ...) ...), affine-x-axis, \
+affine-y-axis, affine-z-axis or affine-origin")
+  (affine->cols* t))
+
+(: affine-x-axis (-> Affine Dir))
+(define (affine-x-axis t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+      (dir m00 m10 m20))))
+
+(: affine-y-axis (-> Affine Dir))
+(define (affine-y-axis t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+      (dir m01 m11 m21))))
+
+(: affine-z-axis (-> Affine Dir))
+(define (affine-z-axis t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+      (dir m02 m12 m22))))
+
+(: affine-origin (-> Affine Pos))
+(define (affine-origin t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+      (pos m03 m13 m23))))
 
 (: transform-pos (-> Pos Affine Pos))
 (define (transform-pos v t)
