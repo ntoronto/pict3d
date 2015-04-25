@@ -61,9 +61,6 @@
 ;; ===================================================================================================
 ;; Physical constants
 
-(define fps 60.0)
-(define frame-delay (assert (/ 1000.0 fps) positive?))
-
 ;; Unless stated otherwise, constants use the following units:
 ;;  * Distance: meters
 ;;  * Time: seconds
@@ -89,23 +86,21 @@
 (define player-radius
   (pos-dist origin (pos 0.5 0.5 0.5)))
 
-(: restitution-coef (-> Dir Dir Flonum))
+(: restitution-coef (-> Dir Dir Boolean Flonum))
 ;; Scene-cube collision elasticity: 1 = elastic collisions, 0 = inelastic collisions
-(define (restitution-coef ddv n)
+(define (restitution-coef ddv n jumping?)
   (define down (dir-normalize ddv))
   (cond [down
          ;; Make collisions with the ground perfecty inelastic, and those with walls bouncy
-         (* 1.25 (- 1.0 (abs (dir-dot n down))))]
+         (* (if jumping? 1.0 1.25) (- 1.0 (abs (dir-dot n down))))]
         [else
-         ;; No down vector - better make them all inelastic
+         ;; No gravity - better make them all inelastic
          0.0]))
 
-;; Forced wait time between jumps (milliseconds)
-(define jump-cooldown-time 300.0)
-;; Forced wait time between wall bounce and arrowing back that direction (milliseconds)
-(define arrow-cooldown-time 100.0)
-;; Forced wait time between a jump and changing direction
-(define jump->arrow-cooldown-time 25.0)
+;; Forced wait time between jumps
+(define jump-cooldown-time 100.0)
+;; Forced wait time between a jump and responding to an arrow key
+(define jump->arrow-cooldown-time 200.0)
 
 (: jump-mag (-> Dir Dir Flonum))
 ;; Jump magnitude; depends on velocity
@@ -114,7 +109,7 @@
 
 (define min-jump-mag (jump-mag (dir-scale +x min-ground-speed) +x))
 
-(define slide-jump-multiplier 1.25)
+(define slide-jump-multiplier 1.75)
 
 (: air-time (-> Dir Dir Flonum))
 ;; Expected time the cube will stay in the air after a jump, in seconds; depends on velocity
@@ -125,6 +120,8 @@
 ;; Speed the cube should spin, in radians/sec; depends on velocity
 (define (jump-spin-speed dv ddv)
   (/ (degrees->radians jump-spin-degrees) (air-time dv ddv)))
+
+(define min-pivot-speed 1.0)
 
 (: physics-frames Positive-Integer)
 ;; Number of times per frame to advance physics along
@@ -142,7 +139,7 @@
   (let ([m  (dir-dist da)])
     (if (< m 1e-16)
         identity-affine
-        (rotate (dir-scale da (/ 1.0 m)) (radians->degrees (* dtime m))))))
+        (rotate (dir-scale da (/ m)) (radians->degrees (* dtime m))))))
 
 (: closest-axis (-> Dir Dir))
 (define (closest-axis d)
@@ -162,8 +159,91 @@
 (define (round-half x)
   (* 0.5 (round (* 2.0 x))))
 
-(: snap-position/velocity (-> Pos Dir Dir Pos))
-(define (snap-position/velocity v dv ddv)
+(: delta->velocity (-> Flonum Flonum Flonum))
+(define (delta->velocity d mx)
+  (define v (/ d #i1/60))
+  (if (> (abs v) (abs mx))
+      (* (sgn v) (abs mx))
+      v))
+
+(: align-velocity (-> Pos Dir Dir Flonum Dir))
+;; Zero out one or two velocity components, depending on the direction of gravity
+(define (align-velocity v dv ddv dsecs)
+  (match-define (pos x y z) v)
+  (match-define (dir dx dy dz) dv)
+  (match-define (dir ddx ddy ddz) ddv)
+  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
+  (define new-dv
+    (cond [(= ddm (abs ddx))
+           (if (> (abs dy) (abs dz))
+               (dir dx dy (delta->velocity (- (round-half z) z) (* dy 0.5)))
+               (dir dx (delta->velocity (- (round-half y) y) (* dz 0.5)) dz))]
+          [(= ddm (abs ddy))
+           (if (> (abs dz) (abs dx))
+               (dir (delta->velocity (- (round-half x) x) (* dx 0.5)) dy dz)
+               (dir dx dy (delta->velocity (- (round-half z) z) (* dz 0.5))))]
+          [else
+           (if (> (abs dx) (abs dy))
+               (dir dx (delta->velocity (- (round-half y) y) (* dx 0.5)) dz)
+               (dir (delta->velocity (- (round-half x) x) (* dy 0.5)) dy dz))]))
+  new-dv)
+
+(: soft-clamp-component (-> Flonum Flonum Flonum))
+;; Keep the cube moving, but not too fast
+(define (soft-clamp-component x dsecs)
+  (cond [(< (abs x) min-ground-speed)  (* (sgn x) min-ground-speed)]
+        [(> (abs x) max-ground-speed)  (* (sgn x) max-ground-speed)]
+        [else
+         (* (sgn x) (let ([x  (abs x)])
+                      (max min-ground-speed (- x (* x sliding-friction-coef dsecs)))))]))
+
+(: soft-clamp-velocity (-> Dir Dir Flonum Dir))
+(define (soft-clamp-velocity dv ddv dsecs)
+  (match-define (dir dx dy dz) dv)
+  (match-define (dir ddx ddy ddz) ddv)
+  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
+  (define new-dv
+    (cond [(= ddm (abs ddx))
+           (define d (dir 0.0 dy dz))
+           (define m (dir-dist d))
+           (if (> m 0.0)
+               (dir+ (dir dx 0.0 0.0) (dir-scale d (/ (soft-clamp-component m dsecs) m)))
+               dv)]
+          [(= ddm (abs ddy))
+           (define d (dir dx 0.0 dz))
+           (define m (dir-dist d))
+           (if (> m 0.0)
+               (dir+ (dir 0.0 dy 0.0) (dir-scale d (/ (soft-clamp-component m dsecs) m)))
+               dv)]
+          [else
+           (define d (dir dx dy 0.0))
+           (define m (dir-dist d))
+           (if (> m 0.0)
+               (dir+ (dir 0.0 0.0 dz) (dir-scale d (/ (soft-clamp-component m dsecs) m)))
+               dv)]))
+  new-dv)
+
+(: near-aligned? (-> Pos Dir Dir Boolean))
+(define (near-aligned? v dv ddv)
+  (match-define (pos x y z) v)
+  (match-define (dir dx dy dz) dv)
+  (match-define (dir ddx ddy ddz) ddv)
+  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
+  (cond [(= ddm (abs ddx))
+         (if (> (abs dy) (abs dz))
+             (< (abs (- (round-half z) z)) (* 0.5 offset-margin))
+             (< (abs (- (round-half y) y)) (* 0.5 offset-margin)))]
+        [(= ddm (abs ddy))
+         (if (> (abs dz) (abs dx))
+             (< (abs (- (round-half x) x)) (* 0.5 offset-margin))
+             (< (abs (- (round-half z) z)) (* 0.5 offset-margin)))]
+        [else
+         (if (> (abs dx) (abs dy))
+             (< (abs (- (round-half y) y)) (* 0.5 offset-margin))
+             (< (abs (- (round-half x) x)) (* 0.5 offset-margin)))]))
+
+(: nearest-aligned (-> Pos Dir Dir Pos))
+(define (nearest-aligned v dv ddv)
   (match-define (pos x y z) v)
   (match-define (dir dx dy dz) dv)
   (match-define (dir ddx ddy ddz) ddv)
@@ -181,76 +261,23 @@
              (pos x (round-half y) z)
              (pos (round-half x) y z))]))
 
-(: snap-position (-> Pos Dir Pos))
-(define (snap-position v ddv)
+(: nearest-aligned* (-> Pos Pos))
+(define (nearest-aligned* v)
   (match-define (pos x y z) v)
-  (match-define (dir ddx ddy ddz) ddv)
-  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
-  (pos (if (= ddm (abs ddx)) x (round-half x))
-       (if (= ddm (abs ddy)) y (round-half y))
-       (if (= ddm (abs ddz)) z (round-half z))))
+  (pos (round-half x) (round-half y) (round-half z)))
 
-(: snap-velocity (-> Dir Dir Dir))
-(define (snap-velocity dv ddv)
-  (match-define (dir dx dy dz) dv)
-  (match-define (dir ddx ddy ddz) ddv)
-  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
-  (cond [(= ddm (abs ddx))
-         (cond [(= (abs dy) (abs dz))  (dir dx 0.0 0.0)]
-               [(> (abs dy) (abs dz))  (dir dx  dy 0.0)]
-               [else                   (dir dx 0.0  dz)])]
-        [(= ddm (abs ddy))
-         (cond [(= (abs dz) (abs dx))  (dir 0.0 dy 0.0)]
-               [(> (abs dz) (abs dx))  (dir 0.0 dy  dz)]
-               [else                   (dir  dx dy 0.0)])]
-        [else
-         (cond [(= (abs dx) (abs dy))  (dir 0.0 0.0 dz)]
-               [(> (abs dx) (abs dy))  (dir  dx 0.0 dz)]
-               [else                   (dir 0.0  dy dz)])]))
-
-(: soft-clamp-component (-> Flonum Flonum Flonum))
-(define (soft-clamp-component x dsecs)
-  (cond [(= x 0.0)  0.0]
-        [(< (abs x) min-ground-speed)  (* (sgn x) min-ground-speed)]
-        [(> (abs x) max-ground-speed)  (* (sgn x) max-ground-speed)]
-        [else
-         (* (sgn x) (let ([x  (abs x)])
-                      (max min-ground-speed (- x (* x sliding-friction-coef dsecs)))))]))
-
-(: soft-clamp-velocity (-> Dir Dir Flonum Dir))
-(define (soft-clamp-velocity dv ddv dsecs)
-  (match-define (dir dx dy dz) dv)
-  (match-define (dir ddx ddy ddz) ddv)
-  (define ddm (max (abs ddx) (abs ddy) (abs ddz)))
-  (dir (if (= ddm (abs ddx)) dx (soft-clamp-component dx dsecs))
-       (if (= ddm (abs ddy)) dy (soft-clamp-component dy dsecs))
-       (if (= ddm (abs ddz)) dz (soft-clamp-component dz dsecs))))
-
-(: near-axis? (-> Dir Boolean))
-(define (near-axis? d)
+(: near-axis? (-> Dir Flonum Boolean))
+(define (near-axis? d thresh)
   (match-define (dir dx dy dz) d)
-  (> (max (abs dx) (abs dy) (abs dz)) 0.9999))
+  (> (max (abs dx) (abs dy) (abs dz)) thresh))
 
-(: near-axial? (-> Affine Boolean))
-(define (near-axial? t)
+(: near-axial? (->* [Affine] [Flonum] Boolean))
+(define (near-axial? t [thresh 0.999])
   (define-values (dx dy dz p) (affine->cols t))
-  (and (near-axis? dx) (near-axis? dy) (near-axis? dz)))
+  (and (near-axis? dx thresh) (near-axis? dy thresh) (near-axis? dz thresh)))
 
-(: axisize (-> Dir Dir))
-(define (axisize d)
-  (match-define (dir dx dy dz) d)
-  (define m (max (abs dx) (abs dy) (abs dz)))
-  (cond [(= m (abs dx))  (dir (sgn dx) 0.0 0.0)]
-        [(= m (abs dy))  (dir 0.0 (sgn dy) 0.0)]
-        [else            (dir 0.0 0.0 (sgn dz))]))
-
-(: axialize (-> Affine Affine))
-(define (axialize t)
-  (define-values (dx dy dz p) (affine->cols t))
-  (cols->affine (axisize dx) (axisize dy) (axisize dz) p))
-
-(: affine-nearest-axial (-> Affine Affine))
-(define (affine-nearest-axial t)
+(: nearest-axial (-> Affine Affine))
+(define (nearest-axial t)
   (define-values (dx dy dz p) (affine->cols t))
   (match-define (dir m00 m10 m20) dx)
   (match-define (dir m01 m11 m21) dy)
@@ -282,17 +309,18 @@
   (define ax (/ (- m21 m12) 2s))
   (define ay (/ (- m02 m20) 2s))
   (define az (/ (- m10 m01) 2s))
-  (values (dir ax ay az) θ))
+  (if (and (< -inf.0 (min ax ay az))
+           (< (max ax ay az) +inf.0))
+      (values (dir ax ay az) θ)
+      (values +z 0.0)))
 
 (: axialize-angular (-> Affine Dir))
 (define (axialize-angular t)
   (cond [(near-axial? t)  zero-dir]
         [else
-         (define t0 (affine-nearest-axial t))
+         (define t0 (nearest-axial t))
          (define-values (axis angle) (affine->axis-angle (affine-compose t (affine-inverse t0))))
-         (define s (sgn angle))
-         (define c (cos angle))
-         (dir-scale axis (* s (* -2.0 pi) (acos (flexpt c 16.0))))]))
+         (dir-scale axis (delta->velocity (- angle) (* 2.0 pi)))]))
 
 ;; ===================================================================================================
 ;; Player collision detection
@@ -376,17 +404,6 @@
   (λ ([d1 : Dir] [d2 : Dir])
     (> (dir-dot d1 d2) 0.9999)))
 
-(: jump-normal? (-> Flonum Dir (Listof (Pair Flonum Dir)) Boolean))
-(define (jump-normal? time n jumps)
-  (let loop ([jumps jumps])
-    (cond [(empty? jumps)  #t]
-          [else
-           (define tn (first jumps))
-           (cond  [(and (<= (- time (car tn)) jump-cooldown-time)
-                        (dir-near? n (cdr tn)))
-                   #f]
-                  [else  (loop (rest jumps))])])))
-
 (: find-jump-dir (-> Pict3D Flonum Flonum Pos Dir Dir
                      (Listof (Pair Flonum Dir))
                      (Listof (Pair Flonum Dir))
@@ -394,29 +411,21 @@
 (define (find-jump-dir coll-pict time mag v dv down hits jumps)
   ;(printf "jump: hits = ~v~n" hits)
   
-  ;; Consider every normal we hit on this frame as a jump direction
-  (define max-time (apply max -inf.0 (map (inst car Flonum Dir) hits)))
-  (define ns
-    (for/fold ([ns : (Listof Dir)  empty]) ([tn  (in-list hits)])
-      (if (and (= max-time (car tn))
-               (jump-normal? time (cdr tn) jumps))
-          (cons (cdr tn) ns)
-          ns)))
+  ;; Consider every normal we hit on the last frame as a jump direction
+  (define ns (remove-duplicates (map (inst cdr Flonum Dir) hits)))
   
-  ;; Consider the normals of surfaces currently touching that are perpendicular to a normal
+  ;; Consider the normals of surfaces currently touching that are perpendicular to a hit normal
   (define slide-ns
     (remove-duplicates
-     (for/fold ([slide-ns : (Listof Dir)  empty])
-               ([face  (in-list faces)])
-       (define face-n (dir-negate face))
-       (define n (ormap (λ ([n : Dir]) (and (< (abs (dir-dot face-n n)) 1e-8) n)) ns))
-       (cond [(not n)  slide-ns]
-             [(not (jump-normal? time n jumps))  slide-ns]
-             [else
-              (define ps (trace-face coll-pict v (dir-scale face 0.51) n))
-              (define p (ormap (λ ([p : (U #f Pos)]) p) ps))
-              (cond [(not p)  slide-ns]
-                    [else  (list* n face-n slide-ns)])]))
+     (for*/fold ([slide-ns : (Listof Dir)  empty])
+                ([face  (in-list faces)]
+                 [face-n  (in-value (dir-negate face))]
+                 [n  (in-list ns)]
+                 #:when (< (abs (dir-dot face-n n)) 1e-8))
+       (define ps (trace-face coll-pict v (dir-scale face 0.625) n))
+       (define p (ormap (λ ([p : (U #f Pos)]) p) ps))
+       (cond [(not p)  slide-ns]
+             [else  (list* n face-n slide-ns)]))
      dir-near?))
   
   (define bounce-ns (remove* slide-ns ns dir-near?))
@@ -433,20 +442,25 @@
          (arrow v (dir-scale n 0.5))))))
    2000.0)
   
-  (define slide-dv
-    (for/fold ([nsum : Dir  zero-dir]) ([n  (in-list slide-ns)])
-      (dir+ nsum (dir-scale n (* slide-jump-multiplier mag)))))
+  (define slide-n
+    (dir-normalize
+     (for/fold ([slide-n : Dir  zero-dir]) ([n  (in-list slide-ns)])
+       (dir+ slide-n n))))
   
-  (define len (fl (length bounce-ns)))
+  (define slide-dv
+    (if slide-n
+        (dir-scale slide-n (* slide-jump-multiplier mag))
+        zero-dir))
+  
+  (define bounce-n
+    (dir-normalize
+     (for/fold ([bounce-n : Dir  zero-dir]) ([n  (in-list bounce-ns)])
+       (dir+ bounce-n n))))
+  
   (define bounce-dv
-    (for/fold ([nsum : Dir  zero-dir]) ([n  (in-list bounce-ns)])
-      ;; Find out how much it already will have bounced
-      (define c (min 1.0 (restitution-coef down n)))
-      (dir+
-       ;; Add jump in the direction of the normal for unbouncy surfaces
-       (dir-scale n (* (/ mag len) (- 1.0 c)))
-       ;; Add jump in the up direction for bouncy surfaces
-       (dir-scale down (* (- (/ min-jump-mag len)) c)))))
+    (cond [(not bounce-n)  zero-dir]
+          [(<= (dir-dot down bounce-n) 0.0)  (dir-scale down (- mag))]
+          [else  zero-dir]))
   #;
   (add-debug-pict!
    (combine
@@ -466,7 +480,9 @@
 (: player-state-maybe-jump (-> player-state Pict3D Flonum Flonum player-state))
 (define (player-state-maybe-jump pstate coll-pict time dsecs)
   (match-define (player-state v ddv t (timers keys hits jumps) man) pstate)
+  (define last-jump-time (apply max -inf.0 (map (inst car Flonum Dir) jumps)))
   (cond
+    [(< (- time last-jump-time) jump-cooldown-time)  pstate]
     [(and (> (hash-ref keys " " (λ () 0.0)) 0.0)
           (not (empty? hits)))
      (match man
@@ -475,10 +491,10 @@
                        (if down down zero-dir)))
         (define mag (jump-mag dv ddv))
         (define-values (jump-dir new-jumps) (find-jump-dir coll-pict time mag v dv down hits jumps))
-        (cond [jump-dir
-               (define axis (let ([axis  (dir-normalize (dir-cross jump-dir dv))])
+        (cond [(and jump-dir (> (dir-dist jump-dir) 1.0))
+               (define new-dv (dir+ dv jump-dir))
+               (define axis (let ([axis  (dir-normalize (dir-cross dv ddv))])
                               (if axis axis zero-dir)))
-               (define new-dv (snap-velocity (dir+ dv jump-dir) ddv))
                #;
                (when (> (dir-dist new-dv) 0.0)
                  (add-debug-pict!
@@ -503,32 +519,26 @@
     [(> (hash-ref keys key (λ () 0.0)) 0.0)
      (match man
        [(moving dv da jumping?)
-        ;(printf "arrow: hits = ~v~n" hits)
-        (define d
-          (for/fold ([d : Dir  req-d]) ([tn  (in-list hits)])
-            (if (<= (- time (car tn)) arrow-cooldown-time)
-                (dir-reject d (cdr tn) 0.5)
-                d)))
         (cond
-          [(not d)  #f]
-          [(ormap (λ ([tn : (Pair Flonum Dir)])
-                    (<= (- time (car tn)) jump->arrow-cooldown-time))
-                  jumps)
+          [(let ([cooldown-time  (* (- 1.0 (/ (dir-dot dv req-d) (dir-dist dv)))
+                                    jump->arrow-cooldown-time)])
+             (ormap (λ ([tn : (Pair Flonum Dir)]) (< (- time (car tn)) cooldown-time)) jumps))
+           ;; Too soon after a jump
            pstate]
           [else
+           ;; Reject every surface hit on the last frame
+           (define arrow-dir
+             (for/fold ([arrow-dir : Dir  req-d]) ([tn  (in-list hits)])
+               (dir-reject arrow-dir (cdr tn))))
+           ;; Direction of gravity
            (define down (assert (dir-normalize ddv) values))
            ;; Vertical velocity
            (define dz (assert (dir-project dv down) values))
-           ;; Horizontal velocities
+           ;; Horizontal velocity
            (define dh (dir- dv dz))
            (define speed (dir-dist dh))
-           (define new-dv (dir+ dz (dir-scale d (max user-speed speed))))
-           #;
-           (when (> (dir-dist new-dv) 0.0)
-             (add-debug-pict!
-              (with-emitted (emitted 1 3)
-                (arrow v (dir-scale new-dv 0.125)))
-              2000.0))
+           ;; Change direction in the plane orthogonal to gravity, but don't change speed
+           (define new-dv (dir+ dz (dir-scale arrow-dir (max user-speed speed))))
            (player-state v ddv t tm (moving new-dv da jumping?))])]
        [_  pstate])]
     [else  pstate]))
@@ -536,248 +546,332 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Edge pivoting
 
-(: player-state-maybe-edge-pivot (-> player-state Pict3D Flonum Flonum player-state))
-(define (player-state-maybe-edge-pivot pstate coll-pict time dsecs)
+(: axialize/align/trace (-> Pos Affine Pict3D (U #f Pos)))
+(define (axialize/align/trace old-v old-t coll-pict)
+  (define v (nearest-aligned* old-v))
+  (define t (nearest-axial old-t))
+  (define delta-v (pos- v old-v))
+  (define delta-t (affine-compose t (affine-inverse old-t)))
+  (define-values (dist _) (trace/player coll-pict old-v old-t delta-v delta-t))
+  (if (< dist 1.0) #f v))
+
+(: player-state-maybe-edge-pivot (-> player-state Pict3D player-state))
+(define (player-state-maybe-edge-pivot pstate coll-pict)
   (match pstate
-    [(player-state v ddv (? near-axial?) (timers keys hits jumps)
-                   (moving (? (λ (dv) (>= (dir-dist dv) 1.0)) dv) da jumping?))
+    [(player-state old-v ddv (? (λ (t) (near-axial? t 0.99)) old-t) (timers keys hits jumps)
+                   (moving (? (λ (dv) (>= (dir-dist dv) min-pivot-speed)) dv) da (? not jumping?)))
      (define face (argmax (λ ([face : Dir]) (dir-dot dv face)) faces))
      (define center-offset (dir-scale face (- 0.5 offset-margin)))
-     (set! v (snap-position v ddv))
-     (define-values (score edge-offset)
-       (for/fold ([best-score : Flonum  +inf.0]
-                  [best-edge-offset : Dir  zero-dir])
-                 ([offsets  (in-list edge-offsets)])
-         (define edge-offset (second offsets))
-         (cond
-           [(or (ormap (λ ([offset : Dir]) (< (dir-dot offset face) 0.1)) offsets)
-                (ormap (λ ([offset : Dir])
-                         (define v1 (pos+ v (dir- (dir-scale center-offset 1.5)
-                                                  (dir-scale offset 0.5))))
-                         (define v2 (pos+ v1 (dir-scale face 0.25)))
-                         (trace coll-pict v1 v2))
-                       offsets))
-            (values best-score best-edge-offset)]
-           [else
-            ;(printf "offsets = ~v~n" offsets)
-            (define datas
-              (for/fold ([datas : (Listof Surface-Data)  empty]) ([offset  (in-list offsets)])
-                (define v0 (pos+ v (dir+ (dir-scale center-offset 0.5)
-                                         (dir-scale offset 0.5))))
-                (define data (trace/data coll-pict v0 (pos+ v0 (dir-scale face 0.25))))
-                (if (and data (surface-data-normal data)) (cons data datas) datas)))
+     (define v (axialize/align/trace old-v old-t coll-pict))
+     (cond
+       [(not v)  pstate]
+       [else
+        (define-values (score edge-offset)
+          (for/fold ([best-score : Flonum  +inf.0]
+                     [best-edge-offset : Dir  zero-dir])
+                    ([offsets  (in-list edge-offsets)])
+            (define edge-offset (second offsets))
             (cond
-              [(< (length datas) 3)
+              [(or (ormap (λ ([offset : Dir]) (< (dir-dot offset face) 0.1)) offsets)
+                   (ormap (λ ([offset : Dir])
+                            (define v1 (pos+ (pos+ v center-offset)
+                                             (dir-scale (dir- center-offset offset) 0.75)))
+                            (define v2 (pos+ v1 (dir-scale face 0.25)))
+                            (trace coll-pict v1 v2))
+                          offsets))
                (values best-score best-edge-offset)]
               [else
-               (define ns (map surface-data-normal* datas))
-               (define n (assert (dir-normalize (dir+ (dir+ (first ns) (second ns)) (third ns)))
-                                 values))
+               (define datas
+                 (for/fold ([datas : (Listof Surface-Data)  empty]) ([offset  (in-list offsets)])
+                   (define v1 (pos+ (pos+ v center-offset)
+                                    (dir-scale (dir- offset center-offset) 0.75)))
+                   (define v2 (pos+ v1 (dir-scale face 0.25)))
+                   (define data (trace/data coll-pict v1 v2))
+                   (if (and data (surface-data-normal data)) (cons data datas) datas)))
                (cond
-                 [(or (> (dir-dot face n) (cos (degrees->radians 135.0)))
-                      (> (/ (dir-dot dv n) (dir-dist dv)) (cos (degrees->radians 135.0))))
+                 [(< (length datas) 3)
                   (values best-score best-edge-offset)]
                  [else
-                  (define score (dir-dot face n))
-                  (if (< score best-score)
-                      (values score edge-offset)
-                      (values best-score best-edge-offset))])])])))
-     
-     (define speed (* (/ 2.0 min-ground-speed) pi (max min-ground-speed (dir-dist dv))))
-     (cond
-       [(= score +inf.0)  pstate]
-       [else
-        (define axis (assert (dir-normalize (dir-cross face edge-offset)) values))
-        (define rot-offset (dir-scale face 0.5))
-        (printf "edge pivot: ~v ~v~n" axis rot-offset)
-        (define new-pivot (pivoting rot-offset axis speed (* 0.5 pi) (moving dv zero-dir #f)))
-        (define new-timers (timers keys empty empty))
-        (player-state v ddv identity-affine new-timers new-pivot)])]
+                  (define ns (map surface-data-normal* datas))
+                  (define n (dir-normalize (dir+ (dir+ (first ns) (second ns)) (third ns))))
+                  (cond
+                    [(or (not n) (> (dir-dot face n) -0.999))
+                     (values best-score best-edge-offset)]
+                    [else
+                     (define score (/ (dir-dot dv n) (dir-dist dv)))
+                     (if (< score best-score)
+                         (values score edge-offset)
+                         (values best-score best-edge-offset))])])])))
+        
+        (define axis (dir-normalize (dir-cross face edge-offset)))
+        (cond
+          [(and (< score +inf.0) axis)
+           (printf "edge pivot~n")
+           (define rot-offset (dir-scale face 0.5 #;(+ 0.5 offset-margin)))
+           ;; Convert tangential velocity to rotational
+           (define speed (/ (dir-dist dv) 0.5))
+           (define new-pivot (pivoting rot-offset axis speed (* 1.0 pi) (moving dv zero-dir #f)))
+           (define new-timers (timers keys empty empty))
+           (define new-v v #;(pos+ v face (- offset-margin)))
+           (player-state new-v ddv identity-affine new-timers new-pivot)]
+          [else  pstate])])]
     [_  pstate]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Corner pivoting
 
-(: player-state-maybe-corner-pivot (-> player-state Pict3D Flonum Flonum player-state))
-(define (player-state-maybe-corner-pivot pstate coll-pict time dsecs)
+(: player-state-maybe-corner-pivot (-> player-state Pict3D player-state))
+(define (player-state-maybe-corner-pivot pstate coll-pict)
   (match pstate
-    [(player-state v ddv (? near-axial?) (timers keys hits jumps)
-                   (moving (? (λ (dv) (>= (dir-dist dv) 1.0)) dv) da jumping?))
+    [(player-state old-v
+                   (? (λ (d) (> (dir-dist d) 0.0)) ddv)
+                   (? (λ (t) (near-axial? t 0.9)) old-t)
+                   (timers keys hits jumps)
+                   (moving (? (λ (dv) (>= (dir-dist dv) min-pivot-speed)) dv) da (? not jumping?)))
      (define face (argmax (λ ([face : Dir]) (dir-dot dv face)) faces))
      (define center-offset (dir-scale face (- 0.5 offset-margin)))
-     (set! v (snap-position v ddv))
-     (define-values (score offset)
-       (for/fold ([best-score : Flonum  +inf.0]
-                  [best-offset : Dir  zero-dir])
-                 ([offset  (in-list corner-offsets)])
-         (define rot-t (rotate face 90))
-         (define offset1 (transform-dir offset rot-t))
-         (define offset2 (transform-dir offset1 rot-t))
-         (define offset3 (transform-dir offset2 rot-t))
-         (cond
-           [(or (< (dir-dot offset face) 0.1)
-                (ormap (λ ([offset : Dir])
-                         (define v0  (pos+ v (dir+ (dir-scale center-offset 0.5)
-                                                   (dir-scale offset 0.5))))
-                         (trace coll-pict v0 (pos+ v0 (dir-scale face 0.25))))
-                       (list offset1 offset2 offset3)))
-            (values best-score best-offset)]
-           [else
-            ;(printf "offsets = ~v~n" offsets)
-            (define data
-              (let ([v0  (pos+ v (dir+ (dir-scale center-offset 0.5)
-                                       (dir-scale offset 0.5)))])
-                (trace/data coll-pict v0 (pos+ v0 (dir-scale face 0.25)))))
+     (define v (axialize/align/trace old-v old-t coll-pict))
+     (cond
+       [(not v)  pstate]
+       [else
+        (define-values (score offset)
+          (for/fold ([best-score : Flonum  +inf.0]
+                     [best-offset : Dir  zero-dir])
+                    ([offset  (in-list corner-offsets)])
+            (define rot-t (rotate face 90))
+            (define offset1 (transform-dir offset rot-t))
+            (define offset2 (transform-dir offset1 rot-t))
+            (define offset3 (transform-dir offset2 rot-t))
             (cond
-              [(not (and data (surface-data-normal data)))
+              [(or (< (dir-dot offset face) 0.1)
+                   (ormap (λ ([offset : Dir])
+                            (define v0  (pos+ v (dir+ (dir-scale center-offset 0.5)
+                                                      (dir-scale offset 0.5))))
+                            (trace coll-pict v0 (pos+ v0 (dir-scale face 0.25))))
+                          (list offset1 offset2 offset3)))
                (values best-score best-offset)]
               [else
-               (define n (surface-data-normal* data))
+               ;(printf "offsets = ~v~n" offsets)
+               (define data
+                 (let ([v0  (pos+ v (dir+ (dir-scale center-offset 0.5)
+                                          (dir-scale offset 0.5)))])
+                   (trace/data coll-pict v0 (pos+ v0 (dir-scale face 0.25)))))
                (cond
-                 [(or (> (dir-dot face n) (cos (degrees->radians 135.0)))
-                      (> (/ (dir-dot dv n) (dir-dist dv)) (cos (degrees->radians 135.0))))
+                 [(not (and data (surface-data-normal data)))
                   (values best-score best-offset)]
                  [else
-                  (define score (dir-dot face n))
-                  (if (< score best-score)
-                      (values score offset)
-                      (values best-score best-offset))])])])))
-     
-     (define speed (* (/ 2.0 min-ground-speed) pi (max min-ground-speed (dir-dist dv))))
-     (cond
-       [(= score +inf.0)  pstate]
-       [else
-        (define axis (assert (dir-normalize (dir-cross face offset)) values))
-        (define rot-offset (dir-scale face 0.5))
-        (printf "corner pivot: ~v ~v~n" axis rot-offset)
-        (define new-pivot (pivoting rot-offset axis speed (* 0.5 pi) (moving dv zero-dir #f)))
-        (define new-timers (timers keys empty empty))
-        (player-state v ddv identity-affine new-timers new-pivot)])]
+                  (define n (surface-data-normal* data))
+                  (cond
+                    [(> (dir-dot face n) -0.999)
+                     (values best-score best-offset)]
+                    [else
+                     (define score (/ (dir-dot dv n) (dir-dist dv)))
+                     (if (< score best-score)
+                         (values score offset)
+                         (values best-score best-offset))])])])))
+        
+        (define axis
+          (let* ([axis  (dir-cross face offset)]
+                 [axis  (dir-project axis ddv)]
+                 [axis  (if axis (dir-normalize axis) axis)])
+            axis))
+        (cond
+          [(and (< score +inf.0) axis)
+           (printf "corner pivot~n")
+           (define rot-offset (dir-scale face 0.5))
+           ;; Convert tangential velocity to rotational
+           (define speed (/ (dir-dist dv) 0.5))
+           (define new-pivot (pivoting rot-offset axis speed (* 1.0 pi) (moving dv zero-dir #f)))
+           (define new-timers (timers keys empty empty))
+           (define new-v v #;(pos+ v face (- offset-margin)))
+           (player-state new-v ddv identity-affine new-timers new-pivot)]
+          [else  pstate])])]
     [_  pstate]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Maneuver normalization
 
-(: player-state-normalize (-> player-state Flonum player-state))
-(define (player-state-normalize pstate time)
+(: player-state-normalize (-> player-state Flonum Flonum player-state))
+(define (player-state-normalize pstate time dsecs)
   ;(printf "new frame~n")
   (match-define (player-state v ddv t (timers keys hits jumps) man) pstate)
-  (define axial? (near-axial? t))
-  (define new-t (if axial? (axialize t) t))
-  (define new-jumps (filter (λ ([tn : (Pair Flonum Dir)]) (<= (- time (car tn)) 500.0)) jumps))
-  (define new-hits  (filter (λ ([tn : (Pair Flonum Dir)]) (<= (- time (car tn)) 500.0)) hits))
+  (define new-jumps (filter (λ ([tn : (Pair Flonum Dir)]) (< (- time (car tn)) 500.0)) jumps))
+  ;; Keep only the surfaces hit on this frame
+  (define new-hits  (filter (λ ([tn : (Pair Flonum Dir)]) (= time (car tn))) hits))
   (define new-timers (timers keys new-hits new-jumps))
-  (define new-man
+  (define-values (new-v new-t new-man)
     (match man
       [(moving dv da jumping?)
-       (define speed (dir-dist dv))
-       (define new-dv (if (< speed 0.1) zero-dir dv))
-       (define new-da (if (and axial? (< (dir-dist da) 0.1)) zero-dir da))
-       (moving new-dv new-da jumping?)]
-      [_  man]))
-  (player-state v ddv new-t new-timers new-man))
+       (define aligned? (near-aligned? v dv ddv))
+       (define axial? (near-axial? t))
+       (define new-v (if aligned? (nearest-aligned v dv ddv) v))
+       (define new-t (if axial? (nearest-axial t) t))
+       (define new-dv
+         (let* ([dv  (soft-clamp-velocity dv ddv dsecs)]
+                [dv  (if (< (dir-dist dv) 0.1) zero-dir dv)]
+                [dv  (align-velocity new-v dv ddv dsecs)])
+           dv))
+       (define new-da
+         (cond [axial?  (if (< (dir-dist da) 0.1) zero-dir da)]
+               [jumping?  da]
+               [else    (axialize-angular new-t)]))
+       
+       (values new-v new-t (moving new-dv new-da jumping?))]
+      [_  (values v t man)]))
+  (player-state new-v ddv new-t new-timers new-man))
+
+(: position-offset (-> (Listof Dir) Dir))
+;; Offset the position in the direction of every normal to maintain a minimum distance from
+;; scene geometry
+(define (position-offset ns)
+  (for/fold ([add-v : Dir  zero-dir]) ([n  (in-list ns)])
+    (dir+ add-v (dir-scale n offset-margin))))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Movement
 
-(: player-state-move (-> player-state Pict3D Flonum Flonum player-state))
-(define (player-state-move pstate coll-pict time dsecs)
-  (match-define (player-state v ddv t tm man) pstate)
+(: normals-opposite? (-> (Listof Dir) Boolean))
+(define (normals-opposite? ns)
+  (for/or : Boolean ([n0  (in-list ns)])
+    (for/or : Boolean ([n1  (in-list ns)])
+      (< (dir-dot n0 n1) 0.0))))
+
+(: advance/trace (-> Pict3D Flonum Pos Affine Dir Dir Flonum (Listof Dir) (Values Pos Affine)))
+(define (advance/trace coll-pict dsecs v t delta-v da dist ns)
+  (define part-delta-v (dir+ (dir-scale delta-v dist) (position-offset ns)))
+  (define part-rot-t (angular-velocity->affine (dir-scale da dist) dsecs))
+  (define-values (new-dist _) (trace/player coll-pict v t part-delta-v part-rot-t))
+  (if (< new-dist 1.0)
+      (values v t)
+      (values (pos+ v part-delta-v)
+              (affine-compose part-rot-t t))))
+
+(: player-state-execute (-> player-state Pict3D Flonum Flonum player-state))
+(define (player-state-execute pstate coll-pict time dsecs)
+  (match-define (player-state v ddv t (and tm (timers keys hits jumps)) man) pstate)
   ;(printf "dsecs = ~v~n" dsecs)
   (match man
+    ;; Moving maneuvers
     [(moving dv da jumping?)
+     ;; Change in velocity
      (define delta-v (dir+ (dir-scale dv dsecs) (dir-scale ddv (* 0.5 (sqr dsecs)))))
+     ;; Change in rotation
      (define rot-t (angular-velocity->affine da dsecs))
+     ;; Surfaces hit and minimum distance
      (define-values (dist datas) (trace/player coll-pict v t delta-v rot-t))
      (define num-hits (length datas))
-     ;; The maximum distance a corner can travel due to rotation
+     ;; The maximum distance a point on the cube could have moved due to rotation
      (define max-corner-dist (* (dir-dist da) player-radius dsecs))
-     ;; If max-corner-dist > offset-margin; i.e. the maximum distance a corner can rotate is greater
-     ;; than the smallest allowable distance between the cube and scene geometry, then we need to run
-     ;; physics in subdivided time to keep from putting any part of the cube inside of scene geometry
-     ;; when we partially rotate the cube
+     ;; Extract unique surface normals
+     (define ns (remove-duplicates (map surface-data-normal* datas)))
+     (define new-hits (remove-duplicates (append (map (λ ([n : Dir]) (cons time n)) ns) hits)))
+     #|
+If we hit something, we're going to move and rotate the cube for only part of the time for this frame.
+If we're not careful, we could end up with the cube intersecting scene geometry.
+
+Here's how to be careful: run physics in subdivided time when the maximum distance a point could have
+moved due to rotation is greater than the smallest allowable distance between the cube and scene
+geometry.
+
+To maintain the smallest allowable distance between the cube and scene geometry, we need to
+ * Run physics in subdivided time when two surfaces are hit whose normals make an acute angle.
+ * Move the cube away from surfaces hit in the direction of the surface normals.
+|#
      (cond
+       #;
+       [(and (< dist 1.0) (normals-opposite? (map (inst cdr Flonum Dir) new-hits)))
+        (player-state v ddv t tm (moving zero-dir zero-dir #f))]
        [(and (< dist 1.0) (> max-corner-dist offset-margin))
-        (let ([pstate  (player-state-move pstate coll-pict time (* dsecs 0.5))])
-          (player-state-move pstate coll-pict time (* dsecs 0.5)))]
+        ;; Execute the maneuver in subdivided time
+        (let ([pstate  (player-state-execute pstate coll-pict time (* dsecs 0.5))])
+          (player-state-execute pstate coll-pict time (* dsecs 0.5)))]
        [(< dist 1.0)
+        ;; React to collisions in partial time
         (define part-dsecs (* dist dsecs))
-        
-        (define part-v (pos+ v delta-v dist))
-        (define part-rot-t (angular-velocity->affine da part-dsecs))
+        ;; Record hits
+        (define new-hits (remove-duplicates (append (map (λ ([n : Dir]) (cons time n)) ns) hits)))
+        (define new-tm (timers keys new-hits jumps))
+        ;; Advance position and rotation in partial time
+        (define-values (new-v new-t)
+          (advance/trace coll-pict dsecs v t delta-v da dist ns))
+        ;; React to every surface (magnitude of rejection determines stop or bounce)
         (define part-dv (dir+ dv (dir-scale ddv part-dsecs)))
-        (define part-da da)
-        
-        ;; React to every surface
         (define add-dv
           (for/fold ([add-dv : Dir  zero-dir])
                     ([data  (in-list datas)])
+            ;; Surface normal
             (define n (surface-data-normal* data))
-            (define r (pos- (surface-data-pos data) part-v))
-            (define total-dv (dir+ part-dv (dir-cross part-da r)))
-            ;; Leaving out the angular part (the denominator) because this is all going to velocity:
-            (define j (* (dir-dot total-dv n) (- (+ 1.0 (restitution-coef ddv n)))))
+            ;; Magnitude of rejection from the surface
+            (define j (* (dir-dot part-dv n) (- -1.0 (restitution-coef ddv n jumping?))))
             ;; Reject this normal a bit
             (dir+ add-dv (dir-scale n (/ j (fl num-hits))))))
-        
-        ;; Offset the position in the direction of every normal
-        (define ns (remove-duplicates (map surface-data-normal* datas)))
-        (define add-v
-          (for/fold ([add-v : Dir  (dir-scale delta-v dist)]) ([n  (in-list ns)])
-            (dir+ add-v (dir-scale n offset-margin))))
-        
-        (define next-dv (soft-clamp-velocity (dir+ part-dv add-dv) ddv part-dsecs))
-        (define next-v (snap-position/velocity (pos+ v add-v) next-dv ddv))
-        (define next-t (affine-compose part-rot-t t))
-        (define next-da (axialize-angular next-t))
-        
-        (match-define (timers keys hits jumps) tm)
-        (define next-hits (remove-duplicates (append (map (λ ([n : Dir]) (cons time n)) ns) hits)))
-        (define next-tm (timers keys next-hits jumps))
-        
-        (define next-man (moving next-dv next-da #f))
-        
-        (define next-pstate (player-state next-v ddv next-t next-tm next-man))
-        
-        ;; Only continue moving this frame if he didn't hit a wall
-        (define continue-move?
-          (andmap (λ ([n : Dir]) (> (/ (dir-dot n dv) (dir-dist dv)) (cos (degrees->radians 135))))
-                  ns))
-        
-        (if continue-move?
-            (player-state-move next-pstate coll-pict time (- dsecs part-dsecs))
-            next-pstate)]
+        ;; Reject opposing faces that the cube hits on the same frame (otherwise, bouncing between
+        ;; walls in a very narrow corridor leads to a velocity explosion)
+        (define new-dv
+          (for*/fold ([new-dv : Dir  (dir+ part-dv add-dv)]) ([n0  (in-list ns)]
+                                                              [tn1  (in-list hits)])
+            (match-define (cons t1 n1) tn1)
+            (if (and (= t1 time) (< (dir-dot n0 n1) -0.999))
+                (dir-reject (dir-reject new-dv n0) n1)
+                new-dv)))
+        ;; Construct a new maneuver and player state
+        (define new-man (moving new-dv zero-dir #f))
+        (define new-pstate (player-state new-v ddv new-t new-tm new-man))
+        ;; Continue executing the maneuver for the remaining time
+        (player-state-execute new-pstate coll-pict time (- dsecs (max (* 0.01 dsecs) part-dsecs)))]
        [else
-        (define next-dv
-          (let ([next-dv  (dir+ dv (dir-scale ddv dsecs))])
-            (if jumping? next-dv (soft-clamp-velocity next-dv ddv dsecs))))
-        (define next-v (snap-position/velocity (pos+ v delta-v) next-dv ddv))
-        (define next-t (affine-compose rot-t t))
-        (define next-man (moving next-dv da jumping?))
-        (player-state next-v ddv next-t tm next-man)])]
+        ;; No collisions: advance in time normally
+        (define new-dv (dir+ dv (dir-scale ddv dsecs)))
+        (define new-v (pos+ v delta-v))
+        (define new-t (affine-compose rot-t t))
+        (define new-man (moving new-dv da jumping?))
+        (player-state new-v ddv new-t tm new-man)])]
+    ;; Pivoting maneuvers
     [(pivoting offset axis speed deg next-man)
+     ;; Find the center of rotation (relative to the cube center) and transformed axis
+     (define toffset (transform-dir offset t))
+     (define taxis   (transform-dir axis t))
+     ;; Determine how much to rotate (min ensures delta-a = deg when finished pivoting)
+     (define delta-a (min deg (* speed dsecs)))
+     ;; Compute the rotation matrix
+     (define rot-t (rotate taxis (radians->degrees delta-a)))
+     ;; Compute the new center point
+     (define delta-v (dir+ toffset (transform-dir (dir-negate toffset) rot-t)))
+     ;; Trace to see if we hit anything during rotation
+     (define-values (dist datas) (trace/player coll-pict v t delta-v rot-t))
+     ;; Compute angular velocity and maximum distance a point could have moved due to rotation
+     (define da (dir-scale taxis speed))
+     (define max-corner-dist (* (dir-dist da) player-radius dsecs))
+     ;; Extract unique surface normals
+     (define ns (remove-duplicates (map surface-data-normal* datas)))
      (cond
-       [(< deg 1e-8)
-        (printf "deg ≈ 0: pivot done~n")
-        ;; Don't continue the move - needs a chance to detect another pivot
-        (player-state (snap-position v ddv) ddv t tm next-man)]
+       [(and (< dist 1.0)
+             (or (> max-corner-dist offset-margin)
+                 (normals-opposite? ns)))
+        ;; Subdivide physics if we hit something and rotating might put the cube inside the scene
+        (let ([pstate  (player-state-execute pstate coll-pict time (* dsecs 0.5))])
+          (player-state-execute pstate coll-pict time (* dsecs 0.5)))]
+       [(or (< dist 1.0) (= delta-a deg))
+        ;; React to collisions
+        (define part-dsecs (* dist dsecs))
+        ;; Record hits
+        (define new-hits (remove-duplicates (append (map (λ ([n : Dir]) (cons time n)) ns) hits)))
+        (define new-tm (timers keys new-hits jumps))
+        ;; Advance position and rotation in partial time
+        (define-values (new-v new-t) (advance/trace coll-pict dsecs v t delta-v da dist ns))
+        ;; Derive tangential velocity for center point, use max component as new linear velocity
+        (define new-dv (dir-cross da (dir-negate toffset)))
+        ;; Construct a *moving* maneuver and a new player state
+        (define new-man (moving new-dv zero-dir #f))
+        (define new-pstate (player-state new-v ddv new-t new-tm new-man))
+        ;; Use `player-state-advance` to give the player a chance to respond between pivots
+        (player-state-advance new-pstate coll-pict time (- dsecs part-dsecs))]
        [else
-        (define toffset (transform-dir offset t))
-        (define taxis   (transform-dir axis t))
-        (define delta-a (min deg (* speed dsecs)))
-        (define rot-t (rotate taxis (radians->degrees delta-a)))
-        (define delta-v (dir+ toffset (transform-dir (dir-negate toffset) rot-t)))
-        (define-values (dist datas) (trace/player coll-pict v t delta-v rot-t))
-        (cond
-          [(not (empty? datas))
-           (printf "collision: pivot done~n")
-           (player-state-move (player-state v ddv t tm next-man)
-                              coll-pict time dsecs)]
-          [else
-           (let ([v  (pos+ v delta-v)]
-                 [t  (affine-compose rot-t t)])
-             (define pivot-man (pivoting offset axis speed (- deg delta-a) next-man))
-             (player-state v ddv t tm pivot-man))])])]))
+        ;; No collisions: advance in time normally
+        (let ([v  (pos+ v delta-v)]
+              [t  (affine-compose rot-t t)])
+          (define pivot-man (pivoting offset axis speed (- deg delta-a) next-man))
+          (player-state v ddv t tm pivot-man))])]))
 
 ;; ===================================================================================================
 ;; Main player state loop body
@@ -802,17 +896,18 @@
   (define -dx (dir-negate +dx))
   (define -dy (dir-negate +dy))
   (define dv (if (moving? man) (moving-linear-velocity man) zero-dir))
+  ;(printf "v = ~v~ndv = ~v~n~n" v dv)
   
   (let* ([pstate  (player-state-maybe-jump pstate coll-pict time dsecs)]
          [pstate  (player-state-maybe-arrow pstate coll-pict time dsecs "left" -dx dv)]
          [pstate  (player-state-maybe-arrow pstate coll-pict time dsecs "right" +dx dv)]
          [pstate  (player-state-maybe-arrow pstate coll-pict time dsecs "up" -dy dv)]
          [pstate  (player-state-maybe-arrow pstate coll-pict time dsecs "down" +dy dv)]
-         [pstate  (player-state-normalize pstate time)]
-         [pstate  (player-state-maybe-edge-pivot pstate coll-pict time dsecs)]
-         [pstate  (player-state-maybe-corner-pivot pstate coll-pict time dsecs)]
+         [pstate  (player-state-normalize pstate time dsecs)]
+         [pstate  (player-state-maybe-edge-pivot pstate coll-pict)]
+         [pstate  (player-state-maybe-corner-pivot pstate coll-pict)]
          [pstate  (for/fold ([pstate : player-state  pstate]) ([_  (in-range physics-frames)])
-                    (player-state-move pstate coll-pict time (/ dsecs (fl physics-frames))))])
+                    (player-state-execute pstate coll-pict time (/ dsecs (fl physics-frames))))])
     pstate))
 
 (: player-state-on-key (-> player-state Flonum String player-state))
