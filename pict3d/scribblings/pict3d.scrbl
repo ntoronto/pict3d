@@ -933,11 +933,9 @@ Pict3D tries to reduce the burden by
 For example, the following code defines a @deftech{basis}, which is an empty group, on the left side
 of the ellipsoid @racket[p1], pointing away from the surface.
 @interaction[#:eval pict3d-eval
-                    (define data (surface/data p1 +x))
-                    (define v (surface-data-pos data))
-                    (define dv (surface-data-normal data))
+                    (define-values (v dv) (surface/normal p1 +x))
                     (define left (basis 'left (point-at v dv)))]
-Here, the @racket[surface/data] function finds a point on the surface of @racket[p1] in the
+Here, the @racket[surface/normal] function finds a point on the surface of @racket[p1] in the
 direction @racket[+x].
 It returns that point and a @deftech{surface normal}, which is the direction perpendicular to the
 surface at that point.
@@ -961,7 +959,7 @@ Now we'll create a cube to attach onto that basis.
                     (define p2/top (move-z (combine p2 top) 4))
                     (eval:alts p2/top ((λ () p2/top)))]
 (Again, we've moved it upward, away from the origin's axes.)
-This time, we used @racket[surface] instead of @racket[surface/data] because we know the surface
+This time, we used @racket[surface] instead of @racket[surface/normal] because we know the surface
 normal: @racket[+z].
 But we haven't applied @racket[point-at] to @racket[+z], we've used @racket[-z] instead, causing the
 blue arrow to point in the direction opposite the surface normal: downward, into the cube.
@@ -971,6 +969,9 @@ All we have left is to @racket[pin] the scenes together:
                     (define p3 (pin p1/left '(left)
                                     p2/top '(top)))
                     (combine p3 camera)]
+@margin-note*{Because @racket[(pin pict1 path1 pict2 path2)] puts @racket[pict2] @emph{inside} of the
+              group @racket[path1], it naturally creates group hierarchies. When this isn't what you
+              want, use @racket[join] instead.}
 This has applied the transformation necessary to make the basis named @racket['top] in @racket[p2/top]
 match the basis named @racket['left] in @racket[p1/left], and combined the transformed @racket[p2/top]
 with @racket[p1/left].
@@ -1135,16 +1136,20 @@ In code, @racket[(join pict1 path1 pict2 path2)] is equivalent to
                         (find-group-transform pict1 path1)))]
 }
 
+@defproc[(glue [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+Like @racket[(join pict1 path1 pict2 path2)], but ungroups all groups in @racket[pict1] that have
+path @racket[path1], and ungroups all groups in @racket[pict2] that have path @racket[path2].
+}
+
 @defproc[(pin [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
-Similar to @racket[join], but also adds the transformed @racket[pict2] as a subgroup of the group
-with path @racket[path1] in @racket[pict1], and ungroups the group @racket[path2] in @racket[pict2]
-first.
-
-Also, if there is more than one group in @racket[pict1] with path @racket[path1], @racket[pict2] is
-pinned to all of them (this may change in the future, so use @racket[pin*] instead for that).
-
-If there is more than one group in @racket[pict2] with path @racket[path2],
-@racket[pin] raises an error.
+Similar to @racket[join], but additionally
+@itemlist[
+ @item{Ungroups the group @racket[path2] in @racket[pict2].}
+ @item{Puts @racket[pict2] inside the group @racket[path1] in @racket[pict1].}
+ ]
+Use @racket[pin] to construct group hierarchies, in which updates to parent groups (using
+@racket[replace-group] or @racket[replace-in-group]) affect child groups.
+See @secref{combining-scenes} for an extended example.
 
 In code, @racket[(pin pict1 path1 pict2 path2)] is equivalent to
 @racketblock[(let ([pict2  (ungroup (set-origin pict2 path2) path2)])
@@ -1160,11 +1165,6 @@ Use @racket[weld] instead of @racket[pin] when you don't intend to update the gr
 For example, use @racket[pin] to attach a swinging arm to a robot body, and use @racket[weld] to
 place a roof on top of a house.
 (Unless you intend to blow up the house later. Then you'll need to pin the roof.)
-}
-
-@defproc[(glue [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
-Like @racket[(join pict1 path1 pict2 path2)], but, like @racket[weld], ungroups all groups in
-@racket[pict1] that have path @racket[path1].
 }
 
 @deftogether[[

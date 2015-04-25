@@ -612,11 +612,9 @@
   (define ps (map-group p1 n1 (λ ([p : Pict3D]) p)))
   (define n (length ps))
   (unless (= n 1)
-    (eprintf (string-append "~a: warning: ~v groups with path ~v exist\n"
-                            "  if this is intentional, use ~a* instead\n"
-                            "  given: ~v\n"
-                            "  with groups: ~v\n")
-             pin n n1 pin p1 ps)))
+    (error pin "~v groups with path ~v exist \
+(if this is intentional, use ~a* instead)"
+           n n1 pin)))
 
 (: join (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (join p1 n1 p2 [n2 empty])
