@@ -416,16 +416,17 @@
                     (if (= d dy0) ymin (if (= d dy1) ymax y))
                     (if (= d dz0) zmin (if (= d dz1) zmax z)))))))))
 
-(: flrect3-point-normal (-> FlRect3 FlV3 (U #f FlV3)))
-(define (flrect3-point-normal bb v)
+(: flrect3-point-normals (-> FlRect3 FlV3 (Listof FlV3)))
+(define (flrect3-point-normals bb v)
   (call/flrect3-values bb
     (λ (xmin ymin zmin xmax ymax zmax)
       (call/flv3-values v
         (λ (x y z)
-          (cond [(= xmin x)  -x-flv3]
-                [(= xmax x)  +x-flv3]
-                [(= ymin y)  -y-flv3]
-                [(= ymax y)  +y-flv3]
-                [(= zmin z)  -z-flv3]
-                [(= zmax z)  +z-flv3]
-                [else  #f]))))))
+          (let* ([ns  empty]
+                 [ns  (if (= xmin x) (cons -x-flv3 ns) ns)]
+                 [ns  (if (= xmax x) (cons +x-flv3 ns) ns)]
+                 [ns  (if (= ymin y) (cons -y-flv3 ns) ns)]
+                 [ns  (if (= ymax y) (cons +y-flv3 ns) ns)]
+                 [ns  (if (= zmin z) (cons -z-flv3 ns) ns)]
+                 [ns  (if (= zmax z) (cons +z-flv3 ns) ns)])
+            ns))))))

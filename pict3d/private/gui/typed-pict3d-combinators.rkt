@@ -583,6 +583,10 @@
 ;; ===================================================================================================
 ;; Combining scenes
 
+(: set-origin (-> Pict3D (Listof Tag) Pict3D))
+(define (set-origin p n)
+  (transform p (affine-inverse (find-group-transform p n))))
+
 (: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (pin* p1 n1 p2 [n2 empty])
   (let ([p2  (ungroup (set-origin p2 n2) n2)])

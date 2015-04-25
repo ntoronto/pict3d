@@ -507,7 +507,11 @@ code
           [else
            (define data
              (delay (define p (flrect3-closest-point b (flv3fma dv time v)))
-                    (define n (let ([n  (flrect3-point-normal b p)])
+                    (define n (let* ([ns  (flrect3-point-normals b p)]
+                                     [n   (cond
+                                            [(empty? ns)  #f]
+                                            [inside?  (argmax (λ ([n : FlV3]) (flv3dot n dv)) ns)]
+                                            [else     (argmin (λ ([n : FlV3]) (flv3dot n dv)) ns)])])
                                 (and n (if inside? (flv3neg n) n))))
                     (trace-data p n empty)))
            (values time data)])))
