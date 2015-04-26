@@ -6,6 +6,8 @@
          math/base
          "../math.rkt"
          "../engine.rkt"
+         "../shape.rkt"
+         "shape/point-light-shell.rkt"
          "parameters.rkt"
          "typed-user-types.rkt"
          "typed-pict3d-combinators.rkt"

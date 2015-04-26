@@ -7,11 +7,9 @@
          racket/list
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
-         "../../math.rkt"
-         "../../utils.rkt"
-         "../shader.rkt"
-         "../draw.rkt"
-         "../scene.rkt"
+         "../math.rkt"
+         "../memo.rkt"
+         "../engine.rkt"
          "../utils.rkt")
 
 (provide make-point-light-shape

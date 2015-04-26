@@ -6,12 +6,10 @@
          racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
-         "../../math.rkt"
-         "../../gl.rkt"
-         "../../utils.rkt"
-         "../shader.rkt"
-         "../draw.rkt"
-         "../scene.rkt"
+         "../math.rkt"
+         "../gl.rkt"
+         "../memo.rkt"
+         "../engine.rkt"
          "../utils.rkt")
 
 (provide make-directional-light-shape
@@ -27,8 +25,7 @@
 
 (: make-directional-light-shape (-> FlV4 FlV3 directional-light-shape))
 (define (make-directional-light-shape e dv)
-  (directional-light-shape (lazy-passes) directional-light-shape-functions
-                           e dv))
+  (directional-light-shape (lazy-passes) directional-light-shape-functions e dv))
 
 ;; ===================================================================================================
 ;; Set attributes

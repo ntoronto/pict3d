@@ -7,11 +7,12 @@
          math/base
          "../math.rkt"
          "../engine.rkt"
+         "../shape.rkt"
          "../utils.rkt"
          "typed-user-types.rkt"
          "pict3d-struct.rkt"
          "parameters.rkt"
-         "light-grid.rkt"
+         "shape/light-grid.rkt"
          )
 
 (provide

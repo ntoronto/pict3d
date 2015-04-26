@@ -3,9 +3,8 @@
 ;; Scenes, frozen into single shapes
 
 (require racket/list
-         "../../math.rkt"
-         "../draw.rkt"
-         "../scene.rkt")
+         "../math.rkt"
+         "../engine.rkt")
 
 (provide make-frozen-scene-shape
          (struct-out frozen-scene-shape))

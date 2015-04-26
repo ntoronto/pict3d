@@ -1,7 +1,7 @@
 #lang typed/racket/base
 
-(require "../../../math.rkt"
-         "../../scene.rkt")
+(require "../../math.rkt"
+         "../../engine.rkt")
 
 (provide (all-defined-out))
 

@@ -6,11 +6,11 @@
          racket/flonum
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
-         "../gl.rkt"
-         "../math.rkt"
-         "../utils.rkt"
-         "../engine.rkt"
-         "../engine/utils.rkt")
+         "../../math.rkt"
+         "../../gl.rkt"
+         "../../memo.rkt"
+         "../../engine.rkt"
+         "../../utils.rkt")
 
 (provide make-light-grid-shape
          (struct-out light-grid-shape))

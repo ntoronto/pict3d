@@ -9,11 +9,9 @@
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
-         "../../math.rkt"
-         "../../utils.rkt"
-         "../shader.rkt"
-         "../draw.rkt"
-         "../scene.rkt"
+         "../math.rkt"
+         "../memo.rkt"
+         "../engine.rkt"
          "../utils.rkt")
 
 (provide make-triangle-shape

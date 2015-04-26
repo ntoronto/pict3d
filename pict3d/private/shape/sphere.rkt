@@ -5,12 +5,11 @@
          racket/promise
          typed/opengl
          math/flonum
-         "../../../math.rkt"
-         "../../scene.rkt"
-         "../../draw.rkt"
-         "sphere-type.rkt"
-         (prefix-in 30: "ge_30.rkt")
-         (prefix-in 32: "ge_32.rkt"))
+         "../math.rkt"
+         "../engine.rkt"
+         "sphere/sphere-type.rkt"
+         (prefix-in 30: "sphere/ge_30.rkt")
+         (prefix-in 32: "sphere/ge_32.rkt"))
 
 (provide make-sphere-shape
          (struct-out sphere-shape))

@@ -7,6 +7,7 @@
          "../../math.rkt"
          "../../gl.rkt"
          "../../utils.rkt"
+         "../../memo.rkt"
          "../utils.rkt"
          "../shader.rkt"
          "draw-pass.rkt"
