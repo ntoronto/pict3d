@@ -21,8 +21,6 @@
          (struct-out triangle-shape)
          (struct-out rectangle-shape))
 
-(define nonnegative-flonum? (make-predicate Nonnegative-Flonum))
-
 ;; ===================================================================================================
 ;; Vertex data
 
@@ -72,8 +70,7 @@
 
 (: make-triangle-shape (-> vtx vtx vtx Boolean triangle-shape))
 (define (make-triangle-shape v1 v2 v3 back?)
-  (triangle-shape (lazy-passes) triangle-shape-functions
-                  v1 v2 v3 back?))
+  (triangle-shape (lazy-passes) triangle-shape-functions v1 v2 v3 back?))
 
 (: make-quad-shapes (-> vtx vtx vtx vtx Boolean (List triangle-shape triangle-shape)))
 (define (make-quad-shapes v1 v2 v3 v4 back?)
@@ -95,8 +92,7 @@
 
 (: make-rectangle-shape (-> FlRect3 FlV4 FlV4 FlV4 Boolean rectangle-shape))
 (define (make-rectangle-shape b c e m back?)
-  (rectangle-shape (lazy-passes) rectangle-shape-functions
-                   b c e m back?))
+  (rectangle-shape (lazy-passes) rectangle-shape-functions b c e m back?))
 
 ;; ===================================================================================================
 ;; Set attributes
@@ -440,7 +436,7 @@ code
 
 ;; The maximum and minimum barycentric coordinates should be 0.0 and 1.0, but because of floating-
 ;; point error and whatnot, we might miss if we use those bounds, so we'll fudge a bit
-;; We end up testing against slightly larger triangles with somewhat cut off corners
+;; We end up testing against somewhat larger triangles with slightly cut off corners
 (define fudge (* 128 epsilon.0))
 (define coord-min (- fudge))
 (define coord-max (+ 1.0 fudge))
@@ -480,14 +476,15 @@ code
     (define back? (triangle-shape-back? s))
     (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
       (define time (triangle-intersect-time v1 v2 v3 o d))
-      (cond [(or (not (nonnegative-flonum? time)) (> time max-time))  (values #f #f)]
-            [else
+      (cond [(and time (>= time 0.0) (<= time max-time))
              (define data
                (delay (define p (flv3fma d time o))
                       ;; No need to flip normal because vertices are already reversed
                       (define n (flv3triangle-normal v1 v2 v3))
                       (trace-data p n empty)))
-             (values time data)]))))
+             (values time data)]
+            [else
+             (values #f #f)]))))
 
 (: rectangle-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
                                      (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
@@ -501,8 +498,7 @@ code
                                                [else     (values -inf.0 max-time)])])
         (flrect3-line-intersects b v dv min-time max-time)))
     (define time (if inside? tmax tmin))
-    (cond [(or (not (nonnegative-flonum? time)) (> time max-time))  (values #f #f)]
-          [else
+    (cond [(and time (>= time 0.0) (<= time max-time))
            (define data
              (delay (define p (flrect3-closest-point b (flv3fma dv time v)))
                     (define n (let* ([ns  (flrect3-point-normals b p)]
@@ -512,7 +508,9 @@ code
                                             [else     (argmin (λ ([n : FlV3]) (flv3dot n dv)) ns)])])
                                 (and n (if inside? (flv3neg n) n))))
                     (trace-data p n empty)))
-           (values time data)])))
+           (values time data)]
+          [else
+           (values #f #f)])))
 
 ;; ===================================================================================================
 
