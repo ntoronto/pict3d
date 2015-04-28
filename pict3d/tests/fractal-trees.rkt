@@ -20,10 +20,10 @@
                (with-color (rgba "red" 0.5)
                  (rectangle v1 v2)))))
 
-(define t (build-tree 11))
+(define t (time (build-tree 11)))
 (time (combine/bounds t))
 
-(define frozen-t (freeze t))
+(define frozen-t (time (freeze t)))
 (time (combine/bounds frozen-t))
 
 (define s

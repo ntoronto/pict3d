@@ -360,6 +360,9 @@ code
 ;; ===================================================================================================
 ;; Sphere shape passes
 
+(: sphere-indexes (Vectorof Index))
+(define sphere-indexes (vector 0))
+
 (: get-sphere-shape-passes (-> shape passes))
 (define (get-sphere-shape-passes s)
   (match-define (sphere-shape _ _ t c e m inside?) s)
@@ -385,11 +388,15 @@ code
        #()
        #()
        #()
-       (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
-       (vector (shape-params sphere-tran-program empty #t GL_POINTS (vertices 1 draw-data #f))))
+       (vector (shape-params sphere-mat-program empty #t GL_POINTS
+                             (vertices 1 mat-data sphere-indexes)))
+       (vector (shape-params sphere-tran-program empty #t GL_POINTS
+                             (vertices 1 draw-data sphere-indexes))))
       (passes
        #()
-       (vector (shape-params sphere-mat-program empty #t GL_POINTS (vertices 1 mat-data #f)))
-       (vector (shape-params sphere-opaq-program empty #t GL_POINTS (vertices 1 draw-data #f)))
+       (vector (shape-params sphere-mat-program empty #t GL_POINTS
+                             (vertices 1 mat-data sphere-indexes)))
+       (vector (shape-params sphere-opaq-program empty #t GL_POINTS
+                             (vertices 1 draw-data sphere-indexes)))
        #()
        #())))

@@ -15,7 +15,7 @@
 (struct vertices
   ([vertex-count : Index]
    [vertex-data : Bytes]  ; vertex data to send, already converted to bytes
-   [indexes : (U #f (Vectorof Index))])
+   [indexes : (Vectorof Index)])
   #:transparent)
 ;; The length of `vertex-data` must be no less than `vertex-count` times the struct size!
 ;; The elements in `index-data` must be less than `vertex-count`!
@@ -59,7 +59,7 @@
   (passes #() #() #() #() #()))
 
 (define empty-shape-params
-  (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (vertices 0 #"" #f)))
+  (shape-params (λ () (error 'empty-shape-params)) empty #f 0 (vertices 0 #"" (vector))))
 
 (: empty-draw-params (-> draw-params))
 (define (empty-draw-params)

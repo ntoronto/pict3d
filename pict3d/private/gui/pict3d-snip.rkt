@@ -432,10 +432,10 @@
                (define t (pos-dist v v0))
                ;; Compute an approximation of the change in position values per window coordinate at
                ;; the intersection point
-               (define dv1 (ray-dir (- x 0.5) y))
-               (define dv2 (ray-dir (+ x 0.5) y))
-               (define dv3 (ray-dir x (- y 0.5)))
-               (define dv4 (ray-dir x (+ y 0.5)))
+               (define dv1 (dir-normalize (ray-dir (- x 0.5) y)))
+               (define dv2 (dir-normalize (ray-dir (+ x 0.5) y)))
+               (define dv3 (dir-normalize (ray-dir x (- y 0.5))))
+               (define dv4 (dir-normalize (ray-dir x (+ y 0.5))))
                (define d (max (pos-dist (pos+ v0 dv1 t) (pos+ v0 dv2 t))
                               (pos-dist (pos+ v0 dv3 t) (pos+ v0 dv4 t))))
                

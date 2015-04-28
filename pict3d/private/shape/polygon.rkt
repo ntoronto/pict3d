@@ -15,10 +15,11 @@
          "../utils.rkt")
 
 (provide make-triangle-shape
-         make-quad-shapes
+         make-triangle-mesh-shape
+         make-quad-shape
          make-rectangle-shape
          (struct-out vtx)
-         (struct-out triangle-shape)
+         (struct-out triangle-mesh-shape)
          (struct-out rectangle-shape))
 
 ;; ===================================================================================================
@@ -31,29 +32,28 @@
              [material : FlV4])
   #:transparent)
 
-(: vtx-set-vecs (-> vtx FlV3 FlV3 vtx))
-(define (vtx-set-vecs v pos norm)
+(: set-vtx-vecs (-> vtx FlV3 FlV3 vtx))
+(define (set-vtx-vecs v pos norm)
   (vtx pos norm (vtx-color v) (vtx-emitted v) (vtx-material v)))
 
-(: vtx-set-color (-> vtx FlV4 vtx))
-(define (vtx-set-color v c)
+(: set-vtx-color (-> vtx FlV4 vtx))
+(define (set-vtx-color v c)
   (vtx (vtx-position v) (vtx-normal v) c (vtx-emitted v) (vtx-material v)))
 
-(: vtx-set-emitted (-> vtx FlV4 vtx))
-(define (vtx-set-emitted v e)
+(: set-vtx-emitted (-> vtx FlV4 vtx))
+(define (set-vtx-emitted v e)
   (vtx (vtx-position v) (vtx-normal v) (vtx-color v) e (vtx-material v)))
 
-(: vtx-set-material (-> vtx FlV4 vtx))
-(define (vtx-set-material v m)
+(: set-vtx-material (-> vtx FlV4 vtx))
+(define (set-vtx-material v m)
   (vtx (vtx-position v) (vtx-normal v) (vtx-color v) (vtx-emitted v) m))
 
 ;; ===================================================================================================
 ;; Shape data types
 
-(struct triangle-shape shape
-  ([vtx1 : vtx]
-   [vtx2 : vtx]
-   [vtx3 : vtx]
+(struct triangle-mesh-shape shape
+  ([vtxs : (Vectorof vtx)]
+   [idxs : (Vectorof Index)]
    [back? : Boolean])
   #:transparent)
 
@@ -68,12 +68,31 @@
 ;; ===================================================================================================
 ;; Constructors
 
-(: make-triangle-shape (-> vtx vtx vtx Boolean triangle-shape))
-(define (make-triangle-shape v1 v2 v3 back?)
-  (triangle-shape (lazy-passes) triangle-shape-functions v1 v2 v3 back?))
+(: make-triangle-mesh-shape (-> (Vectorof vtx) (Vectorof Index) Boolean triangle-mesh-shape))
+(define (make-triangle-mesh-shape vtxs idxs back?)
+  (define n (vector-length vtxs))
+  (define m (vector-length idxs))
+  (unless (and (> m 0) (zero? (modulo m 3)))
+    (raise-argument-error 'make-triangle-mesh-shape
+                          "(Vectorof Index) with positive, multiple-of-3 length"
+                          1 vtxs idxs back?))
+  (for ([i  (in-range m)])
+    (unless (< (vector-ref idxs i) n)
+      (raise-argument-error 'make-triangle-mesh-shape
+                            (format "(Vectorof Index) with all indexes < ~a" n)
+                            1 vtxs idxs back?)))
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions vtxs idxs back?))
 
-(: make-quad-shapes (-> vtx vtx vtx vtx Boolean (List triangle-shape triangle-shape)))
-(define (make-quad-shapes v1 v2 v3 v4 back?)
+(: triangle-indexes (Vectorof Index))
+(define triangle-indexes (vector 0 1 2))
+
+(: make-triangle-shape (-> vtx vtx vtx Boolean triangle-mesh-shape))
+(define (make-triangle-shape v1 v2 v3 back?)
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions
+                       (vector v1 v2 v3) triangle-indexes back?))
+
+(: make-quad-shape (-> vtx vtx vtx vtx Boolean triangle-mesh-shape))
+(define (make-quad-shape v1 v2 v3 v4 back?)
   (define p1 (vtx-position v1))
   (define p2 (vtx-position v2))
   (define p3 (vtx-position v3))
@@ -83,12 +102,11 @@
                   (flv3polygon-regularity (vector p3 p4 p1))))
   (define r2 (min (flv3polygon-regularity (vector p2 p3 p4))
                   (flv3polygon-regularity (vector p4 p1 p2))))
-  (cond [(>= r1 r2)
-         (list (make-triangle-shape v1 v2 v3 back?)
-               (make-triangle-shape v3 v4 v1 back?))]
-        [else
-         (list (make-triangle-shape v2 v3 v4 back?)
-               (make-triangle-shape v4 v1 v2 back?))]))
+  (define vtxs (vector v1 v2 v3 v4))
+  (define idxs (if (>= r1 r2)
+                   ((inst vector Index) 0 1 2 2 3 0)
+                   ((inst vector Index) 1 2 3 3 0 1)))
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions vtxs idxs back?))
 
 (: make-rectangle-shape (-> FlRect3 FlV4 FlV4 FlV4 Boolean rectangle-shape))
 (define (make-rectangle-shape b c e m back?)
@@ -97,20 +115,26 @@
 ;; ===================================================================================================
 ;; Set attributes
 
-(: set-triangle-shape-color (-> shape FlV4 triangle-shape))
-(define (set-triangle-shape-color s c)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
-  (make-triangle-shape (vtx-set-color v1 c) (vtx-set-color v2 c) (vtx-set-color v3 c) back?))
+(: set-triangle-mesh-shape-color (-> shape FlV4 triangle-mesh-shape))
+(define (set-triangle-mesh-shape-color s c)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions
+                       (vector-map (λ ([v : vtx]) (set-vtx-color v c)) vtxs)
+                       idxs back?))
 
-(: set-triangle-shape-emitted (-> shape FlV4 triangle-shape))
-(define (set-triangle-shape-emitted s e)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
-  (make-triangle-shape (vtx-set-emitted v1 e) (vtx-set-emitted v2 e) (vtx-set-emitted v3 e) back?))
+(: set-triangle-mesh-shape-emitted (-> shape FlV4 triangle-mesh-shape))
+(define (set-triangle-mesh-shape-emitted s e)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions
+                       (vector-map (λ ([v : vtx]) (set-vtx-emitted v e)) vtxs)
+                       idxs back?))
 
-(: set-triangle-shape-material (-> shape FlV4 triangle-shape))
-(define (set-triangle-shape-material s m)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
-  (make-triangle-shape (vtx-set-material v1 m) (vtx-set-material v2 m) (vtx-set-material v3 m) back?))
+(: set-triangle-mesh-shape-material (-> shape FlV4 triangle-mesh-shape))
+(define (set-triangle-mesh-shape-material s m)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions
+                       (vector-map (λ ([v : vtx]) (set-vtx-material v m)) vtxs)
+                       idxs back?))
 
 (: set-rectangle-shape-color (-> shape FlV4 rectangle-shape))
 (define (set-rectangle-shape-color s c)
@@ -291,22 +315,16 @@ code
   (program-code->gl-program polygon-tran-program-code))
 
 ;; ===================================================================================================
-;; Triangle shape passes
+;; Triangle mesh shape passes
 
-(: get-triangle-shape-passes (-> shape passes))
-(define (get-triangle-shape-passes s)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
-  (define-values (start stop step)
-    (if back?
-        (values 2 -1 -1)
-        (values 0 3 1)))
-  
-  (define verts (vector v1 v2 v3))
+(define (get-triangle-mesh-shape-passes s)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+  (define n (vector-length vtxs))
   
   (define mat-struct-size (program-code-vao-size polygon-mat-program-code))
-  (define mat-data (make-bytes (* 3 mat-struct-size)))
-  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
-    (define vert (vector-ref verts j))
+  (define mat-data (make-bytes (* n mat-struct-size)))
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
+    (define vert (vector-ref vtxs j))
     (define v (vtx-position vert))
     (define n (vtx-normal vert))
     (define m (vtx-material vert))
@@ -316,9 +334,9 @@ code
       i))
   
   (define opaq-struct-size (program-code-vao-size polygon-opaq-program-code))
-  (define draw-data (make-bytes (* 3 opaq-struct-size)))
-  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range start stop step)])
-    (define vert (vector-ref verts j))
+  (define draw-data (make-bytes (* n opaq-struct-size)))
+  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
+    (define vert (vector-ref vtxs j))
     (define v (vtx-position vert))
     (define c (vtx-color vert))
     (define e (vtx-emitted vert))
@@ -329,19 +347,23 @@ code
            [i  (serialize-material-reflectances/bytes draw-data i m)])
       i))
   
-  (if (or (< (flv4-ref (vtx-color v1) 3) 1.0)
-          (< (flv4-ref (vtx-color v2) 3) 1.0)
-          (< (flv4-ref (vtx-color v3) 3) 1.0))
+  (define transparent?
+    (for/or : Boolean ([i  (in-range n)])
+      (< (flv4-ref (vtx-color (vector-ref vtxs i)) 3) 1.0)))
+  
+  (define js (if back? (vector-reverse idxs) idxs))
+  
+  (if transparent?
       (passes
        #()
        #()
        #()
-       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices 3 mat-data #f)))
-       (vector (shape-params polygon-tran-program empty #f GL_TRIANGLES (vertices 3 draw-data #f))))
+       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices n mat-data js)))
+       (vector (shape-params polygon-tran-program empty #f GL_TRIANGLES (vertices n draw-data js))))
       (passes
        #()
-       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices 3 mat-data #f)))
-       (vector (shape-params polygon-opaq-program empty #f GL_TRIANGLES (vertices 3 draw-data #f)))
+       (vector (shape-params polygon-mat-program empty #f GL_TRIANGLES (vertices n mat-data js)))
+       (vector (shape-params polygon-opaq-program empty #f GL_TRIANGLES (vertices n draw-data js)))
        #()
        #())))
 
@@ -351,8 +373,8 @@ code
 (: get-rectangle-shape-passes (-> shape passes))
 (define (get-rectangle-shape-passes s)
   (let ([s  (assert s rectangle-shape?)])
-    (define ss (rectangle-shape->triangle-shapes s))
-    (define ps (map get-triangle-shape-passes ss))
+    (define ss (rectangle-shape->triangle-mesh-shapes s))
+    (define ps (map get-triangle-mesh-shape-passes ss))
     (passes
      #()
      (apply vector-append (map passes-opaque-material ps))
@@ -363,12 +385,23 @@ code
 ;; ===================================================================================================
 ;; Bounding box
 
-(: get-triangle-shape-bbox (-> shape FlAffine3 bbox))
-(define (get-triangle-shape-bbox s t)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
-  (bbox (flrect3 (flt3apply/pos t (vtx-position v1))
-                 (flt3apply/pos t (vtx-position v2))
-                 (flt3apply/pos t (vtx-position v3)))
+(: get-triangle-mesh-shape-bbox (-> shape FlAffine3 bbox))
+(define (get-triangle-mesh-shape-bbox s t)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+  (define-values (xmin xmax ymin ymax zmin zmax)
+    (for/fold ([xmin : Flonum  +inf.0]
+               [xmax : Flonum  -inf.0]
+               [ymin : Flonum  +inf.0]
+               [ymax : Flonum  -inf.0]
+               [zmin : Flonum  +inf.0]
+               [zmax : Flonum  -inf.0])
+              ([v  (in-vector vtxs)])
+      (call/flv3-values (flt3apply/pos t (vtx-position v))
+        (λ (x y z)
+          (values (min x xmin) (max x xmax)
+                  (min y ymin) (max y ymax)
+                  (min z zmin) (max z zmax))))))
+  (bbox (flrect3 (flv3 xmin ymin zmin) (flv3 xmax ymax zmax))
         0.0))
 
 (: get-rectangle-shape-bbox (-> shape FlAffine3 bbox))
@@ -380,9 +413,9 @@ code
 ;; ===================================================================================================
 ;; Transform
 
-(: triangle-shape-transform (-> shape FlAffine3 triangle-shape))
-(define (triangle-shape-transform s t)
-  (match-define (triangle-shape _ _ v1 v2 v3 back?) s)
+(: triangle-mesh-shape-transform (-> shape FlAffine3 triangle-mesh-shape))
+(define (triangle-mesh-shape-transform s t)
+  (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
   
   (define consistent? (flt3consistent? t))
   (define new-back? (if consistent? back? (not back?)))
@@ -391,7 +424,7 @@ code
   (define (transform-vtx vert)
     (define v (vtx-position vert))
     (define n (vtx-normal vert))
-    (vtx-set-vecs
+    (set-vtx-vecs
      vert
      (flt3apply/pos t v)
      (let ([n  (flt3apply/norm t n)])
@@ -399,37 +432,38 @@ code
            (if n n +z-flv3)
            (if n (flv3neg n) +z-flv3)))))
   
-  (make-triangle-shape (transform-vtx v1) (transform-vtx v2) (transform-vtx v3) new-back?))
+  (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions
+                       (vector-map transform-vtx vtxs) idxs new-back?))
 
-(: rectangle-shape-deep-transform (-> shape FlAffine3 (Listof triangle-shape)))
+(: rectangle-shape-deep-transform (-> shape FlAffine3 (Listof triangle-mesh-shape)))
 (define (rectangle-shape-deep-transform s t)
   (let ([s  (assert s rectangle-shape?)])
-    (map (λ ([s : triangle-shape])
-           (triangle-shape-transform s t))
-         (rectangle-shape->triangle-shapes s))))
+    (map (λ ([s : triangle-mesh-shape])
+           (triangle-mesh-shape-transform s t))
+         (rectangle-shape->triangle-mesh-shapes s))))
 
 ;; ===================================================================================================
 ;; Conversions
 
-(: rectangle-shape->triangle-shapes (-> rectangle-shape (Listof triangle-shape)))
-(define (rectangle-shape->triangle-shapes a)
+(: rectangle-shape->triangle-mesh-shapes (-> rectangle-shape (Listof triangle-mesh-shape)))
+(define (rectangle-shape->triangle-mesh-shapes a)
   (match-define (rectangle-shape _ _ b c e m inside?) a)
   (define-values (v1 v5 v4 v8 v2 v6 v3 v7) (flrect3-corners b))
   
-  (: do-make-quad-shapes (-> FlV3 FlV3 FlV3 FlV3 FlV3 (List triangle-shape triangle-shape)))
-  (define (do-make-quad-shapes v1 v2 v3 v4 n)
-    (make-quad-shapes (vtx v1 n c e m)
-                      (vtx v2 n c e m)
-                      (vtx v3 n c e m)
-                      (vtx v4 n c e m)
-                      inside?))
-  (append*
-   (list (do-make-quad-shapes v4 v3 v2 v1 -z-flv3)
-         (do-make-quad-shapes v5 v6 v7 v8 +z-flv3)
-         (do-make-quad-shapes v1 v2 v6 v5 -y-flv3)
-         (do-make-quad-shapes v3 v4 v8 v7 +y-flv3)
-         (do-make-quad-shapes v4 v1 v5 v8 -x-flv3)
-         (do-make-quad-shapes v2 v3 v7 v6 +x-flv3))))
+  (: do-make-quad-shape (-> FlV3 FlV3 FlV3 FlV3 FlV3 triangle-mesh-shape))
+  (define (do-make-quad-shape v1 v2 v3 v4 n)
+    (make-quad-shape (vtx v1 n c e m)
+                     (vtx v2 n c e m)
+                     (vtx v3 n c e m)
+                     (vtx v4 n c e m)
+                     inside?))
+  
+  (list (do-make-quad-shape v4 v3 v2 v1 -z-flv3)
+        (do-make-quad-shape v5 v6 v7 v8 +z-flv3)
+        (do-make-quad-shape v1 v2 v6 v5 -y-flv3)
+        (do-make-quad-shape v3 v4 v8 v7 +y-flv3)
+        (do-make-quad-shape v4 v1 v5 v8 -x-flv3)
+        (do-make-quad-shape v2 v3 v7 v6 +x-flv3)))
 
 ;; ===================================================================================================
 ;; Ray intersection
@@ -466,30 +500,42 @@ code
                 [else
                  (/ (flv3dot e2 q) det)]))]))])))
 
-(: triangle-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
-                                    (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
-(define (triangle-shape-ray-intersect s o d max-time)
-  (let ([s  (assert s triangle-shape?)])
-    (define v1 (vtx-position (triangle-shape-vtx1 s)))
-    (define v2 (vtx-position (triangle-shape-vtx2 s)))
-    (define v3 (vtx-position (triangle-shape-vtx3 s)))
-    (define back? (triangle-shape-back? s))
-    (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
-      (define time (triangle-intersect-time v1 v2 v3 o d))
-      (cond [(and time (>= time 0.0) (<= time max-time))
-             (define data
-               (delay (define p (flv3fma d time o))
-                      ;; No need to flip normal because vertices are already reversed
-                      (define n (flv3triangle-normal v1 v2 v3))
-                      (trace-data p n empty)))
-             (values time data)]
-            [else
-             (values #f #f)]))))
+(: triangle-mesh-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
+                                         (Values (U #f Nonnegative-Flonum)
+                                                 (U #f (Promise trace-data)))))
+(define (triangle-mesh-shape-ray-intersect s o d max-time)
+  (with-asserts ([s  triangle-mesh-shape?])
+    (define vtxs (triangle-mesh-shape-vtxs s))
+    (define idxs (triangle-mesh-shape-idxs s))
+    (define back? (triangle-mesh-shape-back? s))
+    (define-values (time v1 v2 v3)
+      (for/fold ([best-time : (U #f Nonnegative-Flonum)  #f]
+                 [best-v1 : FlV3  zero-flv3]
+                 [best-v2 : FlV3  zero-flv3]
+                 [best-v3 : FlV3  zero-flv3])
+                ([i  (in-range 0 (vector-length idxs) 3)])
+        (define v1 (vtx-position (vector-ref vtxs (vector-ref idxs i))))
+        (define v2 (vtx-position (vector-ref vtxs (vector-ref idxs (+ i 1)))))
+        (define v3 (vtx-position (vector-ref vtxs (vector-ref idxs (+ i 2)))))
+        (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
+          (define time (triangle-intersect-time v1 v2 v3 o d))
+          (if (and time (>= time 0.0) (<= time max-time) (or (not best-time) (< time best-time)))
+              (values time v1 v2 v3)
+              (values best-time best-v1 best-v2 best-v3)))))
+    (cond [time
+           (define data
+             (delay (define p (flv3fma d time o))
+                    ;; No need to flip normal because vertices are already reversed
+                    (define n (flv3triangle-normal v1 v2 v3))
+                    (trace-data p n empty)))
+           (values time data)]
+          [else
+           (values #f #f)])))
 
 (: rectangle-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
                                      (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
 (define (rectangle-shape-ray-intersect s v dv max-time)
-  (let ([s  (assert s rectangle-shape?)])
+  (with-asserts ([s  rectangle-shape?])
     (define b (rectangle-shape-axial-rect s))
     (define inside? (rectangle-shape-inside? s))
     (define-values (tmin tmax)
@@ -514,16 +560,16 @@ code
 
 ;; ===================================================================================================
 
-(define triangle-shape-functions
+(define triangle-mesh-shape-functions
   (shape-functions
-   set-triangle-shape-color
-   set-triangle-shape-emitted
-   set-triangle-shape-material
-   get-triangle-shape-passes
-   (λ (s kind t) (and (eq? kind 'visible) (get-triangle-shape-bbox s t)))
-   triangle-shape-transform
-   (λ (s t) (list (triangle-shape-transform s t)))
-   triangle-shape-ray-intersect))
+   set-triangle-mesh-shape-color
+   set-triangle-mesh-shape-emitted
+   set-triangle-mesh-shape-material
+   get-triangle-mesh-shape-passes
+   (λ (s kind t) (and (eq? kind 'visible) (get-triangle-mesh-shape-bbox s t)))
+   triangle-mesh-shape-transform
+   (λ (s t) (list (triangle-mesh-shape-transform s t)))
+   triangle-mesh-shape-ray-intersect))
 
 (define rectangle-shape-functions
   (shape-functions

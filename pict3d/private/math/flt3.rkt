@@ -13,7 +13,11 @@
          "../utils.rkt"
          "../ffi.rkt")
 
-(provide (all-defined-out))
+(provide (except-out
+          (all-defined-out)
+          ;; These aren't proper abstractions because they don't rename arguments
+          flaffine3
+          flprojective3))
 
 ;; ===================================================================================================
 ;; Affine transforms
@@ -32,8 +36,8 @@
                    [inverse : FlVector]
                    [determinant : Flonum]
                    [1/determinant : Flonum]
-                   [forward-data-ptr : (U #f CPointer)]
-                   [inverse-data-ptr : (U #f CPointer)])
+                   [forward-data-vec : (U #f F32Vector)]
+                   [inverse-data-vec : (U #f F32Vector)])
   #:transparent
   #:mutable
   #:property prop:custom-print-quotable 'never
@@ -64,8 +68,8 @@
                        [inverse : FlVector]
                        [determinant : Flonum]
                        [1/determinant : Flonum]
-                       [forward-data-ptr : (U #f CPointer)]
-                       [inverse-data-ptr : (U #f CPointer)])
+                       [forward-data-vec : (U #f F32Vector)]
+                       [inverse-data-vec : (U #f F32Vector)])
   #:transparent
   #:mutable
   #:property prop:custom-print-quotable 'never
@@ -154,8 +158,7 @@
              1.0 0.0 0.0 0.0
              0.0 1.0 0.0 0.0
              0.0 0.0 1.0 0.0
-             1.0
-             1.0))
+             1.0 1.0))
 
 ;(: identity-flaffine3? (-> Any Boolean : FlAffine3))
 (define (identity-flaffine3? t)
@@ -208,8 +211,7 @@
                  0.0 1.0 0.0 0.0
                  0.0 0.0 1.0 0.0
                  0.0 0.0 0.0 1.0
-                 1.0
-                 1.0))
+                 1.0 1.0))
 
 ;(: identity-flprojective? (-> Any Boolean : FlProjective3))
 (define (identity-flprojective? t)
@@ -248,34 +250,70 @@
             (λ (m02 m12 m22)
               (call/flv3-values p
                 (λ (m03 m13 m23)
-                  (define-values (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
-                    (affine3-inverse m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23))
-                  (define det
-                    (affine3-determinant m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23))
-                  (flaffine3 m00 m01 m02 m03
-                             m10 m11 m12 m13
-                             m20 m21 m22 m23
-                             n00 n01 n02 n03
-                             n10 n11 n12 n13
-                             n20 n21 n22 n23
-                             det
-                             (/ 1.0 det)))))))))))
+                  (call/affine3-inverse*det m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
+                    (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 det)
+                      (flaffine3 m00 m01 m02 m03
+                                 m10 m11 m12 m13
+                                 m20 m21 m22 m23
+                                 (/ n00 det) (/ n01 det) (/ n02 det) (/ n03 det)
+                                 (/ n10 det) (/ n11 det) (/ n12 det) (/ n13 det)
+                                 (/ n20 det) (/ n21 det) (/ n22 det) (/ n23 det)
+                                 det (/ det)))))))))))))
 
 ;; ===================================================================================================
 ;; Transformation constructors
 
-(: scale-flt3 (-> FlV3 FlAffine3))
+(: scale-x-flt3 (-> Flonum FlAffine3))
+(define (scale-x-flt3 v)
+  (flaffine3   v   0.0  0.0  0.0
+              0.0  1.0  0.0  0.0
+              0.0  0.0  1.0  0.0
+             (/ v) 0.0  0.0  0.0
+              0.0  1.0  0.0  0.0
+              0.0  0.0  1.0  0.0
+              v (/ v)))
+
+(: scale-y-flt3 (-> Flonum FlAffine3))
+(define (scale-y-flt3 v)
+  (flaffine3 1.0  0.0  0.0  0.0
+             0.0   v  0.0  0.0
+             0.0  0.0  1.0  0.0
+             1.0  0.0  0.0  0.0
+             0.0 (/ v) 0.0  0.0
+             0.0  0.0  1.0  0.0
+             v (/ v)))
+
+(: scale-z-flt3 (-> Flonum FlAffine3))
+(define (scale-z-flt3 v)
+  (flaffine3 1.0  0.0  0.0  0.0
+             0.0  1.0  0.0  0.0
+             0.0  0.0   v   0.0
+             1.0  0.0  0.0  0.0
+             0.0  1.0  0.0  0.0
+             0.0  0.0 (/ v) 0.0
+             v (/ v)))
+
+(: scale-flt3 (-> (U Flonum FlV3) FlAffine3))
 (define (scale-flt3 v)
-  (call/flv3-values v
-    (λ (x y z)
-      (define det (* x y z))
-      (flaffine3  x   0.0  0.0  0.0
-                 0.0   y   0.0  0.0
-                 0.0  0.0   z   0.0
-                (/ x) 0.0  0.0  0.0
-                 0.0 (/ y) 0.0  0.0
-                 0.0  0.0 (/ z) 0.0
-                 det (/ det)))))
+  (if (flonum? v)
+      (let ([det  (* v v v)])
+        (flaffine3   v   0.0  0.0  0.0
+                    0.0   v   0.0  0.0
+                    0.0  0.0   v   0.0
+                   (/ v) 0.0  0.0  0.0
+                    0.0 (/ v) 0.0  0.0
+                    0.0  0.0 (/ v) 0.0
+                    det (/ det)))
+      (call/flv3-values v
+        (λ (x y z)
+          (define det (* x y z))
+          (flaffine3   x   0.0  0.0  0.0
+                      0.0   y   0.0  0.0
+                      0.0  0.0   z   0.0
+                     (/ x) 0.0  0.0  0.0
+                      0.0 (/ y) 0.0  0.0
+                      0.0  0.0 (/ z) 0.0
+                      det (/ det))))))
 
 (: rotate-x-flt3 (-> Flonum FlAffine3))
 (define (rotate-x-flt3 rho)
@@ -328,13 +366,43 @@
                  (+ (* t x z) (* y s))  (- (* t y z) (* x s))  (+ (* t z z) c)        0.0
                  1.0 1.0))))
 
-(: translate-flt3 (-> FlV3 FlAffine3))
-(define (translate-flt3 v)
+(: move-x-flt3 (-> Flonum FlAffine3))
+(define (move-x-flt3 v)
+  (flaffine3 1.0 0.0 0.0   v
+             0.0 1.0 0.0  0.0
+             0.0 0.0 1.0  0.0
+             1.0 0.0 0.0 (- v)
+             0.0 1.0 0.0  0.0
+             0.0 0.0 1.0  0.0
+             1.0 1.0))
+
+(: move-y-flt3 (-> Flonum FlAffine3))
+(define (move-y-flt3 v)
+  (flaffine3 1.0 0.0 0.0  0.0
+             0.0 1.0 0.0   v
+             0.0 0.0 1.0  0.0
+             1.0 0.0 0.0  0.0
+             0.0 1.0 0.0 (- v)
+             0.0 0.0 1.0  0.0
+             1.0 1.0))
+
+(: move-z-flt3 (-> Flonum FlAffine3))
+(define (move-z-flt3 v)
+  (flaffine3 1.0 0.0 0.0  0.0
+             0.0 1.0 0.0  0.0
+             0.0 0.0 1.0   v
+             1.0 0.0 0.0  0.0
+             0.0 1.0 0.0  0.0
+             0.0 0.0 1.0 (- v)
+             1.0 1.0))
+
+(: move-flt3 (-> FlV3 FlAffine3))
+(define (move-flt3 v)
   (call/flv3-values v
     (λ (x y z)
-      (flaffine3 1.0 0.0 0.0  x
-                 0.0 1.0 0.0  y
-                 0.0 0.0 1.0  z
+      (flaffine3 1.0 0.0 0.0   x
+                 0.0 1.0 0.0   y
+                 0.0 0.0 1.0   z
                  1.0 0.0 0.0 (- x)
                  0.0 1.0 0.0 (- y)
                  0.0 0.0 1.0 (- z)
@@ -469,8 +537,8 @@
    (FlAffine3-forward t)
    (flaffine3-1/determinant t)
    (flaffine3-determinant t)
-   (FlAffine3-inverse-data-ptr t)
-   (FlAffine3-forward-data-ptr t)))
+   (FlAffine3-inverse-data-vec t)
+   (FlAffine3-forward-data-vec t)))
 
 (: flprojective3-inverse (-> FlProjective3 FlProjective3))
 (define (flprojective3-inverse t)
@@ -479,8 +547,8 @@
    (FlProjective3-forward t)
    (flprojective3-1/determinant t)
    (flprojective3-determinant t)
-   (FlProjective3-inverse-data-ptr t)
-   (FlProjective3-forward-data-ptr t)))
+   (FlProjective3-inverse-data-vec t)
+   (FlProjective3-forward-data-vec t)))
 
 (: flt3inverse (case-> (-> FlAffine3      FlAffine3)
                        (-> FlProjective3  FlProjective3)
@@ -499,10 +567,12 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (call/flv4-values v
         (λ (s0 s1 s2 s3)
-          (define-values (x y z w)
-            (affine3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-                           s0 s1 s2 s3))
-          (flv4 x y z w))))))
+          (call/affine3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            s0 s1 s2 s3
+            flv4))))))
 
 (: flprojective3-apply (-> FlProjective3 FlV4 FlV4))
 (define (flprojective3-apply t v)
@@ -510,10 +580,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
       (call/flv4-values v
         (λ (s0 s1 s2 s3)
-          (define-values (x y z w)
-            (projective3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                               s0 s1 s2 s3))
-          (flv4 x y z w))))))
+          (call/projective3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            m30 m31 m32 m33
+            s0 s1 s2 s3
+            flv4))))))
 
 (: flt3apply (-> FlTransform3 FlV4 FlV4))
 (define (flt3apply t v)
@@ -530,11 +603,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z _)
-            (affine3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-                           s0 s1 s2 1.0))
-          ;; No need to divide because w' = 1.0
-          (flv3 x y z))))))
+          (call/affine3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            s0 s1 s2 1.0
+            ;; No need to divide because w' = 1
+            (λ (x y z _) (flv3 x y z))))))))
 
 (: flprojective3-apply/pos (-> FlProjective3 FlV3 FlV3))
 (define (flprojective3-apply/pos t v)
@@ -542,10 +617,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z w)
-            (projective3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                               s0 s1 s2 1.0))
-          (flv3 (/ x w) (/ y w) (/ z w)))))))
+          (call/projective3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            m30 m31 m32 m33
+            s0 s1 s2 1.0
+            (λ (x y z w) (flv3 (/ x w) (/ y w) (/ z w)))))))))
 
 (: flt3apply/pos (-> FlTransform3 FlV3 FlV3))
 (define (flt3apply/pos t v)
@@ -562,10 +640,12 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z _)
-            (affine3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-                           s0 s1 s2 0.0))
-          (flv3 x y z))))))
+          (call/affine3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            s0 s1 s2 0.0
+            (λ (x y z _) (flv3 x y z))))))))
 
 (: flprojective3-apply/dir (-> FlProjective3 FlV3 FlV3))
 (define (flprojective3-apply/dir t v)
@@ -573,10 +653,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z w)
-            (projective3-apply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                               s0 s1 s2 0.0))
-          (flv3 x y z))))))
+          (call/projective3-apply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            m30 m31 m32 m33
+            s0 s1 s2 0.0
+            (λ (x y z _) (flv3 x y z))))))))
 
 (: flt3apply/dir (-> FlTransform3 FlV3 FlV3))
 (define (flt3apply/dir t v)
@@ -593,10 +676,12 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z _)
-            (affine3-tapply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-                            s0 s1 s2 0.0))
-          (flnorm3 x y z))))))
+          (call/affine3-tapply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            s0 s1 s2 0.0
+            (λ (x y z _) (flnorm3 x y z))))))))
 
 (: flprojective3-apply/norm (-> FlProjective3 FlV3 (U #f FlV3)))
 (define (flprojective3-apply/norm t v)
@@ -604,10 +689,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
       (call/flv3-values v
         (λ (s0 s1 s2)
-          (define-values (x y z _)
-            (projective3-tapply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                                s0 s1 s2 0.0))
-          (flnorm3 x y z))))))
+          (call/projective3-tapply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            m30 m31 m32 m33
+            s0 s1 s2 0.0
+            (λ (x y z _) (flnorm3 x y z))))))))
 
 (: flt3apply/norm (-> FlTransform3 FlV3 (U #f FlV3)))
 (define (flt3apply/norm t v)
@@ -624,10 +712,12 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
       (call/flplane3-values p
         (λ (s0 s1 s2 s3)
-          (define-values (a b c d)
-            (affine3-tapply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-                            s0 s1 s2 s3))
-          (make-flplane3 a b c d))))))
+          (call/affine3-tapply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            s0 s1 s2 s3
+            make-flplane3))))))
 
 (: flprojective3-apply/plane (-> FlProjective3 FlPlane3 (U #f FlPlane3)))
 (define (flprojective3-apply/plane t p)
@@ -635,10 +725,13 @@
     (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
       (call/flplane3-values p
         (λ (s0 s1 s2 s3)
-          (define-values (a b c d)
-            (projective3-tapply m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                                s0 s1 s2 s3))
-          (make-flplane3 a b c d))))))
+          (call/projective3-tapply
+            m00 m01 m02 m03
+            m10 m11 m12 m13
+            m20 m21 m22 m23
+            m30 m31 m32 m33
+            s0 s1 s2 s3
+            make-flplane3))))))
 
 (: flt3apply/plane (-> FlTransform3 FlPlane3 (U #f FlPlane3)))
 (define (flt3apply/plane t p)
@@ -651,45 +744,85 @@
 
 (: flaffine3-compose (-> FlAffine3 FlAffine3 FlAffine3))
 (define (flaffine3-compose t1 t2)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-    (call/flaffine3-forward t1
-      (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23)
-        (call/flaffine3-forward t2
-          (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
-            (affine3-compose s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23
-                             n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23))))))
-  (define-values (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
-    (call/flaffine3-inverse t1
-      (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23)
-        (call/flaffine3-inverse t2
-          (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
-            (affine3-compose n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23
-                             s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23))))))
-  (flaffine3 m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
-             n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23
-             (* (flaffine3-determinant t1) (flaffine3-determinant t2))
-             (* (flaffine3-1/determinant t1) (flaffine3-1/determinant t2))))
+  (call/flaffine3-forward t1
+    (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23)
+      (call/flaffine3-forward t2
+        (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
+          (call/affine3-compose
+            s00 s01 s02 s03
+            s10 s11 s12 s13
+            s20 s21 s22 s23
+            n00 n01 n02 n03
+            n10 n11 n12 n13
+            n20 n21 n22 n23
+            (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
+              (call/flaffine3-inverse t1
+                (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23)
+                  (call/flaffine3-inverse t2
+                    (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
+                      (call/affine3-compose
+                        n00 n01 n02 n03
+                        n10 n11 n12 n13
+                        n20 n21 n22 n23
+                        s00 s01 s02 s03
+                        s10 s11 s12 s13
+                        s20 s21 s22 s23
+                        (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23)
+                          (flaffine3
+                           m00 m01 m02 m03
+                           m10 m11 m12 m13
+                           m20 m21 m22 m23
+                           n00 n01 n02 n03
+                           n10 n11 n12 n13
+                           n20 n21 n22 n23
+                           (* (flaffine3-determinant t1)
+                              (flaffine3-determinant t2))
+                           (* (flaffine3-1/determinant t1)
+                              (flaffine3-1/determinant t2))))))))))))))))
 
 (: flprojective3-compose (-> FlProjective3 FlProjective3 FlProjective3))
 (define (flprojective3-compose t1 t2)
-  (define-values (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
-    (call/flprojective3-forward t1
-      (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33)
-        (call/flprojective3-forward t2
-          (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
-            (projective3-compose s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33
-                                 n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33))))))
-  (define-values (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
-    (call/flprojective3-inverse t1
-      (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33)
-        (call/flprojective3-inverse t2
-          (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
-            (projective3-compose n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33
-                                 s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33))))))
-  (flprojective3 m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33
-                 n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33
-                 (* (flprojective3-determinant t1) (flprojective3-determinant t2))
-                 (* (flprojective3-1/determinant t1) (flprojective3-1/determinant t2))))
+  (call/flprojective3-forward t1
+    (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33)
+      (call/flprojective3-forward t2
+        (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
+          (call/projective3-compose
+            s00 s01 s02 s03
+            s10 s11 s12 s13
+            s20 s21 s22 s23
+            s30 s31 s32 s33
+            n00 n01 n02 n03
+            n10 n11 n12 n13
+            n20 n21 n22 n23
+            n30 n31 n32 n33
+            (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23 m30 m31 m32 m33)
+              (call/flprojective3-inverse t1
+                (λ (s00 s01 s02 s03 s10 s11 s12 s13 s20 s21 s22 s23 s30 s31 s32 s33)
+                  (call/flprojective3-inverse t2
+                    (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
+                      (call/projective3-compose
+                        n00 n01 n02 n03
+                        n10 n11 n12 n13
+                        n20 n21 n22 n23
+                        n30 n31 n32 n33
+                        s00 s01 s02 s03
+                        s10 s11 s12 s13
+                        s20 s21 s22 s23
+                        s30 s31 s32 s33
+                        (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 n30 n31 n32 n33)
+                          (flprojective3
+                           m00 m01 m02 m03
+                           m10 m11 m12 m13
+                           m20 m21 m22 m23
+                           m30 m31 m32 m33
+                           n00 n01 n02 n03
+                           n10 n11 n12 n13
+                           n20 n21 n22 n23
+                           n30 n31 n32 n33
+                           (* (flprojective3-determinant t1)
+                              (flprojective3-determinant t2))
+                           (* (flprojective3-1/determinant t1)
+                              (flprojective3-1/determinant t2))))))))))))))))
 
 (: flt3compose (case-> (-> FlAffine3     FlAffine3     FlAffine3)
                        (-> FlTransform3  FlProjective3 FlProjective3)
@@ -765,38 +898,30 @@
 ;; ===================================================================================================
 ;; Serialization
 
-(: flaffine3-forward-data (-> FlAffine3 CPointer))
+(: flaffine3-forward-data (-> FlAffine3 F32Vector))
 (define (flaffine3-forward-data t)
-  (define ptr (FlAffine3-forward-data-ptr t))
-  (if ptr
-      ptr
-      (let ([ptr  (flv12->f32vector-ptr (FlAffine3-forward t))])
-        (set-FlAffine3-forward-data-ptr! t ptr)
-        ptr)))
+  (define vec (FlAffine3-forward-data-vec t))
+  (if vec vec (let ([vec  (flv12->f32vector (FlAffine3-forward t))])
+                (set-FlAffine3-forward-data-vec! t vec)
+                vec)))
 
-(: flaffine3-inverse-data (-> FlAffine3 CPointer))
+(: flaffine3-inverse-data (-> FlAffine3 F32Vector))
 (define (flaffine3-inverse-data t)
-  (define ptr (FlAffine3-inverse-data-ptr t))
-  (if ptr
-      ptr
-      (let ([ptr  (flv12->f32vector-ptr (FlAffine3-inverse t))])
-        (set-FlAffine3-inverse-data-ptr! t ptr)
-        ptr)))
+  (define vec (FlAffine3-inverse-data-vec t))
+  (if vec vec (let ([vec  (flv12->f32vector (FlAffine3-inverse t))])
+                (set-FlAffine3-inverse-data-vec! t vec)
+                vec)))
 
-(: flprojective3-forward-data (-> FlProjective3 CPointer))
+(: flprojective3-forward-data (-> FlProjective3 F32Vector))
 (define (flprojective3-forward-data t)
-  (define ptr (FlProjective3-forward-data-ptr t))
-  (if ptr
-      ptr
-      (let ([ptr  (flv16->f32vector-ptr (FlProjective3-forward t))])
-        (set-FlProjective3-forward-data-ptr! t ptr)
-        ptr)))
+  (define vec (FlProjective3-forward-data-vec t))
+  (if vec vec (let ([vec  (flv16->f32vector (FlProjective3-forward t))])
+                (set-FlProjective3-forward-data-vec! t vec)
+                vec)))
 
-(: flprojective3-inverse-data (-> FlProjective3 CPointer))
+(: flprojective3-inverse-data (-> FlProjective3 F32Vector))
 (define (flprojective3-inverse-data t)
-  (define ptr (FlProjective3-inverse-data-ptr t))
-  (if ptr
-      ptr
-      (let ([ptr  (flv16->f32vector-ptr (FlProjective3-inverse t))])
-        (set-FlProjective3-inverse-data-ptr! t ptr)
-        ptr)))
+  (define vec (FlProjective3-inverse-data-vec t))
+  (if vec vec (let ([vec  (flv16->f32vector (FlProjective3-inverse t))])
+                (set-FlProjective3-inverse-data-vec! t vec)
+                vec)))

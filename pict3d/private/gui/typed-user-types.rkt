@@ -211,11 +211,11 @@
 
 (: flv4->rgba (-> FlV4 RGBA))
 (define (flv4->rgba c)
-  (RGBA (FlV4-flvector c)))
+  (if (rgba? c) c (RGBA (FlV4-flvector c))))
 
 (: flv4->emitted (-> FlV4 Emitted))
 (define (flv4->emitted e)
-  (Emitted (FlV4-flvector e)))
+  (if (emitted? e) e (Emitted (FlV4-flvector e))))
 
 (define-type User-Color (U String Real Color-Vector (Instance Color%)))
 
@@ -345,11 +345,11 @@
 
 (: flv3->pos (-> FlV3 Pos))
 (define (flv3->pos v)
-  (Pos (FlV3-flvector v)))
+  (if (pos? v) v (Pos (FlV3-flvector v))))
 
 (: flv3->dir (-> FlV3 Dir))
 (define (flv3->dir v)
-  (Dir (FlV3-flvector v)))
+  (if (dir? v) v (Dir (FlV3-flvector v))))
 
 (define origin (flv3->pos zero-flv3))
 
@@ -586,12 +586,12 @@
 
 (: affine-equal? (-> Affine Affine (-> Any Any Boolean) Boolean))
 (define (affine-equal? t1 t2 _)
-  (equal? (call/flaffine3-forward t1 flvector)
-          (call/flaffine3-forward t2 flvector)))
+  (equal? (FlAffine3-forward t1)
+          (FlAffine3-forward t2)))
 
 (: affine-hash (-> Affine (-> Any Integer) Integer))
 (define (affine-hash t hash)
-  (hash (call/flaffine3-forward t flvector)))
+  (hash (FlAffine3-forward t)))
 
 (struct Affine FlAffine3 ()
   #:transparent
@@ -604,12 +604,14 @@
 
 (: flaffine3->affine (-> FlAffine3 Affine))
 (define (flaffine3->affine t)
-  (Affine (FlAffine3-forward t)
-          (FlAffine3-inverse t)
-          (FlAffine3-determinant t)
-          (FlAffine3-1/determinant t)
-          (FlAffine3-forward-data-ptr t)
-          (FlAffine3-inverse-data-ptr t)))
+  (if (affine? t)
+      t
+      (Affine (FlAffine3-forward t)
+              (FlAffine3-inverse t)
+              (FlAffine3-determinant t)
+              (FlAffine3-1/determinant t)
+              (FlAffine3-forward-data-vec t)
+              (FlAffine3-inverse-data-vec t))))
 
 (define identity-affine (flaffine3->affine identity-flaffine3))
 

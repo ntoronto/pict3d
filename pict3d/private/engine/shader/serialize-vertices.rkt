@@ -168,5 +168,5 @@ Turns out the former is about 10% faster.
                 "expected buffer with at least 48 bytes left; given length-~a bytes at ~a"
                 (bytes-length bs) i)]
         [else
-         (memcpy (u8vector->cpointer bs) i (flaffine3-forward-data t) 48)
+         (memcpy (u8vector->cpointer bs) i (f32vector->cpointer (flaffine3-forward-data t)) 48)
          (unsafe-fx+ i 48)]))

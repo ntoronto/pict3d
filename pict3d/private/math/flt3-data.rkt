@@ -29,9 +29,10 @@
        (unsafe-flvector-ref vs 10)
        (unsafe-flvector-ref vs 11))))
 
-(: flv12->f32vector-ptr (-> FlVector CPointer))
-(define (flv12->f32vector-ptr vs)
-  (define ptr (f32vector->cpointer (make-f32vector 12)))
+(: flv12->f32vector (-> FlVector F32Vector))
+(define (flv12->f32vector vs)
+  (define vec (make-f32vector 12))
+  (define ptr (f32vector->cpointer vec))
   (call/flv12-values vs
     (λ (v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11)
       (ptr-set! ptr _float  0 v0)
@@ -46,7 +47,7 @@
       (ptr-set! ptr _float  9 v9)
       (ptr-set! ptr _float 10 v10)
       (ptr-set! ptr _float 11 v11)))
-  ptr)
+  vec)
 
 #;
 (: call/flv16-values (All (A) (-> FlVector
@@ -75,9 +76,10 @@
        (unsafe-flvector-ref vs 14)
        (unsafe-flvector-ref vs 15))))
 
-(: flv16->f32vector-ptr (-> FlVector CPointer))
-(define (flv16->f32vector-ptr vs)
-  (define ptr (f32vector->cpointer (make-f32vector 16)))
+(: flv16->f32vector (-> FlVector F32Vector))
+(define (flv16->f32vector vs)
+  (define vec (make-f32vector 16))
+  (define ptr (f32vector->cpointer vec))
   (call/flv16-values vs
     (λ (v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15)
       (ptr-set! ptr _float  0 v0)
@@ -96,4 +98,4 @@
       (ptr-set! ptr _float 13 v13)
       (ptr-set! ptr _float 14 v14)
       (ptr-set! ptr _float 15 v15)))
-  ptr)
+  vec)

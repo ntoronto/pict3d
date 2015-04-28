@@ -97,7 +97,7 @@
   #:transparent)
 
 ;; ===================================================================================================
-;; Shape types
+;; Shape types (most basic nonempty scenes)
 
 (struct shape-functions
   ([set-color : (-> shape FlV4 shape)]
@@ -111,7 +111,13 @@
                         (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data))))])
   #:transparent)
 
-(struct shape
+(struct Empty-Scene () #:transparent)
+(define empty-scene (Empty-Scene))
+(define-syntax empty-scene? (make-rename-transformer #'Empty-Scene?))
+
+(struct nonempty-scene () #:transparent)
+
+(struct shape nonempty-scene
   ([lazy-passes : (HashTable GL-Context passes)]
    [vtable : shape-functions]))
 
@@ -159,13 +165,7 @@
   ((shape-functions-ray-intersect (shape-vtable s)) s v dv max-time))
 
 ;; ===================================================================================================
-;; Scene types
-
-(struct Empty-Scene () #:transparent)
-(define empty-scene (Empty-Scene))
-(define-syntax empty-scene? (make-rename-transformer #'Empty-Scene?))
-
-(struct nonempty-scene () #:transparent)
+;; Other nonempty scene types
 
 (struct node-scene nonempty-scene
   ([visible-bbox : (U #f bbox)]
