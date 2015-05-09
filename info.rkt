@@ -24,6 +24,8 @@
                      "htdp-lib"  ; why?
                      "pict-doc"
                      "typed-racket-doc"
+                     "images-lib"
+                     "images-doc"
                      ))
 
 (define pkg-desc "Pict3D: Functional 3D Scenes")
