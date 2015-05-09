@@ -891,6 +891,14 @@
                        (surface-data-normal data))]
         [else  (values #f #f)]))
 
+(: trace/point-at (-> Pict3D Pos (U Pos Dir) (U #f Affine)))
+(define (trace/point-at p v1 to)
+  (define data (trace/data p v1 to))
+  (cond [(and data (surface-data-normal data))
+         (point-at (surface-data-pos data)
+                   (surface-data-normal data))]
+        [else #f]))
+
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)
   (define-values (v1 v2) (bounding-rectangle p))
@@ -926,6 +934,14 @@
   (cond [data  (values (surface-data-pos data)
                        (surface-data-normal data))]
         [else  (values #f #f)]))
+
+(: surface/point-at (->* [Pict3D Dir] [#:inside? Any] (U #f Affine)))
+(define (surface/point-at p dv #:inside? [inside? #f])
+  (define data (surface/data p dv #:inside? inside?))
+  (cond [(and data (surface-data-normal data))
+         (point-at (surface-data-pos data)
+                   (surface-data-normal data))]
+        [else #f]))
 
 ;; ===================================================================================================
 ;; Camera/view
