@@ -77,6 +77,27 @@ Turns out the former is about 10% faster.
              (ptr-set! bs-ptr _float 'abs (unsafe-fx+ i 12) w)
              (unsafe-fx+ i 16)))]))
 
+(: serialize-floats (-> Bytes Nonnegative-Fixnum FlVector Nonnegative-Fixnum Nonnegative-Fixnum))
+(define (serialize-floats bs i xs n)
+  (define m (unsafe-fx* 4 n))
+  (cond
+    [(< (flvector-length xs) n)
+     (error 'serialize-floats
+            "expected FlVector with at least ~a elements; given length-~a FlVector"
+            n (flvector-length xs))]
+    [(< (bytes-length bs) (unsafe-fx+ i m))
+     (error 'serialize-floats
+            "expected buffer with at least ~a bytes left; given length-~a bytes at ~a"
+            m (bytes-length bs) i)]
+    [else
+     (define bs-ptr (u8vector->cpointer bs))
+     (let loop ([j : Nonnegative-Fixnum  0])
+       (when (< j n)
+         (define x (unsafe-flvector-ref xs j))
+         (ptr-set! bs-ptr _float 'abs (unsafe-fx+ i (unsafe-fx* j 4)) x)
+         (loop (unsafe-fx+ j 1))))
+     (unsafe-fx+ i m)]))
+
 (: serialize-float/byte (-> Bytes Nonnegative-Fixnum Flonum Nonnegative-Fixnum))
 (define (serialize-float/byte bs i x)
   (bytes-set! bs i (flonum->byte x))
@@ -118,15 +139,17 @@ Turns out the former is about 10% faster.
                 "expected buffer with at least 3 bytes left; given length-~a bytes at ~a"
                 (bytes-length bs) i)]
         [else
-         (define s (if back? -1.0 1.0))
-         (define flonum->byte
-           (λ ([x : Flonum]) (max 0 (min 255 (+ 127 (exact-ceiling (* s x 127.0)))))))
          (call/flv3-values v
            (λ (x y z)
-             (unsafe-bytes-set! bs i (flonum->byte x))
-             (unsafe-bytes-set! bs (unsafe-fx+ i 1) (flonum->byte y))
-             (unsafe-bytes-set! bs (unsafe-fx+ i 2) (flonum->byte z))
-             (unsafe-fx+ i 3)))]))
+             (call/fl3normalize x y z
+               (λ ([x : Flonum] [y : Flonum] [z : Flonum])
+                 (define-values (b0 b1 b2)
+                   (cond [back?  (pack-normal (- x) (- y) (- z))]
+                         [else   (pack-normal x y z)]))
+                 (unsafe-bytes-set! bs i b0)
+                 (unsafe-bytes-set! bs (unsafe-fx+ i 1) b1)
+                 (unsafe-bytes-set! bs (unsafe-fx+ i 2) b2)
+                 (unsafe-fx+ i 3)))))]))
 
 (: serialize-material-reflectances/bytes (-> Bytes Nonnegative-Fixnum FlV4 Nonnegative-Fixnum))
 (define (serialize-material-reflectances/bytes bs i m)

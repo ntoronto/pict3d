@@ -10,63 +10,28 @@
          "../../memo.rkt"
          "../utils.rkt"
          "../shader.rkt"
+         "../types.rkt"
          "draw-pass.rkt"
          "types.rkt")
 
-(provide Engine-Debug-Pass
-         engine-debug-passes
-         current-engine-debug-pass
-         current-engine-bloom-buffer-size
-         current-engine-bloom-levels
-         draw-draw-passes)
+(provide draw-draw-passes)
 
-(define-type Engine-Debug-Pass
-  (U 'opaque-material
-     'opaque-depth
-     'opaque-diffuse
-     'opaque-specular
-     'opaque-rgba
-     'transparent-material
-     'transparent-depth
-     'transparent-diffuse
-     'transparent-specular
-     'transparent-rgbv
-     'transparent-alpha
-     'composite-rgba
-     'bloom
-     'no-bloom))
-
-(: engine-debug-passes (Listof Engine-Debug-Pass))
-;; These must be in order!
-(define engine-debug-passes
-  '(opaque-material
-    opaque-depth
-    opaque-diffuse
-    opaque-specular
-    opaque-rgba
-    transparent-material
-    transparent-depth
-    transparent-diffuse
-    transparent-specular
-    transparent-rgbv
-    transparent-alpha
-    composite-rgba
-    bloom
-    no-bloom))
-
-(: current-engine-debug-pass (Parameterof (U #f Engine-Debug-Pass)))
-(define current-engine-debug-pass (make-parameter #f))
-
-(: current-engine-bloom-buffer-size (Parameterof Positive-Integer))
-(define current-engine-bloom-buffer-size (make-parameter 256))
-
-(: current-engine-bloom-levels (Parameterof Positive-Integer))
-(define current-engine-bloom-levels (make-parameter 4))
-
-(: find-tail (All (A) (-> A (Listof A) (Listof A))))
-(define (find-tail x xs)
-  (let ([xs  (member x xs)])
-    (if xs xs (error 'find-tail "expected list containing ~e; given ~e" x xs))))
+;; These must be in the order the engine completes the passes in!
+(add-engine-debug-passes!
+ '(opaque-material
+   opaque-depth
+   opaque-diffuse
+   opaque-specular
+   opaque-rgba
+   transparent-material
+   transparent-depth
+   transparent-diffuse
+   transparent-specular
+   transparent-rgbv
+   transparent-alpha
+   composite-rgba
+   bloom
+   no-bloom))
 
 ;; ===================================================================================================
 
@@ -545,7 +510,7 @@ code
   (define face (if (flt3consistent? (flt3compose proj view)) 'back 'front))
   
   (define debug-pass (current-engine-debug-pass))
-  (define remaining-passes engine-debug-passes)
+  (define remaining-passes (get-engine-debug-passes))
   
   ;; -------------------------------------------------------------------------------------------------
   ;; Opaque material: Compute nearest opaque geometry depth, normals and specular powers
@@ -673,10 +638,10 @@ code
   (when (or (not debug-pass) (member debug-pass remaining-passes))
     (with-gl-framebuffer tran-fbo
       (glViewport 0 0 width height)
-      ;; Don't write to depth buffer, and only draw in front of the nearest z (we're using the opaque
-      ;; objects' depth buffer)
+      ;; Don't write to depth buffer, and only draw in front of or on the nearest z (we're using the
+      ;; opaque objects' depth buffer)
       (glDepthMask #f)
-      (glDepthFunc GL_GREATER)
+      (glDepthFunc GL_GEQUAL)
       ;; Set up for order-independent, weighted transparency w/out per-render-target blending
       (glBlendFuncSeparate GL_ONE GL_ONE GL_ONE GL_ONE)
       (glClear GL_COLOR_BUFFER_BIT)

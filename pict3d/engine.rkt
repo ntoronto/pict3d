@@ -1,9 +1,12 @@
 #lang racket/base
 
-(require "private/engine/draw.rkt")
+(require "private/engine.rkt")
 
-(provide Engine-Debug-Pass
-         engine-debug-passes
+(provide current-engine-bloom-buffer-size
+         current-engine-bloom-levels
+         get-engine-debug-passes
+         add-engine-debug-passes!
          current-engine-debug-pass
-         current-engine-bloom-buffer-size
-         current-engine-bloom-levels)
+         get-engine-debug-shapes
+         add-engine-debug-shapes!
+         current-engine-debug-shapes)

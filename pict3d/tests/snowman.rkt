@@ -50,7 +50,7 @@
 (define nose
   (with-color (rgba "orange")
     (with-material (material #:ambient 0.2 #:diffuse 0.8)
-      (cone (pos -0.04 -0.05 -0.02) (pos 0.04 0.05 0.23) #:segments 12 #:smooth? #t))))
+      (cone (pos -0.04 -0.05 -0.02) (pos 0.04 0.05 0.23)))))
 
 (define head
   (let ([head  (sphere origin 0.25)])
@@ -95,8 +95,8 @@
     (with-color (rgba "white")
       (with-material (material #:ambient 0.01 #:diffuse 0.01 #:specular 0.98 #:roughness 0.1)
         (combine
-         (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4) #:segments 16)
-         (cylinder (pos -0.3 -0.3 -0.01) (pos 0.3 0.3 0.01) #:segments 16))))
+         (cylinder (pos -0.2 -0.2 0.0) (pos 0.2 0.2 0.4))
+         (cylinder (pos -0.3 -0.3 -0.01) (pos 0.3 0.3 0.01)))))
     -0.05)))
 
 (define snowman-bottom
@@ -111,7 +111,7 @@
    (move-z (scale (basis 'top (point-at origin (dir -0.1 0 1) #:angle 14)) 0.4) 0.3)
    (with-color (rgba "orange")
      (with-material (material #:ambient 0.1 #:diffuse 0.4 #:specular 0.5 #:roughness 0.2)
-       (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5) #:segments 8 #:smooth? #t)))))
+       (cone (pos -0.03 -0.03 0.0) (pos 0.03 0.03 0.5))))))
 
 (define arm
   (freeze (weld* arm-segment '(top) arm-segment)))

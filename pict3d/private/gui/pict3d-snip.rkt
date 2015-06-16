@@ -98,6 +98,14 @@
 (define light-indicator-hash (make-weak-hasheq))
 (define axes-indicator-hash (make-weak-hasheq))
 (define group-box-hash (make-weak-hasheq))
+(define wireframe-hash (make-weak-hasheq))
+
+(define rgba-black (rgba "black"))
+(define rgba-white (rgba "white"))
+(define emitted-black (emitted "black" 0))
+(define emitted-magenta (emitted 1 0 1 1))
+(define wireframe-material
+  (material #:ambient 1.0 #:diffuse 0.0 #:specular 0.0 #:roughness 1.0))
 
 ;(: make-snip-render-thread (-> (Instance Pict3D%) (Async-Channelof FlAffine3-) Thread))
 (define (make-snip-render-thread gui ch)
@@ -117,7 +125,9 @@
          (match-define (list debug-pass path
                              legacy? check-version?
                              width height z-near z-far fov background ambient
-                             add-sunlight? add-indicators? add-grid? auto-camera)
+                             add-sunlight? add-indicators? add-grid? add-wireframe
+                             auto-camera
+                             debug-shapes)
            (send gui get-render-params))
          ;; Lock everything up for drawing
          (with-gl-context (get-master-gl-context legacy? check-version?)
@@ -155,6 +165,25 @@
                                    scale))
                  empty))
            
+           (define (get-wireframes)
+             (hash-ref!
+              wireframe-hash scene
+              (λ ()
+                (cons (delay (parameterize ([current-color  rgba-black]
+                                            [current-emitted  emitted-black]
+                                            [current-material  wireframe-material])
+                               (freeze-in-groups (wireframe (pict3d scene)))))
+                      (delay (parameterize ([current-color  rgba-white]
+                                            [current-emitted  emitted-magenta]
+                                            [current-material  wireframe-material])
+                               (freeze-in-groups (wireframe (pict3d scene) #:width 1.0))))))))
+           
+           (define wireframe-pict3ds
+             (case add-wireframe
+               [(color)    (list (force (car (get-wireframes))))]
+               [(emitted)  (list (force (cdr (get-wireframes))))]
+               [else       empty]))
+           
            (define v0 (affine-origin view))
            (define axes-pict3ds
              (for/fold ([picts empty]) ([pos+pict  (in-list axes-pos+picts)])
@@ -169,12 +198,14 @@
                  (let ([h  (hash-ref! group-box-hash scene make-hash)])
                    (hash-ref! h path (λ () (group-boxes (pict3d scene) path))))))
            
-           (parameterize ([current-engine-debug-pass  debug-pass])
-             (draw-pict3ds (append (list (pict3d scene)) 
+           (parameterize ([current-engine-debug-pass    debug-pass]
+                          [current-engine-debug-shapes  debug-shapes])
+             (draw-pict3ds (append (list (pict3d scene))
                                    sunlight-pict3ds
                                    light-pict3ds
                                    axes-pict3ds
                                    grid-pict3ds
+                                   wireframe-pict3ds
                                    boxes)
                            #:width width
                            #:height height
@@ -270,10 +301,24 @@
   (send dc set-text-foreground "white")
   (send dc draw-text str x y))
 
+(define (draw-wireframe-icon-lines dc x y color width style)
+  (define-values (orig-x orig-y) (send dc get-origin))
+  (send dc set-origin (+ orig-x x) (+ orig-y y))
+  (send dc set-pen color width style)
+  (send dc set-brush "black" 'transparent)
+  (send dc draw-rectangle 5 5 14 14)
+  (send dc draw-line 7.25 16.75 16.75 7.25)
+  (send dc set-origin orig-x orig-y))
+
+(define (draw-wireframe-icon dc x y color)
+  (draw-wireframe-icon-lines dc x y "black" 3 'solid)
+  (draw-wireframe-icon-lines dc x y color 2 'solid))
+
 (define gray (make-object color% 128 128 128))
 (define red (make-object color% 255 128 128))
 (define green (make-object color% 128 255 128))
 (define blue (make-object color% 128 128 255))
+(define magenta (make-object color% 255 128 255))
 
 (define snip-font
   (send the-font-list find-or-create-font
@@ -400,7 +445,9 @@
         (define-values
           (legacy? check-version?
                    width height z-near z-far fov background ambient
-                   add-sunlight? add-indicators? add-grid? auto-camera)
+                   add-sunlight? add-indicators? add-grid? add-wireframe
+                   auto-camera
+                   debug-shapes)
           (send pict get-init-params))
         
         (parameterize ([current-pict3d-width   width]
@@ -486,7 +533,9 @@
       (define-values
         (legacy? check-version?
                  width height z-near z-far fov background ambient
-                 add-sunlight? add-indicators? add-grid? auto-camera)
+                 add-sunlight? add-indicators? add-grid? add-wireframe
+                 auto-camera
+                 debug-shapes)
         (send pict get-init-params))
       
       (for ([item  (in-list hud-items)])
@@ -494,7 +543,7 @@
           [(list 'trace-pos v digits)
            (draw-hud-vector dc v digits width height "pos" 2)]
           [(list 'trace-norm n)
-           (draw-hud-vector dc n -2 width height "dir" 1)]
+           (draw-hud-vector dc n -3 width height "dir" 1)]
           [(list 'trace-path path)
            (void)])))
     
@@ -550,7 +599,11 @@
                  (draw-axes-icon dc 24 0 gray gray gray gray))
              (if (send pict get-add-grid?)
                  (draw-grid-icon dc 48 0 "white")
-                 (draw-grid-icon dc 48 0 gray)))
+                 (draw-grid-icon dc 48 0 gray))
+             (case (send pict get-add-wireframe)
+               [(color)    (draw-wireframe-icon dc 72 0 "white")]
+               [(emitted)  (draw-wireframe-icon dc 72 0 magenta)]
+               [else       (draw-wireframe-icon dc 72 0 gray)]))
            
            (unless (eq? mouse-mode 'capturing)
              (draw-hud-items dc))
@@ -675,7 +728,7 @@
       (new separator-menu-item% [parent debug-pass-submenu]))
     
     (define debug-passes-items
-      (for/list ([pass  (in-list (append engine-debug-passes (list #f)))])
+      (for/list ([pass  (in-list (append (get-engine-debug-passes) (list #f)))])
         (case pass
           [(opaque-material)  (add-debug-header "Opaque Object Passes" #f)]
           [(transparent-material)  (add-debug-header "Transparent Object Passes" #t)]
@@ -741,6 +794,8 @@
               (send pict toggle-add-indicators?)]
              [(and (<= 48 snip-x (+ 48 24)) (<= 0 snip-y 24))
               (send pict toggle-add-grid?)]
+             [(and (<= 72 snip-x (+ 72 24)) (<= 0 snip-y 24))
+              (send pict toggle-add-wireframe)]
              [(and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max))
               (cond [(< snip-x scale-x-mid)
                      (set! scale-index (min (+ scale-index 1) max-scale-index))]
@@ -799,7 +854,7 @@
         [(eq? mouse-mode 'capturing)  blank-cursor]
         [else
          (mouse-moved snip-x snip-y)
-         (if (or (and (<= 0 snip-x (* 24 3)) (<= 0 snip-y 24))
+         (if (or (and (<= 0 snip-x (* 24 4)) (<= 0 snip-y 24))
                  (and (<= scale-x-min snip-x scale-x-max) (<= scale-y-min snip-y scale-y-max)))
              arrow-cursor
              cross-cursor)]))
@@ -971,7 +1026,9 @@
                 add-sunlight?
                 add-indicators?
                 add-grid?
-                auto-camera)
+                add-wireframe
+                auto-camera
+                debug-shapes)
     
     (super-make-object)
     
@@ -981,12 +1038,18 @@
     (define/public (get-add-sunlight?) add-sunlight?)
     (define/public (get-add-indicators?) add-indicators?)
     (define/public (get-add-grid?) add-grid?)
+    (define/public (get-add-wireframe) add-wireframe)
     (define/public (set-add-sunlight? b) (set! add-sunlight? b))
     (define/public (set-add-indicators? b) (set! add-indicators? b))
     (define/public (set-add-grid? b) (set! add-grid? b))
     (define/public (toggle-add-sunlight?) (set! add-sunlight? (not add-sunlight?)))
     (define/public (toggle-add-indicators?) (set! add-indicators? (not add-indicators?)))
     (define/public (toggle-add-grid?) (set! add-grid? (not add-grid?)))
+    (define/public (toggle-add-wireframe)
+      (case add-wireframe
+        [(color)    (set! add-wireframe 'emitted)]
+        [(emitted)  (set! add-wireframe #f)]
+        [else       (set! add-wireframe 'color)]))
     
     (define/public (get-scene) scene)
     
@@ -997,7 +1060,9 @@
     (define/override (copy)
       (make-object pict3d% scene legacy? check-version?
         width height z-near z-far fov background ambient
-        add-sunlight? add-indicators? add-grid? auto-camera))
+        add-sunlight? add-indicators? add-grid? add-wireframe
+        auto-camera
+        debug-shapes))
     
     (define scroll-step #f)
     (define (calc-scroll-step)
@@ -1045,7 +1110,9 @@
     (define/public (get-init-params)
       (values legacy? check-version?
               width height z-near z-far fov background ambient
-              add-sunlight? add-indicators? add-grid? auto-camera))
+              add-sunlight? add-indicators? add-grid? add-wireframe
+              auto-camera
+              debug-shapes))
     
     (define/public (refresh)
       (queue-callback
@@ -1140,7 +1207,9 @@
     (current-pict3d-add-sunlight?)
     (current-pict3d-add-indicators?)
     (current-pict3d-add-grid?)
-    (current-pict3d-auto-camera)))
+    (current-pict3d-add-wireframe)
+    (current-pict3d-auto-camera)
+    (current-engine-debug-shapes)))
 
 (define (pict3d%->scene p)
   (send p get-scene))

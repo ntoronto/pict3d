@@ -9,6 +9,7 @@
          math/base
          "../math.rkt"
          "../engine.rkt"
+         "../soup.rkt"
          "../shape.rkt"
          "../utils.rkt"
          "typed-user-types.rkt"
@@ -27,6 +28,14 @@
  current-color
  current-emitted
  current-material
+ current-tessellate-segments
+ current-tessellate-max-edge
+ current-tessellate-max-angle
+ current-adaptive-segments
+ current-adaptive-max-edge
+ current-adaptive-max-angle
+ current-adaptive-max-iters
+ ;; Attributes
  set-color
  set-emitted
  set-material
@@ -52,9 +61,14 @@
  cube
  ellipsoid
  sphere
+ ring
+ pipe
+ cylinder
+ cone
  sunlight
  light
  freeze
+ freeze-in-groups
  ;; Transformations
  transform
  scale-x
@@ -83,6 +97,25 @@
  find-group-transforms
  find-group-transform
  point-at
+ ;; Tessellation and deformation
+ tessellate
+ deform
+ adaptive-tessellate
+ adaptive-deform
+ displace
+ twist
+ extend
+ bend
+ bend-smooth
+ bend-pict3d
+ local-deform
+ ;; Other face operations
+ ;replace-vertices
+ ;replace-vertices/adjacent
+ ;merge-normals
+ ;plane-normals
+ merge-vertex-normals
+ plane-vertex-normals
  ;; Information
  camera-transform
  bounding-rectangle
@@ -103,8 +136,6 @@
  frustum-cull
  ;; Other shapes
  arrow
- cylinder
- cone
  ;; Collision detection
  trace
  trace/normal
@@ -113,12 +144,13 @@
  surface/normal
  surface/data
  ;; Camera/view
- canvas-projection
- bitmap-projection
+ canvas-projective
+ bitmap-projective
  camera->view
  camera-ray-dir
  ;;
  light-grid
+ wireframe
  )
 
 ;; ===================================================================================================
@@ -137,17 +169,87 @@
 (: current-material (Parameterof Material))
 (define current-material (make-parameter default-material))
 
+(: current-tessellate-segments (Parameterof Integer Natural))
+(define current-tessellate-segments
+  (make-parameter
+   12
+   (λ ([n : Integer])
+     (if (>= n 0)
+         n
+         (raise-argument-error 'current-tessellate-segments "Natural" n)))))
+
+(: current-tessellate-max-edge (Parameterof (U #f Real) (U #f Positive-Flonum)))
+(define current-tessellate-max-edge
+  (make-parameter
+   #f
+   (λ ([edge : (U #f Real)])
+     (let ([edge  (and edge (fl edge))])
+       (if (and edge (> edge 0.0))
+           edge
+           (raise-argument-error 'current-tessellate-max-edge "(U #f Positive-Real)" edge))))))
+
+(: current-tessellate-max-angle (Parameterof Real Positive-Flonum))
+(define current-tessellate-max-angle
+  (make-parameter
+   15.0
+   (λ ([angle : Real])
+     (let ([angle  (fl angle)])
+       (if (> angle 0.0)
+           angle
+           (raise-argument-error 'current-tessellate-max-angle "Positive-Real" angle))))))
+
+(: current-adaptive-segments (Parameterof Integer Natural))
+(define current-adaptive-segments
+  (make-parameter
+   0
+   (λ ([n : Integer])
+     (if (>= n 0)
+         n
+         (raise-argument-error 'current-adaptive-segments "Natural" n)))))
+
+(: current-adaptive-max-edge (Parameterof (U #f Real) (U #f Positive-Flonum)))
+(define current-adaptive-max-edge
+  (make-parameter
+   #f
+   (λ ([edge : (U #f Real)])
+     (let ([edge  (and edge (fl edge))])
+       (if (and edge (> edge 0.0))
+           edge
+           (raise-argument-error 'current-adaptive-max-edge "(U #f Positive-Real)" edge))))))
+
+(: current-adaptive-max-angle (Parameterof Real Positive-Flonum))
+(define current-adaptive-max-angle
+  (make-parameter
+   15.0
+   (λ ([angle : Real])
+     (let ([angle  (fl angle)])
+       (if (> angle 0.0)
+           angle
+           (raise-argument-error 'current-adaptive-max-angle "Positive-Real" angle))))))
+
+(: current-adaptive-max-iters (Parameter Integer Natural))
+(define current-adaptive-max-iters
+  (make-parameter
+   5
+   (λ ([n : Integer])
+     (if (>= n 0)
+         n
+         (raise-argument-error 'current-adaptive-max-iters "Natural" n)))))
+
+;; ===================================================================================================
+;; Set attributes
+                            
 (: set-color (-> Pict3D RGBA Pict3D))
 (define (set-color p c)
-  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-color a c)))))
+  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (set-shape-color a c)))))
 
 (: set-emitted (-> Pict3D Emitted Pict3D))
 (define (set-emitted p e)
-  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-emitted a e)))))
+  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (set-shape-emitted a e)))))
 
 (: set-material (-> Pict3D Material Pict3D))
 (define (set-material p m)
-  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (shape-set-material a m)))))
+  (pict3d (scene-map-shapes (pict3d-scene p) (λ (a) (set-shape-material a m)))))
 
 ;; ===================================================================================================
 ;; Union, naming, mapping, finding
@@ -256,7 +358,7 @@
   (if (and v1 v2) (pos-between v1 v2 0.5) #f))
 
 ;; ===================================================================================================
-;; Basic shapes
+;; Canonicalizing arguments
 
 (: interpret-vertex (-> (U Pos Vertex) FlV4 FlV4 Material
                         (Values FlV3 (U #f FlV3) FlV4 FlV4 Material)))
@@ -267,6 +369,69 @@
          (match-define (Vertex v n c e m) vert)
          (values v n (if c c cc) (if e e ce) (if m m cm))]))
 
+(: interpret-vtx (-> Vertex (Promise (U #f FlV3)) RGBA Emitted Material (U #f vtx)))
+(define (interpret-vtx vert lazy-n cc ce cm)
+  (define-values (p n c e m) (interpret-vertex vert cc ce cm))
+  (let* ([n  (if n n (force lazy-n))]
+         [n  (and n (flv3normalize n))])
+    (and n (vtx p n c e m))))
+
+(: interpret-scale (-> (U Dir Real) (Values Flonum Flonum Flonum)))
+(define (interpret-scale d)
+  (if (dir? d)
+      (call/flv3-values d values)
+      (let ([d  (fl d)])
+        (values d d d))))
+
+(: interpret-corners (-> Pos (U Pos Dir Real) (Values Pos Pos)))
+(define (interpret-corners v1 v2)
+  (if (pos? v2)
+      (values v1 v2)
+      (call/flv3-values v1
+        (λ (x1 y1 z1)
+          (let-values ([(dx dy dz)  (interpret-scale v2)])
+            (values (pos (- x1 dx) (- y1 dy) (- z1 dz))
+                    (pos (+ x1 dx) (+ y1 dy) (+ z1 dz))))))))
+
+(: interpret-center-scale (-> Pos (U Pos Dir Real) (Values Pos Dir)))
+(define (interpret-center-scale v1 v2)
+  (cond
+    [(pos? v2)  (call/flv3-values v1
+                  (λ (x1 y1 z1)
+                    (call/flv3-values v2
+                      (λ (x2 y2 z2)
+                        (values (pos (* 0.5 (+ x1 x2)) (* 0.5 (+ y1 y2)) (* 0.5 (+ z1 z2)))
+                                (dir (* 0.5 (- x2 x1)) (* 0.5 (- y2 y1)) (* 0.5 (- z2 z1))))))))]
+    [(dir? v2)  (values v1 v2)]
+    [else       (let ([d  (fl v2)])
+                  (values v1 (dir d d d)))]))
+
+(: flclamp/snap (-> Flonum Flonum Flonum Flonum Flonum Flonum))
+(define (flclamp/snap x mn mx mn* mx*)
+  (cond [(<= x mn*)  mn]
+        [(>= x mx*)  mx]
+        [else  x]))
+
+(: interpret-arc (->* [Arc] [Flonum] (Values Flonum Flonum)))
+(define (interpret-arc a [eps 1e-8])
+  (define-values (a1 a2) (arc-values a))
+  (if (= a1 a2)
+      (let ([a1  (- a1 (* 360.0 (floor (/ a1 360.0))))])
+        (values (degrees->radians a1) 0.0))
+      (let*-values ([(a1 a2)  (let ([d  (* 360.0 (floor (/ a1 360.0)))])
+                                (values (- a1 d) (- a2 d)))]
+                    [(a2)     (let ([a2  (- a2 (* 360.0 (floor (/ a2 360.0))))])
+                                (if (<= a2 a1) (+ a2 360.0) a2))]
+                    [(a1 a2)  (values (degrees->radians a1)
+                                      (degrees->radians a2))])
+        (values a1 (flclamp/snap (- a2 a1) 0.0 (* 2.0 pi) eps (- (* 2.0 pi) eps))))))
+
+(: interpret-interval (->* [Interval Flonum Flonum] [Flonum] (Values Flonum Flonum)))
+(define (interpret-interval x mn mx [eps 1e-8])
+  (define-values (x1 x2) (interval-values x))
+  (values (flclamp/snap x1 mn mx (+ mn eps) (- mx eps))
+          (flclamp/snap x2 mn mx (+ mn eps) (- mx eps))))
+
 (: standard-transform (-> Pos (U Pos Dir Real) FlAffine3))
 (define (standard-transform v1 v2)
   (if (pos? v2)
@@ -274,6 +439,9 @@
                    (scale-flt3 (flv3* (flv3- v2 v1) 0.5)))
       (flt3compose (move-flt3 v1)
                    (scale-flt3 (if (real? v2) (fl v2) v2)))))
+
+;; ===================================================================================================
+;; Basic shapes
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Triangle
@@ -286,7 +454,7 @@
   (define-values (v1 n1 c1 e1 m1) (interpret-vertex vert1 cc ce cm))
   (define-values (v2 n2 c2 e2 m2) (interpret-vertex vert2 cc ce cm))
   (define-values (v3 n3 c3 e3 m3) (interpret-vertex vert3 cc ce cm))
-  (define norm (flv3triangle-normal v1 v2 v3))
+  (define norm (flv3polygon-normal v1 v2 v3))
   (cond [norm
          (pict3d
           (make-triangle-shape
@@ -295,105 +463,7 @@
            (vtx v3 (if n3 n3 norm) c3 e3 m3)
            (and back? #t)))]
         [else  empty-pict3d]))
-#|
-;; ---------------------------------------------------------------------------------------------------
-;; Triangle mesh
 
-(: smooth-normal (-> (Vectorof (U Pos Vertex)) (Vectorof Index) (Vectorof (Listof Index)) Index
-                     (U #f FlV3)))
-(define (smooth-normal verts idxs vert-idxs j)
-  (define vert (vector-ref verts j))
-  (define n
-    (for/fold ([s : FlV3  zero-flv3]) ([i  (in-list (vector-ref vert-idxs j))])
-      (define base-i (fx* 3 (fxquotient i 3)))
-      (define mod-i (fx- i base-i))
-      (define j0 (vector-ref idxs (fx+ base-i mod-i)))
-      (define j1 (vector-ref idxs (fx+ base-i (fxmodulo (fx+ mod-i 1) 3))))
-      (define j2 (vector-ref idxs (fx+ base-i (fxmodulo (fx+ mod-i 2) 3))))
-      (define v0 (vector-ref verts j0))
-      (define v1 (vector-ref verts j1))
-      (define v2 (vector-ref verts j2))
-      (let ([v0  (if (vertex? v0) (vertex-pos v0) v0)]
-            [v1  (if (vertex? v1) (vertex-pos v1) v1)]
-            [v2  (if (vertex? v2) (vertex-pos v2) v2)])
-        (define n (flv3triangle-normal v0 v1 v2))
-        (define dv10 (flv3- v1 v0))
-        (define dv20 (flv3- v2 v0))
-        (define d (acos (/ (flv3dot dv10 dv20) (flv3mag dv10) (flv3mag dv20))))
-        (if (and n (< 0.0 d +inf.0))
-            (flv3+ s (flv3* n d))
-            s))))
-  (flv3normalize n))
-
-(define empty-vtx (vtx zero-flv3 zero-flv3 zero-flv4 zero-flv4 zero-flv4))
-
-(define max-index 268435455)
-
-(: triangle-mesh (->* [(Listof (U Pos Vertex)) (Listof (Listof Integer))] [#:back? Any] Pict3D))
-(define (triangle-mesh orig-verts idxss #:back? [back? #f])
-  (define m (assert (for/fold ([m : Nonnegative-Fixnum  0]) ([idxs  (in-list idxss)])
-                      (unsafe-fx+ m (length idxs)))
-                    index?))
-  
-  (define idxs ((inst make-vector Index) m 0))
-  
-  (define-values (vs-lst _1 _2)
-    (let* ([verts  (list->vector orig-verts)]
-           [n  (vector-length verts)]
-           [vtx-map  ((inst make-vector Index) n max-index)])
-      (for*/fold ([vs : (Listof (U Pos Vertex))  empty]
-                  [i : Index  0]
-                  [next-j : Index  0])
-                 ([js  (in-list idxss)]
-                  [_   (in-value
-                        (when (not (= 3 (length js)))
-                          (error 'bad)))]
-                  [j   (in-list js)])
-        (cond
-          [(and (<= 0 j) (< j n))
-           (define new-j (vector-ref vtx-map j))
-           (cond [(< new-j max-index)
-                  (vector-set! idxs i new-j)
-                  (values vs (assert (unsafe-fx+ i 1) index?) next-j)]
-                 [else
-                  (vector-set! vtx-map j next-j)
-                  (vector-set! idxs i next-j)
-                  (define vert (vector-ref verts j))
-                  (values (cons vert vs)
-                          (assert (unsafe-fx+ i 1) index?)
-                          (assert (unsafe-fx+ next-j 1) index?))])]
-          [else
-           (error 'bad)]))))
-  
-  (define verts (list->vector (reverse vs-lst)))
-  (define n (vector-length verts))
-  
-  (define vert-idxs ((inst make-vector (Listof Index)) n empty))
-  (let loop ([i : Nonnegative-Fixnum  0])
-    (when (< i m)
-      (define j (vector-ref idxs i))
-      (define is (vector-ref vert-idxs j))
-      (vector-set! vert-idxs j (cons i is))
-      (loop (+ i 1))))
-  
-  (define cc (current-color))
-  (define ce (current-emitted))
-  (define cm (current-material))
-  (define vtxs ((inst make-vector vtx) n empty-vtx))
-  (for ([i   (in-range m)])
-    (define j (vector-ref idxs i))
-    (define vert (vector-ref verts j))
-    (define n (let* ([n  (if (vertex? vert) (vertex-normal vert) #f)]
-                     [n  (if n n (smooth-normal verts idxs vert-idxs j))])
-                (if n n +z)))
-    (cond [(vertex? vert)
-           (match-define (Vertex v _ c e m) vert)
-           (vector-set! vtxs j (vtx v n (if c c cc) (if e e ce) (if m m cm)))]
-          [else
-           (vector-set! vtxs j (vtx vert n cc ce cm))]))
-  
-  (pict3d (make-triangle-mesh-shape vtxs idxs (and back? #t))))
-|#
 ;; ---------------------------------------------------------------------------------------------------
 ;; Quad
 
@@ -406,14 +476,14 @@
   (define-values (v2 n2 c2 e2 m2) (interpret-vertex vert2 cc ce cm))
   (define-values (v3 n3 c3 e3 m3) (interpret-vertex vert3 cc ce cm))
   (define-values (v4 n4 c4 e4 m4) (interpret-vertex vert4 cc ce cm))
-  (define norm (flv3polygon-normal (vector v1 v2 v3 v3)))
+  (define norm (flv3polygon-normal v1 v2 v3 v3))
   (cond [norm
          (pict3d
-          (make-quad-shape
-           (vtx v1 (if n1 n1 norm) c1 e1 m1)
-           (vtx v2 (if n2 n2 norm) c2 e2 m2)
-           (vtx v3 (if n3 n3 norm) c3 e3 m3)
-           (vtx v4 (if n4 n4 norm) c4 e4 m4)
+          (make-quad-triangle-mesh-shape  ;make-quad-shape  ;; not ready yet - splitter b0rken
+           (vector (vtx v1 (if n1 n1 norm) c1 e1 m1)
+                   (vtx v2 (if n2 n2 norm) c2 e2 m2)
+                   (vtx v3 (if n3 n3 norm) c3 e3 m3)
+                   (vtx v4 (if n4 n4 norm) c4 e4 m4))
            (and back? #t)))]
         [else  empty-pict3d]))
 
@@ -422,21 +492,11 @@
 
 (: rectangle (->* [Pos (U Pos Dir Real)] [#:inside? Any] Pict3D))
 (define (rectangle v1 v2 #:inside? [inside? #f])
-  (define b
-    (cond [(pos? v2)  (flrect3 v1 v2)]
-          [(real? v2)
-           (define r (abs (fl v2)))
-           (call/flv3-values v1
-             (λ (x y z)
-               (FlRect3 (flv3 (- x r) (- y r) (- z r))
-                        (flv3 (+ x r) (+ y r) (+ z r)))))]
-          [else
-           (flrect3 (flv3- v1 v2)
-                    (flv3+ v1 v2))]))
+  (define t (standard-transform v1 v2))
   (define cc (current-color))
   (define ce (current-emitted))
   (define cm (current-material))
-  (pict3d (make-rectangle-shape b cc ce cm (and inside? #t))))
+  (pict3d (make-rectangle-shape t cc ce cm (and inside? #t))))
 
 (: cube (->* [Pos Real] [#:inside? Any] Pict3D))
 (define cube rectangle)
@@ -456,6 +516,159 @@
 (define sphere ellipsoid)
 
 ;; ---------------------------------------------------------------------------------------------------
+;; Annulus
+
+(: ring (->* [Pos (U Pos Dir Real)] [#:radii Interval #:arc Arc #:back? Any] Pict3D))
+(define (ring v1 v2 #:radii [radii unit-interval] #:arc [arc circle-arc] #:back? [back? #f])
+  (let-values ([(r1 r2)  (interpret-interval radii 0.0 1.0)]
+               [(rot a)  (interpret-arc arc)]
+               [(back?)  (and back? #t)])
+    (cond
+      [(and (> a 0.0) (< r1 r2))
+       (define t (flt3compose (standard-transform v1 v2)
+                              (flt3compose (rotate-z-flt3 rot)
+                                           (scale-flt3 (flv3 r2 r2 +1.0)))))
+       (define cc (current-color))
+       (define ce (current-emitted))
+       (define cm (current-material))
+       (pict3d (make-disk-shape t (abs (/ r1 r2)) 0.0 a cc ce cm back?))]
+      [else
+       empty-pict3d])))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Pipes, cylinders and cones
+
+(define nonnegative? (λ ([x : Flonum]) (>= x 0.0)))
+
+(define pipe-interval (interval 0.5 1.0))
+
+(: pipe (->* [Pos (U Pos Dir Real)]
+             [#:bottom-radii Interval
+              #:top-radii Interval
+              #:arc Arc
+              #:inside? Any
+              #:inner-wall? Any #:outer-wall? Any
+              #:bottom-cap? Any #:top-cap? Any
+              #:start-cap? Any #:end-cap? Any]
+             Pict3D))
+(define (pipe v1 v2
+              #:bottom-radii [bottom-radii pipe-interval]
+              #:top-radii [top-radii pipe-interval]
+              #:arc [arc circle-arc]
+              #:inside? [inside? #f]
+              #:outer-wall? [outer-wall? #t]
+              #:inner-wall? [inner-wall? #t]
+              #:bottom-cap? [bottom-cap? #t]
+              #:top-cap? [top-cap? #t]
+              #:start-cap? [start-cap? #t]
+              #:end-cap? [end-cap? #t])
+  (let-values ([(bot1 bot2)  (interpret-interval bottom-radii 0.0 1.0)]
+               [(top1 top2)  (interpret-interval top-radii 0.0 1.0)]
+               [(rot a)      (interpret-arc arc)]
+               [(inside?)    (and inside? #t)])
+    (define t0 (flt3compose (standard-transform v1 v2)
+                            (rotate-z-flt3 rot)))
+    (define cc (current-color))
+    (define ce (current-emitted))
+    (define cm (current-material))
+    
+    ;; Every (abs (/ x y)) below is to keep TR satisfied the quotient is nonnegative
+    
+    (: maybe-add-wall (-> (Listof shape) Flonum Flonum Any Boolean (Listof shape)))
+    (define (maybe-add-wall ss bot top add? inside?)
+      (cond [(and add? (> a 0.0) (or (> bot 0.0) (> top 0.0)))
+             (define-values (t h)
+               (if (>= bot top)
+                   (values (flt3compose t0 (scale-flt3 (flv3 bot bot +1.0)))
+                           (abs (/ top bot)))
+                   (values (flt3compose t0 (scale-flt3 (flv3 top top -1.0)))
+                           (abs (/ bot top)))))
+             (cons (make-cylinder-shape t h a cc ce cm inside?) ss)]
+            [else  ss]))
+    
+    (: maybe-add-z-cap (-> (Listof shape) Flonum Flonum Flonum Any Boolean (Listof shape)))
+    (define (maybe-add-z-cap ss z r1 r2 add? inside?)
+      (if (and add? (> a 0.0) (< r1 r2))
+          (cons (make-disk-shape (flt3compose t0 (scale-flt3 (flv3 r2 r2 1.0)))
+                                 (abs (/ r1 r2))
+                                 z a cc ce cm inside?) ss)
+          ss))
+    
+    (: maybe-add-angle-cap (-> (Listof shape) Flonum Any Boolean (Listof shape)))
+    (define (maybe-add-angle-cap ss angle add? inside?)
+      (if (and add?
+               (< a (* 2.0 pi))
+               (>= bot2 0.0)
+               (>= top2 0.0)
+               (>= bot1 0.0)
+               (>= top1 0.0)
+               (or (< bot1 bot2) (< top1 top2)))
+          (cons (make-cylinder-wall-shape t0 top1 top2 bot1 bot2 angle cc ce cm inside?) ss)
+          ss))
+    
+    (let* ([ss  empty]
+           [ss  (maybe-add-wall ss bot2 top2 outer-wall? inside?)]
+           [ss  (maybe-add-wall ss bot1 top1 inner-wall? (not inside?))]
+           [ss  (maybe-add-z-cap ss +1.0 top1 top2 top-cap? inside?)]
+           [ss  (maybe-add-z-cap ss -1.0 bot1 bot2 bottom-cap? (not inside?))]
+           [ss  (maybe-add-angle-cap ss 0.0 start-cap? inside?)]
+           [ss  (maybe-add-angle-cap ss a end-cap? (not inside?))])
+      (pict3d (scene-union* ss)))))
+
+(: cylinder (->* [Pos (U Pos Dir Real)]
+                 [#:arc Arc
+                  #:inside? Any
+                  #:top-cap? Any
+                  #:bottom-cap? Any
+                  #:start-cap? Any
+                  #:end-cap? Any
+                  #:wall? Any]
+                 Pict3D))
+(define (cylinder v1 v2
+                  #:arc [arc circle-arc]
+                  #:inside? [inside? #f]
+                  #:wall? [wall? #t]
+                  #:top-cap? [top-cap? #t]
+                  #:bottom-cap? [bottom-cap? #t]
+                  #:start-cap? [start-cap? #t]
+                  #:end-cap? [end-cap? #t])
+  (pipe v1 v2
+        #:bottom-radii unit-interval
+        #:top-radii unit-interval
+        #:arc arc
+        #:inside? inside?
+        #:top-cap? top-cap?
+        #:bottom-cap? bottom-cap?
+        #:start-cap? start-cap?
+        #:end-cap? end-cap?
+        #:outer-wall? wall?))
+
+(: cone (->* [Pos (U Pos Dir Real)]
+             [#:arc Arc
+              #:inside? Any
+              #:bottom-cap? Any
+              #:start-cap? Any
+              #:end-cap? Any
+              #:wall? Any]
+             Pict3D))
+(define (cone v1 v2
+              #:arc [arc circle-arc]
+              #:inside? [inside? #f]
+              #:wall? [wall? #t]
+              #:bottom-cap? [bottom-cap? #t]
+              #:start-cap? [start-cap? #t]
+              #:end-cap? [end-cap? #t])
+  (pipe v1 v2
+        #:bottom-radii unit-interval
+        #:top-radii zero-interval
+        #:arc arc
+        #:inside? inside?
+        #:bottom-cap? bottom-cap?
+        #:start-cap? start-cap?
+        #:end-cap? end-cap?
+        #:outer-wall? wall?))
+
+;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
 
 (: sunlight (->* [Dir] [Emitted] Pict3D))
@@ -468,16 +681,20 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
 
-(: light (->* [Pos] [Emitted #:min-radius Real #:max-radius Real] Pict3D))
-(define (light v
-               [e  (emitted 1.0 1.0 1.0 1.0)]
-               #:min-radius [r0 0.0]
-               #:max-radius [r1 (flsqrt (* 20.0 (emitted-intensity e)))])
-  (let ([r0  (abs (fl r0))]
-        [r1  (abs (fl r1))])
+(: light (->* [Pos]
+              [Emitted #:attenuation Interval #:radii Interval #:min-radius Real #:max-radius Real]
+              Pict3D))
+(define (light v [e  (emitted 1.0 1.0 1.0 1.0)]
+               #:attenuation [a  (interval 0.0 20.0)]
+               #:radii [r  (interval (flsqrt (* (max 0.0 (interval-min a)) (emitted-intensity e)))
+                                     (flsqrt (* (max 0.0 (interval-max a)) (emitted-intensity e))))]
+               #:min-radius [r0  (interval-min r)]
+               #:max-radius [r1  (interval-max r)])
+  (let* ([r   (interval r0 r1)]
+         [r0  (interval-min r)]
+         [r1  (interval-max r)])
     (if (< r0 r1)
-        (let ([t : FlAffine3  (move-flt3 v)])
-          (pict3d (make-point-light-shape e t r0 r1)))
+        (pict3d (make-point-light-shape e (move-flt3 v) r0 r1))
         empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------
@@ -492,6 +709,13 @@
           (pict3d (make-frozen-scene-shape s))
           (for/list : (Listof Pict3D) ([nt  (in-list (scene-group-transforms s 'empty))])
             (basis (car nt) (flaffine3->affine (cdr nt)))))]))
+
+(: freeze-in-groups (-> Pict3D Pict3D))
+(define (freeze-in-groups p)
+  (pict3d
+   (scene-map-in-leaf-groups
+    (pict3d-scene p)
+    (λ (s) (if (empty-scene? s) s (make-frozen-scene-shape s))))))
 
 ;; ===================================================================================================
 ;; Transformations
@@ -557,7 +781,7 @@
                       (let ([v  (fl v)])
                         (if (= v 0.0) identity-affine (move-z-flt3 v))))))
 
-(define move (make-transformer move-flt3))
+(define move ((inst make-transformer Dir) move-flt3))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Rotate
@@ -668,6 +892,394 @@
        (point-at-flt3 from z-axis (degrees->radians (fl angle)) up (and normalize? #t)))))
 
 ;; ===================================================================================================
+;; Triangle conversion and deformations
+
+;; ---------------------------------------------------------------------------------------------------
+;; Nonadaptive tessellation and deformation
+
+(: tessellate-max-edge (-> Pict3D Integer Positive-Flonum))
+(define (tessellate-max-edge p n)
+  (define-values (v1 v2) (bounding-rectangle p))
+  (if (and v1 v2)
+      (call/flv3-values v1
+        (λ (x1 y1 z1)
+          (call/flv3-values v2
+            (λ (x2 y2 z2)
+              (define max-edge (/ (max (abs (- x1 x2)) (abs (- y1 y2)) (abs (- z1 z2))) (fl n)))
+              (if (> max-edge 0.0) max-edge +inf.0)))))
+      +inf.0))
+
+(: tessellate (->* [Pict3D] [#:segments Integer #:max-edge Real #:max-angle Real] Pict3D))
+(define (tessellate p
+                    #:segments [n (current-tessellate-segments)]
+                    #:max-edge [max-edge (current-tessellate-max-edge)]
+                    #:max-angle [max-angle (current-tessellate-max-angle)])
+  (let* ([max-edge  (if (not max-edge)
+                        (tessellate-max-edge p n)
+                        (abs (fl max-edge)))]
+         [max-edge  (abs (fl max-edge))]
+         [max-edge  (if (> max-edge 0.0) max-edge +inf.0)]
+         [max-angle  (degrees->radians (abs (fl max-angle)))])
+    (pict3d
+     (scene-map-in-leaf-groups/transform
+      (pict3d-scene p)
+      (λ (s t)
+        (define-values (ss fs)
+          (if (shape? s)
+              (shape-tessellate s t max-edge max-angle)
+              (scene-tessellate s t max-edge max-angle)))
+        (define new-ss (faces->triangle-mesh-shapes fs))
+        (scene-union (scene-union* ss) (scene-union* new-ss)))))))
+
+(: deform (-> Pict3D Smooth Pict3D))
+(define (deform p t0)
+  (pict3d
+   (let loop ([s : Scene  (pict3d-scene p)]
+              [t : FlAffine3  identity-flaffine3]
+              [inv-t : FlAffine3  identity-flaffine3]
+              [deform-t : (Promise FlSmooth3)  (delay t0)])
+     (cond
+       [(empty-scene? s)  empty-scene]
+       [(shape? s)
+        (scene-union* (shape-deform s (force deform-t)))]
+       [(node-scene? s)
+        (make-node-scene (loop (node-scene-neg s) t inv-t deform-t)
+                         (loop (node-scene-pos s) t inv-t deform-t))]
+       [(trans-scene? s)
+        (let ([t  (flt3compose t (trans-scene-affine s))])
+          (define new-t (let ([new-t  (fls3apply/affine t0 t)])
+                          (if new-t new-t identity-flaffine3)))
+          (make-trans-scene
+           (let* ([inv-t     (flt3inverse new-t)]
+                  [deform-t  (delay (fls3compose inv-t (fls3compose t0 t)))])
+             (loop (trans-scene-scene s) t inv-t deform-t))
+           (flt3compose inv-t new-t)))]
+       [(group-scene? s)
+        (group-scene (loop (group-scene-scene s) t inv-t deform-t)
+                     (group-scene-tag s))]))))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Adaptive tessellation and deformation
+
+(: adaptive-tessellate
+   (->* [Pict3D]
+        [Smooth #:segments Integer #:max-edge (U #f Real) #:max-angle Real #:max-iters Integer]
+        Pict3D))
+(define (adaptive-tessellate p [t0 identity-affine]
+                             #:segments [n (current-adaptive-segments)]
+                             #:max-edge [max-edge (current-adaptive-max-edge)]
+                             #:max-angle [max-angle (current-adaptive-max-angle)]
+                             #:max-iters [max-iters (current-adaptive-max-iters)])
+  (let* ([max-edge  (if (not max-edge)
+                        (tessellate-max-edge (deform p t0) n)
+                        (abs (fl max-edge)))]
+         [max-edge  (if (> max-edge 0.0) max-edge +inf.0)]
+         [max-angle  (degrees->radians (abs (fl max-angle)))]
+         [max-iters  (max 0 max-iters)])
+    (pict3d
+     (scene-map-in-leaf-groups/transform
+      (pict3d-scene p)
+      (λ (s t)
+        (define-values (ss fs) (scene-tessellate s t +inf.0 (* 0.5 pi)))
+        (define new-fs
+          (let* ([soup  (make-face-soup (ann fs (Listof (face deform-data Boolean))))]
+                 [soup  (subdivide/deform soup (fls3compose t0 t) max-edge max-angle max-iters)])
+            (face-soup-faces soup)))
+        (define new-ss (faces->triangle-mesh-shapes new-fs))
+        (scene-union (scene-union* ss) (scene-union* new-ss)))))))
+
+(: adaptive-deform
+   (->* [Pict3D Smooth]
+        [#:segments Integer #:max-edge (U #f Real) #:max-angle Real #:max-iters Integer]
+        Pict3D))
+(define (adaptive-deform p t
+                         #:segments [n (current-adaptive-segments)]
+                         #:max-edge [max-edge (current-adaptive-max-edge)]
+                         #:max-angle [max-angle (current-adaptive-max-angle)]
+                         #:max-iters [max-iters (current-adaptive-max-iters)])
+  (define tess-p
+    (adaptive-tessellate p t
+                         #:segments n
+                         #:max-edge max-edge
+                         #:max-angle max-angle
+                         #:max-iters max-iters))
+  (deform tess-p t))
+
+;; ---------------------------------------------------------------------------------------------------
+;; Deformation functions
+
+(: displace (case-> (-> (-> Flonum Flonum Real) Differentiable)
+                    (-> Pict3D (-> Flonum Flonum Real) Pict3D)))
+(define displace
+  (case-lambda
+    [(f)
+     (differentiable
+      (λ (v)
+        (call/flv3-values v
+          (λ (x y z)
+            (pos x y (+ z (fl (f x y))))))))]
+    [(p f)
+     (deform p (displace f))]))
+
+(: twist (case-> (-> Real Differentiable)
+                 (-> Pict3D Real Pict3D)))
+(define twist
+  (case-lambda
+    [(speed)
+     (let ([speed  (degrees->radians (fl speed))])
+       (differentiable
+        (λ (v)
+          (call/flv3-values v
+            (λ (x y z)
+              (define angle (+ (* speed z) (atan y x)))
+              (define r (flsqrt (+ (* x x) (* y y))))
+              (pos (* r (cos angle))
+                   (* r (sin angle))
+                   z))))))]
+    [(p speed)
+     (deform p (twist speed))]))
+
+(: extend-coord (-> Flonum Flonum Flonum))
+(define (extend-coord x dx)
+  (cond [(< x 0.0)  (- x dx)]
+        [(> x 0.0)  (+ x dx)]
+        [else  x]))
+
+(: collapse-coord (-> Flonum Flonum Flonum))
+(define (collapse-coord x dx)
+  (cond [(< x dx)      (- x dx)]
+        [(> x (- dx))  (+ x dx)]
+        [else  0.0]))
+
+(: extend (case-> (-> (U Real Dir) Differentiable)
+                  (-> Pict3D (U Real Dir) Pict3D)))
+(define extend
+  (case-lambda
+    [(d)
+     (define-values (dx dy dz) (interpret-scale d))
+     (differentiable
+      (λ (v)
+        (call/flv3-values v
+          (λ (x y z)
+            (pos (if (>= dx 0.0) (extend-coord x dx) (collapse-coord x dx))
+                 (if (>= dy 0.0) (extend-coord y dy) (collapse-coord y dy))
+                 (if (>= dz 0.0) (extend-coord z dz) (collapse-coord z dz)))))))]
+    [(p d)
+     (deform p (extend d))]))
+
+(: bend-smooth (-> Real Interval Smooth))
+(define (bend-smooth angle zivl)
+  (define-values (zmin zmax) (interval-values zivl))
+  (let ([angle  (degrees->radians (fl angle))])
+    (cond
+      ;; If angle too small, or interval too large or irrational, return identity
+      [(or (not (>= (abs angle) 1e-8)) (not (< (- zmax zmin) 1e16)))
+       identity-affine]
+      [else
+       (define zsize (- zmax zmin))
+       (define zofs (cond [(> zmin 0.0)  zmin]
+                          [(< zmax 0.0)  zmax]
+                          [else  0.0]))
+       (differentiable
+        (λ (v)
+          (call/flv3-values v
+            (λ (x y z)
+              (define α (/ (- (max zmin (min zmax z)) zofs) zsize))
+              (define c (cos (* angle α)))
+              (define s (sin (* angle α)))
+              (define o (/ zsize angle))
+              (pos (+ (- (* (+ o x) c) o)
+                      (* (- s)
+                         (cond [(>= z zmax)  (- z zmax)]
+                               [(<= z zmin)  (- z zmin)]
+                               [else  0.0])))
+                   y
+                   (+ (* (+ o x) s)
+                      (* c (cond [(>= z zmax)  (- z zmax)]
+                                 [(<= z zmin)  (- z zmin)]
+                                 [else  0.0]))
+                      zofs))))))])))
+
+(: bend-pict3d (->* [Pict3D Real] [Interval] Pict3D))
+(define bend-pict3d
+  (case-lambda
+    [(p angle)
+     (define-values (v1 v2) (bounding-rectangle p))
+     (if (and v1 v2)
+         (bend-pict3d p angle (interval (pos-z v1) (pos-z v2)))
+         p)]
+    [(p angle zivl)
+     (deform p (bend-smooth angle zivl))]))
+
+(: bend (case-> (-> Pict3D Real Pict3D)
+                (-> Real Interval Smooth)
+                (-> Pict3D Real Interval Pict3D)))
+(define bend
+  (case-lambda
+    [(arg1 arg2)
+     (cond [(and (pict3d? arg1) (real? arg2))    (bend-pict3d arg1 arg2)]
+           [(and (real? arg1) (interval? arg2))  (bend-smooth arg1 arg2)])]
+    [(p angle zivl)
+     (bend-pict3d p angle zivl)]))
+
+(: local-deform (case-> (-> Smooth Affine Smooth)
+                        (-> Pict3D Smooth Affine Pict3D)))
+(define local-deform
+  (case-lambda
+    [(t local-t)  (smooth-compose local-t (smooth-compose t (affine-inverse local-t)))]
+    [(pict t local-t)  (deform pict (local-deform t local-t))]))
+
+;; ===================================================================================================
+;; Other face soup operations
+
+(: transform-faces (All (A B) (-> (Listof (face A B)) FlAffine3 (Listof (face A B)))))
+(define (transform-faces fs t)
+  (map (λ ([f : (face A B)]) (flt3apply/face t f)) fs))
+
+(: face-vertex-fun (All (A B) (-> (-> (Listof Vertex) Vertex) RGBA Emitted Material
+                                  (-> (face A B) (U #f vtx)))))
+(define (face-vertex-fun g cc ce cm)
+  (λ (f)
+    (define vert (g (face->vertices f)))
+    (define lazy-n (delay (define-values (v1 v2 v3) (face-flv3s f))
+                          (flv3polygon-perp v1 v2 v3)))
+    (interpret-vtx vert lazy-n cc ce cm)))
+
+(: face-vertex/adjacent-fun (All (A B) (-> (-> (Listof Vertex) (Listof (Listof Vertex)) Vertex)
+                                           RGBA Emitted Material
+                                           (-> (face A B) (Listof (face A B)) (U #f vtx)))))
+(define (face-vertex/adjacent-fun g cc ce cm)
+  (λ (f fs)
+    (define h (λ ([f : (face A B)]) (face->vertices f)))
+    (define vert (g (h f) (map h fs)))
+    (define lazy-n (delay (define-values (v1 v2 v3) (face-flv3s f))
+                          (flv3polygon-perp v1 v2 v3)))
+    (interpret-vtx vert lazy-n cc ce cm)))
+
+(: map-face-vertices (All (A B) (-> (Listof (face A B)) (-> (face A B) (U #f vtx))
+                                    (Listof (face A B)))))
+(define (map-face-vertices fs g)
+  (define fsoup (make-face-soup fs))
+  (for/fold ([new-fs : (Listof (face A B))  empty])
+            ([f  (in-list (face-soup-faces fsoup))])
+    (match-define (face vtx1 vtx2 vtx3 d d12 d23 d31) f)
+    (match-define (list new-vtx1 new-vtx2 new-vtx3)
+      (for/list : (Listof (U #f vtx)) ([i  (in-list (ann (list 1 2 3) (Listof (U 1 2 3))))])
+        (g (face-set-first-vertex f i))))
+    (if (and new-vtx1 new-vtx2 new-vtx3)
+        (cons (face new-vtx1 new-vtx2 new-vtx3 d d12 d23 d31) new-fs)
+        new-fs)))
+
+(: map-face-vertices/adjacent (All (A B) (-> (Listof (face A B))
+                                             (-> (face A B) (Listof (face A B)) (U #f vtx))
+                                             (Listof (face A B)))))
+(define (map-face-vertices/adjacent fs g)
+  (define fsoup (make-face-soup fs))
+  (for/fold ([new-fs : (Listof (face A B))  empty])
+            ([f  (in-list (face-soup-faces fsoup))])
+    (match-define (face vtx1 vtx2 vtx3 d d12 d23 d31) f)
+    (match-define (list new-vtx1 new-vtx2 new-vtx3)
+      (for/list : (Listof (U #f vtx)) ([i  (in-list (ann (list 1 2 3) (Listof (U 1 2 3))))])
+        (define this-f (face-set-first-vertex f i))
+        (define v1 (vtx-position (face-vtx1 this-f)))
+        (define other-fs
+          (for/list : (Listof (face A B)) ([o  (in-list (face-soup-corner-faces fsoup v1))])
+            (face-set-first-vertex (cdr o) (car o))))
+        (g this-f other-fs)))
+    (if (and new-vtx1 new-vtx2 new-vtx3)
+        (cons (face new-vtx1 new-vtx2 new-vtx3 d d12 d23 d31) new-fs)
+        new-fs)))
+
+(: replace-vertices (-> Pict3D (-> (Listof Vertex) Vertex) Pict3D))
+(define (replace-vertices p g)
+  (define cc (current-color))
+  (define ce (current-emitted))
+  (define cm (current-material))
+  (pict3d
+   (scene-map-in-leaf-groups/transform
+    (pict3d-scene p)
+    (λ (s t)
+      (define tinv (flt3inverse t))
+      (define h (face-vertex-fun g cc ce cm))
+      (define-values (ss fs) (scene-extract-faces s))
+      ;; Group them because we don't want things touching at just a vertex to get smoothed
+      (define fss (face-soup-group (make-face-soup fs)))
+      (define sss (map (λ ([fs : (Listof (face deform-data #f))])
+                         (let* ([fs  (transform-faces fs t)]
+                                [fs  (map-face-vertices fs h)]
+                                [fs  (transform-faces fs tinv)])
+                           (faces->triangle-mesh-shapes fs)))
+                       fss))
+      (scene-union* (cons (scene-union* ss) (map scene-union* sss)))))))
+
+(: replace-vertices/adjacent (-> Pict3D (-> (Listof Vertex) (Listof (Listof Vertex)) Vertex) Pict3D))
+(define (replace-vertices/adjacent p g)
+  (define cc (current-color))
+  (define ce (current-emitted))
+  (define cm (current-material))
+  (pict3d
+   (scene-map-in-leaf-groups/transform
+    (pict3d-scene p)
+    (λ (s t)
+      (define tinv (flt3inverse t))
+      (define h (face-vertex/adjacent-fun g cc ce cm))
+      (define-values (ss fs) (scene-extract-faces s))
+      ;; Group them because we don't want things touching at just a vertex to get smoothed
+      (define fss (face-soup-group (make-face-soup fs)))
+      (define sss (map (λ ([fs : (Listof (face deform-data #f))])
+                         (let* ([fs  (transform-faces fs t)]
+                                [fs  (map-face-vertices/adjacent fs h)]
+                                [fs  (transform-faces fs tinv)])
+                           (faces->triangle-mesh-shapes fs)))
+                       fss))
+      (scene-union* (cons (scene-union* ss) (map scene-union* sss)))))))
+
+(: vertex-normal-or-zero (-> Vertex FlV3))
+(define (vertex-normal-or-zero vert)
+  (let* ([n1  (vertex-normal vert)]
+         [n1  (and n1 (flv3normalize n1))])
+    (if n1 n1 zero-flv3)))
+
+(: merge-normals (->* [] [#:blend Real] (-> (Listof Vertex) (Listof (Listof Vertex)) Vertex)))
+(define (merge-normals #:blend [α 1.0])
+  (let ([α  (flclamp (fl α) 0.0 1.0)])
+    (λ (vs vss)
+      (define v0 (first vs))
+      (define n0 (vertex-normal-or-zero v0))
+      ;; Loop over first vertices' normals and sum
+      (define new-n0
+        (for/fold ([n : FlV3  zero-flv3]) ([vs  (in-list vss)])
+          (match-define (list v1 v2 v3) (map vertex-pos vs))
+          (define n1 (vertex-normal-or-zero (first vs)))
+          (define angle (acos (flv3corner-cos v3 v1 v2)))
+          (flv3+ n (flv3+ (flv3* n0 (* (- 1.0 α) angle))
+                          (flv3* n1 (* α angle))))))
+      ;; Set first vertex's normal
+      (let* ([new-n0  (and new-n0 (flv3normalize new-n0))]
+             [new-n0  (and new-n0 (flv3->dir new-n0))])
+        (set-vertex-normal v0 new-n0)))))
+
+(: plane-normals (->* [] [#:blend Real] (-> (Listof Vertex) Vertex)))
+(define (plane-normals #:blend [α 1.0])
+  (let ([α  (flclamp (fl α) 0.0 1.0)])
+    (λ (vs)
+      (define v0 (first vs))
+      (define n0 (vertex-normal-or-zero v0))
+      (match-define (list v1 v2 v3) (map vertex-pos vs))
+      (let* ([new-n0  (flv3polygon-normal v1 v2 v3)]
+             [new-n0  (if new-n0 new-n0 zero-flv3)]
+             [new-n0  (flv3->dir (flv3blend n0 new-n0 α))])
+        (set-vertex-normal v0 new-n0)))))
+
+(: merge-vertex-normals (->* [Pict3D] [#:blend Real] Pict3D))
+(define (merge-vertex-normals p #:blend [α 1.0])
+  (replace-vertices/adjacent p (merge-normals #:blend α)))
+
+(: plane-vertex-normals (->* [Pict3D] [#:blend Real] Pict3D))
+(define (plane-vertex-normals p #:blend [α 1.0])
+  (replace-vertices p (plane-normals #:blend α)))
+
+;; ===================================================================================================
 ;; Combining scenes
 
 (: set-origin (-> Pict3D (Listof Tag) Pict3D))
@@ -772,89 +1384,6 @@
 (define (arrow from to #:normalize? [normalize? #f])
   (transform (up-arrow) (point-at from to #:normalize? normalize?)))
 
-;; ---------------------------------------------------------------------------------------------------
-;; Cylinder
-
-(: standard-cylinder-scene (-> Boolean Natural Scene))
-(define (standard-cylinder-scene inside? n)
-  (define c (current-color))
-  (define e (current-emitted))
-  (define m (current-material))
-  (scene-union*
-   (for/list ([i  (in-range n)])
-     (define t1 (* (* 2.0 pi) (/ (fl i) (fl n))))
-     (define t2 (* (* 2.0 pi) (/ (+ (fl i) 1.0) (fl n))))
-     (define x1 (flcos t1))
-     (define y1 (flsin t1))
-     (define x2 (flcos t2))
-     (define y2 (flsin t2))
-     (scene-union*
-      (list
-       ;; Top
-       (make-triangle-shape
-        (vtx (flv3 x1 y1 1.0) +z-flv3 c e m)
-        (vtx (flv3 x2 y2 1.0) +z-flv3 c e m)
-        (vtx +z-flv3 +z-flv3 c e m)
-        inside?)
-       ;; Sides
-       (make-quad-shape
-        (vtx (flv3 x1 y1 -1.0) (flv3 x1 y1 0.0) c e m)
-        (vtx (flv3 x2 y2 -1.0) (flv3 x2 y2 0.0) c e m)
-        (vtx (flv3 x2 y2 +1.0) (flv3 x2 y2 0.0) c e m)
-        (vtx (flv3 x1 y1 +1.0) (flv3 x1 y1 0.0) c e m)
-        inside?)
-       ;; Bottom
-       (make-triangle-shape
-        (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
-        (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
-        (vtx -z-flv3 -z-flv3 c e m)
-        inside?))))))
-
-(: cylinder (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural] Pict3D))
-(define (cylinder v1 v2 #:inside? [inside? #f] #:segments [n 32])
-  (freeze (pict3d (make-trans-scene (standard-cylinder-scene (and inside? #t) n)
-                                    (standard-transform v1 v2)))))
-
-;; ---------------------------------------------------------------------------------------------------
-;; Cone
-
-(: standard-cone-scene (-> Boolean Natural Boolean Scene))
-(define (standard-cone-scene inside? n smooth?)
-  (define nx (/ 1.0 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))
-  (define ny (/ 0.5 (flsqrt (+ (sqr 1.0) (sqr 0.5)))))
-  (define c (current-color))
-  (define e (current-emitted))
-  (define m (current-material))
-  (scene-union*
-   (for/list ([i  (in-range n)])
-     (define t0 (* (* 2.0 pi) (/ (+ (fl i) 0.5) (fl n))))
-     (define t1 (* (* 2.0 pi) (/ (fl i) (fl n))))
-     (define t2 (* (* 2.0 pi) (/ (+ (fl i) 1.0) (fl n))))
-     (define x0 (flcos t0))
-     (define y0 (flsin t0))
-     (define x1 (flcos t1))
-     (define y1 (flsin t1))
-     (define x2 (flcos t2))
-     (define y2 (flsin t2))
-     (scene-union
-      ;; Sides
-      (make-triangle-shape
-       (vtx +z-flv3 (if smooth? +z-flv3 (flv3 (* nx x0) (* nx y0) ny)) c e m)
-       (vtx (flv3 x1 y1 -1.0) (flv3 (* nx x1) (* nx y1) ny) c e m)
-       (vtx (flv3 x2 y2 -1.0) (flv3 (* nx x2) (* nx y2) ny) c e m)
-       inside?)
-      ;; Bottom
-      (make-triangle-shape
-       (vtx (flv3 x2 y2 -1.0) -z-flv3 c e m)
-       (vtx (flv3 x1 y1 -1.0) -z-flv3 c e m)
-       (vtx -z-flv3 -z-flv3 c e m)
-       inside?)))))
-
-(: cone (->* [Pos (U Pos Dir Real)] [#:inside? Any #:segments Natural #:smooth? Any] Pict3D))
-(define (cone v1 v2 #:inside? [inside? #f] #:segments [n 32] #:smooth? [smooth? #f])
-    (freeze (pict3d (make-trans-scene (standard-cone-scene (and inside? #t) n (and smooth? #t))
-                                      (standard-transform v1 v2)))))
-
 ;; ===================================================================================================
 ;; Collision detection
 
@@ -926,35 +1455,35 @@
 ;; ===================================================================================================
 ;; Camera/view
 
-(: canvas-projection
+(: canvas-projective
    (->* []
         [#:width Integer #:height Integer #:z-near Real #:z-far Real #:fov Real]
         FlTransform3))
-(define (canvas-projection #:width [width (current-pict3d-width)]
+(define (canvas-projective #:width [width (current-pict3d-width)]
                            #:height [height (current-pict3d-height)]
                            #:z-near [z-near (current-pict3d-z-near)]
                            #:z-far [z-far (current-pict3d-z-far)]
                            #:fov [fov (current-pict3d-fov)])
   (let ([width   (fl (max 1 width))]
         [height  (fl (max 1 height))]
-        [z-near  (max default-pict3d-z-near (min default-pict3d-z-far (fl z-near)))]
-        [z-far   (max default-pict3d-z-near (min default-pict3d-z-far (fl z-far)))]
-        [fov     (max 1.0 (min 179.0 (fl fov)))])
+        [z-near  (flclamp (fl z-near) default-pict3d-z-near default-pict3d-z-far)]
+        [z-far   (flclamp (fl z-far)  default-pict3d-z-near default-pict3d-z-far)]
+        [fov     (flclamp (fl fov) 1.0 179.0)])
     (perspective-flt3/viewport width height (degrees->radians fov) z-near z-far)))
 
-(: bitmap-projection
+(: bitmap-projective
    (->* []
         [#:width Integer #:height Integer #:z-near Real #:z-far Real #:fov Real]
         FlTransform3))
 ;; Like canvas projection but upside-down because OpenGL origin is lower-left
-(define (bitmap-projection #:width [width (current-pict3d-width)]
+(define (bitmap-projective #:width [width (current-pict3d-width)]
                            #:height [height (current-pict3d-height)]
                            #:z-near [z-near (current-pict3d-z-near)]
                            #:z-far [z-far (current-pict3d-z-far)]
                            #:fov [fov (current-pict3d-fov)])
   (flt3compose
    (scale-flt3 +x-y+z-flv3)
-   (canvas-projection #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
+   (canvas-projective #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
 
 (: camera->view (-> Affine Affine))
 ;; Inverts a camera basis to get a view transform; also negates the y and z axes
@@ -978,7 +1507,7 @@
   (define unview (flt3inverse (camera->view t)))
   (define unproj
     (flt3inverse
-     (bitmap-projection #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
+     (bitmap-projective #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
   (define w (fl (max 1 width)))
   (define h (fl (max 1 height)))
   (λ (x y)
@@ -994,7 +1523,43 @@
         (error 'camera-ray-dir "view transform inverse ~e returned zero direction ~e" unview dv))))
 
 ;; ===================================================================================================
+;; Debugging and visualization
 
 (: light-grid (->* [Emitted Emitted Emitted] [Real] Pict3D))
 (define (light-grid ex ey ez [s 1.0])
   (pict3d (make-light-grid-shape ex ey ez (real->double-flonum s))))
+
+(: outline-trues (Vectorof Boolean))
+(define outline-trues (vector #t #t #t))
+
+(: wireframe (->* [Pict3D] [#:width Real] Pict3D))
+(define (wireframe p #:width [width 1.5])
+  (let* ([width  (abs (fl width))]
+         [width  (if (= width 0.0) 1.0 width)])
+    (define cc (current-color))
+    (define ce (current-emitted))
+    (define cm (current-material))
+    (pict3d
+     (let loop ([s  (pict3d-scene p)])
+       (scene-map-shapes
+        s
+        (λ (s)
+          (cond
+            [(triangle-mesh-shape? s)
+             (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
+             (scene-union*
+              (for/fold ([ss : (Listof Scene)  empty])
+                        ([i  (in-range 0 (vector-length idxs) 3)])
+                (match-define (vtx v1 n1 _ _ _) (vector-ref vtxs (vector-ref idxs i)))
+                (match-define (vtx v2 n2 _ _ _) (vector-ref vtxs (vector-ref idxs (+ i 1))))
+                (match-define (vtx v3 n3 _ _ _) (vector-ref vtxs (vector-ref idxs (+ i 2))))
+                (define vtx1 (vtx v1 n1 cc ce cm))
+                (define vtx2 (vtx v2 n2 cc ce cm))
+                (define vtx3 (vtx v3 n3 cc ce cm))
+                (cons (make-triangle-outline-shape (vector vtx1 vtx2 vtx3)
+                                                   outline-trues outline-trues 1.5 back?)
+                      ss)))]
+            [(frozen-scene-shape? s)
+             (loop (frozen-scene-shape-scene s))]
+            [else
+             empty-scene])))))))

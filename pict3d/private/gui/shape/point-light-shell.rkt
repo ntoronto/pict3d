@@ -10,6 +10,7 @@
          "../../math.rkt"
          "../../memo.rkt"
          "../../engine.rkt"
+         "../../shape.rkt"
          "../../utils.rkt")
 
 (provide make-point-light-shell-shape
@@ -244,15 +245,26 @@ code
   (make-point-light-shell-shape e (flt3compose t t0) r0 r1))
 
 ;; ===================================================================================================
+;; Warp (approximately)
 
-(: point-light-shell-shape-functions shape-functions)
+(: point-light-shell-shape-deform (-> shape FlSmooth3 (U Null (List point-light-shell-shape))))
+(define (point-light-shell-shape-deform s t)
+  (match-define (point-light-shell-shape _ _ e t0 r0 r1) s)
+  (let ([t  (fls3apply/affine t t0)])
+    (if t (list (make-point-light-shell-shape e t r0 r1)) empty)))
+
+;; ===================================================================================================
+
 (define point-light-shell-shape-functions
-  (shape-functions
-   (λ (s c) s)
-   set-point-light-shell-shape-emitted
-   (λ (s m) s)
-   get-point-light-shell-shape-passes
-   (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shell-shape-bbox s t)))
-   point-light-shell-shape-transform
-   (λ (s t) (list (point-light-shell-shape-transform s t)))
-   (λ (s v dv max-time) (values #f #f))))
+  (deform-shape-functions
+    get-point-light-shell-shape-passes
+    (λ (s kind t) (and (eq? kind 'invisible) (get-point-light-shell-shape-bbox s t)))
+    point-light-shell-shape-transform
+    (λ (s t) (list (point-light-shell-shape-transform s t)))
+    default-ray-intersect
+    default-set-color
+    set-point-light-shell-shape-emitted
+    default-set-material
+    default-extract-faces
+    default-tessellate
+    point-light-shell-shape-deform))

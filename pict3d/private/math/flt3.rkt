@@ -4,6 +4,7 @@
          racket/list
          racket/unsafe/ops
          math/flonum
+         math/base
          (except-in typed/opengl/ffi -> cast)
          "flv3.rkt"
          "flplane3.rkt"
@@ -240,7 +241,7 @@
                             (flaffine3-1/determinant t))))))]
     [else  t]))
 
-(: cols->flaffine3 (-> FlV3 FlV3 FlV3 FlV3 FlAffine3))
+(: cols->flaffine3 (-> FlV3 FlV3 FlV3 FlV3 (U #f FlAffine3)))
 (define (cols->flaffine3 x y z p)
   (call/flv3-values x
     (λ (m00 m10 m20)
@@ -252,13 +253,17 @@
                 (λ (m03 m13 m23)
                   (call/affine3-inverse*det m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23
                     (λ (n00 n01 n02 n03 n10 n11 n12 n13 n20 n21 n22 n23 det)
-                      (flaffine3 m00 m01 m02 m03
-                                 m10 m11 m12 m13
-                                 m20 m21 m22 m23
-                                 (/ n00 det) (/ n01 det) (/ n02 det) (/ n03 det)
-                                 (/ n10 det) (/ n11 det) (/ n12 det) (/ n13 det)
-                                 (/ n20 det) (/ n21 det) (/ n22 det) (/ n23 det)
-                                 det (/ det)))))))))))))
+                      (define 1/det (/ det))
+                      (and (< -inf.0 (min det 1/det))
+                           (< (max det 1/det) +inf.0)
+                           (flaffine3
+                            m00 m01 m02 m03
+                            m10 m11 m12 m13
+                            m20 m21 m22 m23
+                            (/ n00 det) (/ n01 det) (/ n02 det) (/ n03 det)
+                            (/ n10 det) (/ n11 det) (/ n12 det) (/ n13 det)
+                            (/ n20 det) (/ n21 det) (/ n22 det) (/ n23 det)
+                            det (/ det))))))))))))))
 
 ;; ===================================================================================================
 ;; Transformation constructors
@@ -512,14 +517,14 @@
           (define-values (x-axis y-axis) (invent-orthogonal-axes z-axis))
           (let ([x-axis : FlV3  x-axis]
                 [y-axis : FlV3  y-axis])
-            (cols->flaffine3 x-axis y-axis z-axis from)))
+            (assert (cols->flaffine3 x-axis y-axis z-axis from) values)))
         (define t
           (cond
             [x-axis
              (let* ([y-axis : FlV3         (flv3cross z-axis x-axis)]
                     [y-axis : (U #f FlV3)  (flv3normalize y-axis)])
                (cond
-                 [y-axis  (cols->flaffine3 x-axis y-axis z-axis from)]
+                 [y-axis  (assert (cols->flaffine3 x-axis y-axis z-axis from) values)]
                  [else  (fail)]))]
             [else
              (fail)]))
@@ -925,3 +930,20 @@
   (if vec vec (let ([vec  (flv16->f32vector (FlProjective3-inverse t))])
                 (set-FlProjective3-inverse-data-vec! t vec)
                 vec)))
+
+;; ===================================================================================================
+
+(: flaffine3-ellipse-angle-zero (-> FlAffine3 Flonum))
+;; Finds angle 0 for an ellipse defined by an affine transformation from the unit circle
+(define (flaffine3-ellipse-angle-zero t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 _m02 _m03 m10 m11 _m12 _m13 m20 m21 _m22 _m23)
+      (let ([p  (+ (- (sqr m00) (sqr m01))
+                   (- (sqr m10) (sqr m11))
+                   (- (sqr m20) (sqr m21)))]
+            [q  (+ (* m00 m01) (* m10 m11) (* m20 m21))])
+        (define a (atan (+ p (flsqrt (+ (sqr p) (* 4.0 (sqr q)))))
+                        (* -2.0 q)))
+        (if (< a 0.0)
+            (+ a (* 0.5 pi))
+            (- a (* 0.5 pi)))))))

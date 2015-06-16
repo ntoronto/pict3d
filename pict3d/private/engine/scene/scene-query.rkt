@@ -17,7 +17,7 @@
 ;; ===================================================================================================
 ;; Map over shapes
 
-(: scene-map-shapes (-> Scene (-> shape shape) Scene))
+(: scene-map-shapes (-> Scene (-> shape Scene) Scene))
 (define (scene-map-shapes s f)
   (let loop ([s s])
     (cond
@@ -41,8 +41,106 @@
        (cond [(eq? new-s0 s0)  s]
              [else  (make-group-scene new-s0 (group-scene-tag s))])])))
 
+(: scene-map-shapes/transform (-> Scene (-> shape FlAffine3 Scene) Scene))
+(define (scene-map-shapes/transform s f)
+  (let loop ([s s] [t identity-flaffine3])
+    (cond
+      [(empty-scene? s)  s]
+      [(shape? s)  (f s t)]
+      [(node-scene? s)
+       (define s1 (node-scene-neg s))
+       (define s2 (node-scene-pos s))
+       (define new-s1 (loop s1 t))
+       (define new-s2 (loop s2 t))
+       (cond [(and (eq? new-s1 s1) (eq? new-s2 s2))  s]
+             [else  (make-node-scene new-s1 new-s2)])]
+      [(trans-scene? s)
+       (define s0 (trans-scene-scene s))
+       (define t0 (trans-scene-affine s))
+       (define new-s0 (loop s0 (flt3compose t t0)))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-trans-scene new-s0 t0)])]
+      [(group-scene? s)
+       (define s0 (group-scene-scene s))
+       (define new-s0 (loop s0 t))
+       (cond [(eq? new-s0 s0)  s]
+             [else  (make-group-scene new-s0 (group-scene-tag s))])])))
+
 ;; ===================================================================================================
-;; Tastes almost-but-not-quite-entirely-unlike map
+;; Map over leaf groups
+
+(: scene-map-in-leaf-groups (-> Scene (-> Scene Scene) Scene))
+(define (scene-map-in-leaf-groups s f)
+  (define leaf? (empty-tags? (scene-tags s)))
+  (: g Scene)
+  (: n Scene)
+  (define-values (g n)
+    (let loop ([s s] [leaf? leaf?])
+      (cond
+        ;; If empty, a shape, or contains no groups, return it for eventual application by f
+        [(or (empty-scene? s) (shape? s) leaf?)  (values empty-scene s)]
+        ;; Recur transparently through nodes
+        [(node-scene? s)
+         (define s1 (node-scene-neg s))
+         (define s2 (node-scene-pos s))
+         (define-values (g1 n1) (loop s1 leaf?))
+         (define-values (g2 n2) (loop s2 leaf?))
+         (values (make-node-scene g1 g2)
+                 (make-node-scene n1 n2))]
+        ;; Recur transparently through transformations
+        [(trans-scene? s)
+         (define s0 (trans-scene-scene s))
+         (define t0 (trans-scene-affine s))
+         (define-values (g n) (loop s0 leaf?))
+         (values (make-trans-scene g t0)
+                 (make-trans-scene n t0))]
+        ;; Recur through groups with the leaf flag set; apply f to non-group scene
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (define-values (g n) (loop s0 (empty-tags? (scene-tags s0))))
+         (values (make-group-scene (scene-union g (f n))
+                                   (group-scene-tag s))
+                 empty-scene)])))
+  ;; Apply f to non-group scene
+  (scene-union g (f n)))
+
+(: scene-map-in-leaf-groups/transform (-> Scene (-> Scene FlAffine3 Scene) Scene))
+(define (scene-map-in-leaf-groups/transform s f)
+  (define leaf? (empty-tags? (scene-tags s)))
+  (: g Scene)
+  (: n Scene)
+  (define-values (g n)
+    (let loop ([s s] [t identity-flaffine3] [leaf? leaf?])
+      (cond
+        ;; If empty, a shape, or contains no groups, return it for eventual application by f
+        [(or (empty-scene? s) (shape? s) leaf?)  (values empty-scene s)]
+        ;; Recur transparently through nodes
+        [(node-scene? s)
+         (define s1 (node-scene-neg s))
+         (define s2 (node-scene-pos s))
+         (define-values (g1 n1) (loop s1 t leaf?))
+         (define-values (g2 n2) (loop s2 t leaf?))
+         (values (make-node-scene g1 g2)
+                 (make-node-scene n1 n2))]
+        ;; Recur transparently through transformations, passing an updated global transform
+        [(trans-scene? s)
+         (define s0 (trans-scene-scene s))
+         (define t0 (trans-scene-affine s))
+         (define-values (g n) (loop s0 (flt3compose t t0) leaf?))
+         (values (make-trans-scene g t0)
+                 (make-trans-scene n t0))]
+        ;; Recur through groups with the leaf flag set; apply f to non-group scene
+        [(group-scene? s)
+         (define s0 (group-scene-scene s))
+         (define-values (g n) (loop s0 t (empty-tags? (scene-tags s0))))
+         (values (make-group-scene (scene-union g (f n t))
+                                   (group-scene-tag s))
+                 empty-scene)])))
+  ;; Apply f to non-group scene
+  (scene-union g (f n identity-flaffine3)))
+
+;; ===================================================================================================
+;; Imperative for-each
 
 (: transform-planes (-> FlAffine3 (Listof FlPlane3) (Listof FlPlane3)))
 (define (transform-planes t0 planes)

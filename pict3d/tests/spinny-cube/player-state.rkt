@@ -295,7 +295,7 @@
           [(= ix 1)  (dir 0.0 0.0 (sgn m21))]
           [else      (dir (sgn m01) 0.0 0.0)]))
   (define az (dir-cross ax ay))
-  (affine ax ay az p))
+  (assert (affine ax ay az p) values))
 
 (: affine->axis-angle (-> Affine (Values Dir Flonum)))
 (define (affine->axis-angle t)

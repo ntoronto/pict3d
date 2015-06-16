@@ -2,11 +2,13 @@
 
 (require racket/match
          racket/list
-         racket/promise
          typed/opengl
          math/flonum
+         math/base
          "../math.rkt"
          "../engine.rkt"
+         "../soup.rkt"
+         "types.rkt"
          "sphere/sphere-type.rkt"
          (prefix-in 30: "sphere/ge_30.rkt")
          (prefix-in 32: "sphere/ge_32.rkt"))
@@ -85,39 +87,163 @@
         (let* ([q  (flsqrt (max 0.0 discr))])
           (values (- b q) (+ b q))))))
 
+(: unit-sphere-intersect-normal (-> FlV3 FlV3 Nonnegative-Flonum (U #f FlV3)))
+(define (unit-sphere-intersect-normal p d time)
+  (flv3normalize (flv3fma d time p)))
+
 (: sphere-shape-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum
                                   (Values (U #f Nonnegative-Flonum) (U #f (Promise trace-data)))))
 (define (sphere-shape-ray-intersect s v dv max-time)
   (let ([s  (assert s sphere-shape?)])
-    (define t (sphere-shape-affine s))
-    (define inside? (sphere-shape-inside? s))
-    ;; Convert ray to local coordinates
-    (define tinv (flt3inverse t))
-    (define sv (flt3apply/pos tinv v))
-    (define sdv (flt3apply/dir tinv dv))
-    ;; Compute intersection
-    (define-values (tmin tmax) (unit-sphere-line-intersects sv sdv))
-    (define time (if inside? tmax tmin))
-    (cond [(and time (>= time 0.0) (<= time max-time))
-           ;; Note: time can't be +nan.0 (which can happen when dv is zero-flv3)
-           (define data
-             (delay (define p (flv3fma dv time v))
-                    (define n (let ([n  (flv3normalize (flv3fma sdv time sv))])
-                                (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))
-                    (trace-data p n empty)))
-           (values time data)]
-          [else
-           (values #f #f)])))
+    (transformed-shape-intersect (sphere-shape-affine s)
+                                 (sphere-shape-inside? s)
+                                 v dv max-time
+                                 unit-sphere-line-intersects
+                                 unit-sphere-intersect-normal)))
+
+;; ===================================================================================================
+;; Tessellation
+
+(: make-sphere-deform-data (-> FlAffine3 deform-data))
+(define (make-sphere-deform-data t)
+  (define tinv (flt3inverse t))
+  (deform-data
+   (λ (v1 v2 α)
+     (let* ([v  (flv3blend (flt3apply/pos tinv v1) (flt3apply/pos tinv v2) α)]
+            [v  (flv3normalize v)]
+            [v  (if v v zero-flv3)])
+       (flt3apply/pos t v)))
+   (λ (vtx1 vtx2 v)
+     (let* ([v      (flt3apply/pos tinv v)]
+            [vtx1   (flt3apply/vtx tinv vtx1)]
+            [vtx2   (flt3apply/vtx tinv vtx2)]
+            [vtx12  (vtx-interpolate vtx1 vtx2 v)]
+            [vtx12  (flt3apply/vtx t vtx12)])
+       vtx12))))
+
+(define octahedron-vss
+  (list (list +z-flv3 +x-flv3 +y-flv3)
+        (list +z-flv3 +y-flv3 -x-flv3)
+        (list +z-flv3 -x-flv3 -y-flv3)
+        (list +z-flv3 -y-flv3 +x-flv3)
+        (list -z-flv3 +y-flv3 +x-flv3)
+        (list -z-flv3 -x-flv3 +y-flv3)
+        (list -z-flv3 -y-flv3 -x-flv3)
+        (list -z-flv3 +x-flv3 -y-flv3)))
+
+(define reverse-octahedron-vss
+  (map (λ ([vs : (Listof FlV3)])
+         ;; If tessellation is asymmetric, just reversing makes it look bad
+         (match-define (list v1 v2 v3) vs)
+         (list v1 v3 v2))
+       octahedron-vss))
+
+(: flv3slerp (-> FlV3 FlV3 Flonum FlV3))
+(define (flv3slerp v1 v2 α)
+  (define angle (acos (flv3cos v1 v2)))
+  (define s (sin angle))
+  (define β1 (/ (sin (* (- 1.0 α) angle)) s))
+  (define β2 (/ (sin (* α angle)) s))
+  (if (and (< -inf.0 (min β1 β2))
+           (< (max β1 β2) +inf.0))
+      (flv3+ (flv3* v1 β1) (flv3* v2 β2))
+      v1))
+
+(: biased-triangle-slerp (-> FlV3 FlV3 FlV3 Flonum Flonum FlV3))
+(define (biased-triangle-slerp va vb vc u v)
+  (flv3slerp (flv3slerp va vb u)
+             (flv3slerp va vc u)
+             (if (= u 0.0) 0.0 (/ v u))))
+
+(: rotate-slerp-args (-> FlV3 FlV3 FlV3 Flonum Flonum (Values FlV3 FlV3 FlV3 Flonum Flonum)))
+(define (rotate-slerp-args va1 vb1 vc1 u1 v1)
+  (define v2 (- 1.0 u1))
+  (define u2 (+ v1 v2))
+  (values vb1 vc1 va1 u2 v2))
+
+(: triangle-slerp (-> FlV3 FlV3 FlV3 Flonum Flonum FlV3))
+(define (triangle-slerp va1 vb1 vc1 u1 v1)
+  (define-values (va2 vb2 vc2 u2 v2) (rotate-slerp-args va1 vb1 vc1 u1 v1))
+  (define-values (va3 vb3 vc3 u3 v3) (rotate-slerp-args va2 vb2 vc2 u2 v2))
+  (flv3mean (biased-triangle-slerp va1 vb1 vc1 u1 v1)
+            (biased-triangle-slerp va2 vb2 vc2 u2 v2)
+            (biased-triangle-slerp va3 vb3 vc3 u3 v3)))
+
+(: split-sphere-face (-> (Listof FlV3) Positive-Integer (Listof (Listof FlV3))))
+(define (split-sphere-face vs n)
+  (match-define (list va vb vc) vs)
+  
+  ;; All the vertex positions for this face
+  (define verts
+    (list->vector
+     (for/list : (Listof (Vectorof FlV3)) ([i  (in-range (+ n 1))])
+       (list->vector
+        (for/list : (Listof FlV3) ([j  (in-range (+ i 1))])
+          (triangle-slerp va vb vc (/ (fl i) (fl n)) (/ (fl j) (fl n))))))))
+  
+  (append*
+   (for/list : (Listof (Listof (Listof FlV3))) ([i1  (in-range n)])
+     (define i2 (+ i1 1))
+     (append*
+      (for/list : (Listof (Listof (Listof FlV3))) ([j1  (in-range (+ i1 1))])
+        (define j2 (+ j1 1))
+        (define va (vector-ref (vector-ref verts i1) j1))
+        (define vb (vector-ref (vector-ref verts i2) j1))
+        (define vc (vector-ref (vector-ref verts i2) j2))
+        (cond [(= j1 i1)  (list (list va vb vc))]
+              [else
+               (define vd (vector-ref (vector-ref verts i1) j2))
+               (list (list va vb vc) (list va vc vd))]))))))
+
+(: sphere-shape-tessellate (-> shape FlAffine3 Positive-Flonum Nonnegative-Flonum
+                               (Values Null (Listof (face deform-data #f)))))
+(define (sphere-shape-tessellate s t0 max-edge max-angle)
+  (match-define (sphere-shape _ _ t c e m inside?) s)
+  
+  (define reverse? (if (flt3consistent? t) inside? (not inside?)))
+  (define n (max 1 (exact-ceiling (/ (* 0.5 pi) (max min-angle max-angle)))))
+  
+  (define vss
+    (let* ([vss  (if reverse? reverse-octahedron-vss octahedron-vss)]
+           [vss  (append* (map (λ ([vs : (Listof FlV3)]) (split-sphere-face vs n)) vss))])
+      vss))
+  
+  (define data (make-sphere-deform-data t))
+  
+  (: flv3->vtx (-> FlV3 vtx))
+  (define (flv3->vtx v)
+    (define n (let ([n  (assert (flt3apply/norm t v) values)])
+                (if inside? (flv3neg n) n)))
+    (vtx (flt3apply/pos t v) n c e m))
+  
+  (define fs
+    (for/fold ([fs : (Listof (face deform-data #f))  empty]) ([vs  (in-list vss)])
+      (match-define (list v1 v2 v3) vs)
+      (cons (face (flv3->vtx v1) (flv3->vtx v2) (flv3->vtx v3) data #f #f #f) fs)))
+  
+  (values empty fs))
+
+;; ===================================================================================================
+;; Deform
+
+(: sphere-shape-deform (-> shape FlSmooth3 (U Null (List sphere-shape))))
+(define (sphere-shape-deform s t0)
+  (match-define (sphere-shape _ _ t c e m inside?) s)
+  (let ([t  (fls3apply/affine t0 t)])
+    (if t (list (make-sphere-shape t c e m inside?)) empty)))
 
 ;; ===================================================================================================
 
 (define sphere-shape-functions
-  (shape-functions
-   set-sphere-shape-color
-   set-sphere-shape-emitted
-   set-sphere-shape-material
-   get-sphere-shape-passes
-   (λ (s kind t) (and (eq? kind 'visible) (get-sphere-shape-bbox s t)))
-   sphere-shape-transform
-   (λ (s t) (list (sphere-shape-transform s t)))
-   sphere-shape-ray-intersect))
+  (deform-shape-functions
+    get-sphere-shape-passes
+    (λ (s kind t) (and (eq? kind 'visible) (get-sphere-shape-bbox s t)))
+    sphere-shape-transform
+    (λ (s t) (list (sphere-shape-transform s t)))
+    sphere-shape-ray-intersect
+    set-sphere-shape-color
+    set-sphere-shape-emitted
+    set-sphere-shape-material
+    default-extract-faces
+    sphere-shape-tessellate
+    sphere-shape-deform))

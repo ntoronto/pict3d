@@ -7,7 +7,8 @@
                   unsafe-flvector-ref)
          racket/performance-hint
          math/flonum
-         "../utils.rkt")
+         "../utils.rkt"
+         "fl.rkt")
 
 (provide (all-defined-out))
 
@@ -53,3 +54,72 @@
   )  ; begin-encourage-inline
 
 (define zero-flv4 (flv4 0.0 0.0 0.0 0.0))
+
+;; ===================================================================================================
+;; FlV4 operations
+
+(: flv4rational? (-> FlV4 Boolean))
+(define (flv4rational? v)
+  (call/flv4-values v
+    (λ (x y z w)
+      (and (< -inf.0 (min x y z w))
+           (< (max x y z w) +inf.0)))))
+
+(: flv4zero? (-> FlV4 Boolean))
+(define (flv4zero? v)
+  (call/flv4-values v
+    (λ (x y z w)
+      (= 0.0 (min (abs x) (abs y) (abs z) (abs w))))))
+
+(: flv4near? (-> FlV4 FlV4 Flonum Boolean))
+(define (flv4near? v1 v2 eps)
+  (call/flv4-values v1
+    (λ (x1 y1 z1 w1)
+      (call/flv4-values v2
+        (λ (x2 y2 z2 w2)
+          (and (flnear? x1 x2 eps)
+               (flnear? y1 y2 eps)
+               (flnear? z1 z2 eps)
+               (flnear? w1 w2 eps)))))))
+
+(: flv4+ (-> FlV4 FlV4 FlV4))
+(define (flv4+ v1 v2)
+  (call/flv4-values v1
+    (λ (x1 y1 z1 w1)
+      (call/flv4-values v2
+        (λ (x2 y2 z2 w2)
+          (flv4 (+ x1 x2) (+ y1 y2) (+ z1 z2) (+ w1 w2)))))))
+
+(: flv4- (-> FlV4 FlV4 FlV4))
+(define (flv4- v1 v2)
+  (call/flv4-values v1
+    (λ (x1 y1 z1 w1)
+      (call/flv4-values v2
+        (λ (x2 y2 z2 w2)
+          (flv4 (- x1 x2) (- y1 y2) (- z1 z2) (- w1 w2)))))))
+
+(: flv4neg (-> FlV4 FlV4))
+(define (flv4neg v)
+  (call/flv4-values v
+    (λ (x y z w)
+      (flv4 (- x) (- y) (- z) (- w)))))
+
+(: flv4* (-> FlV4 Flonum FlV4))
+(define (flv4* v a)
+  (call/flv4-values v
+    (λ (x y z w)
+      (flv4 (* x a) (* y a) (* z a) (* w a)))))
+
+(: flv4/ (-> FlV4 Flonum FlV4))
+(define (flv4/ v a)
+  (call/flv4-values v
+    (λ (x y z w)
+      (flv4 (/ x a) (/ y a) (/ z a) (/ w a)))))
+
+(: flv4blend (-> FlV4 FlV4 Flonum FlV4))
+(define (flv4blend v1 v2 α)
+  (call/flv4-values v1
+    (λ (x1 y1 z1 w1)
+      (call/flv4-values v2
+        (λ (x2 y2 z2 w2)
+          (flv4 (flblend x1 x2 α) (flblend y1 y2 α) (flblend z1 z2 α) (flblend w1 w2 α)))))))

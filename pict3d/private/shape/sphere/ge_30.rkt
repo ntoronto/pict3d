@@ -19,9 +19,9 @@
 ;; Program for pass 1: material
 
 (define sphere-mat-vertex-attributes
-  (list (attribute "" 'vec4 "sphere0")
-        (attribute "" 'vec4 "sphere1")
-        (attribute "" 'vec4 "sphere2")
+  (list (attribute "" 'vec4 "t0")
+        (attribute "" 'vec4 "t1")
+        (attribute "" 'vec4 "t2")
         (attribute "" 'vec4/bytes "vert_roughness_inside_id")  ; vec4(roughness, inside, id, 0)
         ))
 
@@ -50,7 +50,7 @@
    #:out-attributes
    sphere-mat-fragment-attributes
    #<<code
-mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
+mat4x3 sphere = rows2mat4x3(t0, t1, t2);
 mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
 mat4x3 unmodel = affine_inverse(model);
 mat4 trans = view * a2p(model);
@@ -111,9 +111,9 @@ code
 ;; Program for pass 2: color
 
 (define sphere-draw-vertex-attributes
-  (list (attribute "" 'vec4 "sphere0")
-        (attribute "" 'vec4 "sphere1")
-        (attribute "" 'vec4 "sphere2")
+  (list (attribute "" 'vec4 "t0")
+        (attribute "" 'vec4 "t1")
+        (attribute "" 'vec4 "t2")
         ;; vec4(r, g, b, a)
         (attribute "" 'vec4/bytes "vert_rcolor")
         ;; vec4(r, g, intensity.lo, intensity.hi)
@@ -152,7 +152,7 @@ code
    #:out-attributes
    sphere-draw-fragment-attributes
    #<<code
-mat4x3 sphere = rows2mat4x3(sphere0, sphere1, sphere2);
+mat4x3 sphere = rows2mat4x3(t0, t1, t2);
 mat4x3 model = mat4x3(a2p(get_model_transform()) * a2p(sphere));
 mat4x3 unmodel = affine_inverse(model);
 mat4 trans = view * a2p(model);

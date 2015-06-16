@@ -1527,7 +1527,7 @@ A less common use is to build a ray tracer in very few lines of code, such as th
                       (code:comment "for each screen coordinate on a grayscale surface...")
                       (λ (_ x y)
                         (code:comment "trace from the camera origin through the screen at x,y")
-                        (define-values (v n) (trace/normal p v0 (ray-dir x y)))
+                        (define-values (v n) (trace/normal p v0 (ray-dir (+ x 0.5) (+ y 0.5))))
                         (cond [(and v n)
                                (code:comment "direction from surface point to light source")
                                (define dl (pos- l v))

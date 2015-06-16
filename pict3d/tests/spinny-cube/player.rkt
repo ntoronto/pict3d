@@ -23,12 +23,13 @@
   (with-material (material #:ambient 0.01 #:diffuse 0.2 #:specular 0.79 #:roughness 0.2)
     (with-color (rgba "Salmon")
       (with-emitted (emitted "yellow" 0.05)
-        (cylinder origin (dir 0.225 0.225 0.75) #:segments 12)))))
+        (cylinder origin (dir 0.2 0.2 0.8))))))
 
 (define corner
   (combine
    (with-emitted (emitted "yellow" 0.75)
-     (cube origin 1/4))
+     (deform (tessellate (sphere origin 1/8) #:max-angle (/ 90 5))
+       (extend (dir 1/8 1/8 1/8))))
    (group (light origin (emitted "yellow" #i1/16)) 'light)))
 
 (define unscaled-player

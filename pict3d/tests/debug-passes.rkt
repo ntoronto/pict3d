@@ -22,7 +22,7 @@
                       (basis 'camera (point-at (pos 1.2 1.2 1.2)
                                                (pos 0 0 0.35)))))
 
-(for ([dp  (in-list (cons #f engine-debug-passes))])
+(for ([dp  (in-list (cons #f (get-engine-debug-passes)))])
   (parameterize ([current-engine-debug-pass  dp]
                  [current-pict3d-z-near  0.75]
                  [current-pict3d-z-far  2.5])

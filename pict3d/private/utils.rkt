@@ -32,6 +32,16 @@
   (arithmetic-shift 1 (integer-length (- size 1))))
 
 ;; ===================================================================================================
+;; List operations
+
+(: map2 (All (A B C) (-> (-> A (Values B C)) (Listof A) (Values (Listof B) (Listof C)))))
+(define (map2 f xs)
+  (cond [(empty? xs)  (values empty empty)]
+        [else  (let-values ([(y z)    (f (first xs))]
+                            [(ys zs)  (map2 f (rest xs))])
+                 (values (cons y ys) (cons z zs)))]))
+
+;; ===================================================================================================
 ;; Lists with minimum length
 
 (define-type (Listof+1 A) (Pair A (Listof A)))
@@ -270,3 +280,76 @@
            (unless (= n (flvector-length v))
              (raise-type-error 'flvector-values (format "length-~a FlVector" n) v))
            (values (unsafe-flvector-ref v i) ...))))]))
+
+;; ===================================================================================================
+;; Indexed vector (i.e. mesh) operations
+
+(: indexed-vector-append (All (X) (-> (Listof (Vectorof X)) (Listof (Vectorof Index))
+                                      (Values (Vectorof X) (Vectorof Index)))))
+(define (indexed-vector-append xss idxss)
+  (define-values (n m)
+    (for/fold ([n : Nonnegative-Fixnum  0]
+               [m : Nonnegative-Fixnum  0])
+              ([vtxs  (in-list xss)]
+               [idxs  (in-list idxss)])
+      (values (unsafe-fx+ n (vector-length vtxs))
+              (unsafe-fx+ m (vector-length idxs)))))
+  (cond
+    [(or (= n 0) (= m 0))
+     (values (vector) (vector))]
+    [else
+     (define all-xs ((inst make-vector X) n (vector-ref (first xss) 0)))
+     (define all-idxs ((inst make-vector Index) m 0))
+     ;; Mapping from x values to their new indexes
+     (define x-hash ((inst make-hash X Index)))
+     ;; For each indexed vector...
+     (define-values (new-n new-m)
+       (for/fold ([n : Nonnegative-Fixnum  0]
+                  [m : Nonnegative-Fixnum  0])
+                 ([xs  (in-list xss)]
+                  [idxs  (in-list idxss)])
+         ;; Copy the x values
+         (for/fold ([n : Nonnegative-Fixnum  n]
+                    [m : Nonnegative-Fixnum  m])
+                   ([i  (in-range (vector-length idxs))])
+           ;; Look up x by its index j
+           (define j (unsafe-vector-ref idxs i))
+           (define x (vector-ref xs j))
+           ;; Determine whether we've seen it before
+           (define new-j (hash-ref x-hash x #f))
+           (cond [(not new-j)
+                  ;; If not, get a new index new-j and record it
+                  (define new-j (assert n index?))
+                  (hash-set! x-hash x new-j)
+                  ;; Copy x and its index
+                  (unsafe-vector-set! all-xs new-j x)
+                  (unsafe-vector-set! all-idxs m new-j)
+                  (values (unsafe-fx+ n 1) (unsafe-fx+ m 1))]
+                 [else
+                  ;; If we've seen it before, just set the index
+                  (unsafe-vector-set! all-idxs m new-j)
+                  (values n (unsafe-fx+ m 1))]))))
+     ;; Keep only the xs we need
+     (values (if (= n new-n) all-xs (vector-copy all-xs 0 new-n))
+             all-idxs)]))
+
+;; ===================================================================================================
+
+(: make-cached-vector (All (A) (-> Symbol (-> Integer A) (-> A Index) (-> Integer A))))
+(define (make-cached-vector name make-vec vec-length)
+  (: the-vec (U #f A))
+  (define the-vec #f)
+  
+  (: get-vec (-> Integer A))
+  (define (get-vec size)
+    (cond [(index? size)
+           (define vec the-vec)
+           (cond [(and vec (<= size (vec-length vec)))  vec]
+                 [else
+                  (define vec (make-vec (next-pow2 size)))
+                  (set! the-vec vec)
+                  vec])]
+          [else
+           (raise-argument-error name "Index" size)]))
+  
+  get-vec)

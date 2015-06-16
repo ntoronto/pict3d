@@ -87,20 +87,31 @@
         (λ (x y z)
           (fl3plane-point-dist a b c d x y z))))))
 
-(: flv3triangle-plane (-> FlV3 FlV3 FlV3 (U #f FlPlane3)))
-(define (flv3triangle-plane v1 v2 v3)
-  (define norm (flv3triangle-normal v1 v2 v3))
+(: flv3polygon-plane* (-> (Listof FlV3) (U #f FlPlane3)))
+(define (flv3polygon-plane* vs)
+  (define norm (flv3polygon-normal* vs))
   (and norm (call/flv3-values norm
               (λ (a b c)
-                (call/flv3-values v2
+                (call/flv3-values (flv3mean* vs)
                   (λ (x y z)
                     (unsafe-flplane3 a b c (- (fl3dot a b c x y z)))))))))
 
-(: flv3polygon-plane (-> (Vectorof FlV3) (U #f FlPlane3)))
-(define (flv3polygon-plane vs)
-  (define norm (flv3polygon-normal vs))
-  (and norm (call/flv3-values norm
-              (λ (a b c)
-                (call/flv3-values (flv3polygon-centroid vs)
-                  (λ (x y z)
-                    (unsafe-flplane3 a b c (- (fl3dot a b c x y z)))))))))
+(begin-encourage-inline
+  
+  (: flv3polygon-plane (-> FlV3 * (U #f FlPlane3)))
+  (define flv3polygon-plane
+    (case-lambda
+      [()  #f]
+      [(v1)  #f]
+      [(v1 v2)  #f]
+      [(v1 v2 v3)
+       (define norm (flv3polygon-normal v1 v2 v3))
+       (and norm (call/flv3-values norm
+                   (λ (a b c)
+                     (call/flv3-values v2
+                       (λ (x y z)
+                         (unsafe-flplane3 a b c (- (fl3dot a b c x y z))))))))]
+      [vs
+       (flv3polygon-plane* vs)]))
+  
+  )  ; begin-encourage-inline

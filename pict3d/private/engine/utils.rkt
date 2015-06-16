@@ -10,6 +10,11 @@
 
 (provide (all-defined-out))
 
+(: find-tail (All (A) (-> A (Listof A) (Listof A))))
+(define (find-tail x xs)
+  (let ([xs  (member x xs)])
+    (if xs xs (error 'find-tail "expected list containing ~e; given ~e" x xs))))
+
 ;; ===================================================================================================
 ;; Utils for packing and unpacking vertex data
 
@@ -22,6 +27,55 @@
   (if (< -inf.0 x +inf.0)
       (min 255 (max 0 (exact-floor (* x 256.0))))
       0))
+
+(: flfract (-> Flonum Flonum))
+(define (flfract x)
+  (- x (floor x)))
+
+(: unorm8x3_to_snorm12x2 (-> Integer Integer Integer (Values Flonum Flonum)))
+(define (unorm8x3_to_snorm12x2 ux uy uz)
+  (let ([uy  (* (fl uy) #i1/16)])
+    (define sx (+ (* ux 16.0) (floor uy)))
+    (define sy (+ (* (flfract uy) (* 16.0 256.0)) uz))
+    (values (max -1.0 (min 1.0 (- (* sx #i1/2047) 1.0)))
+            (max -1.0 (min 1.0 (- (* sy #i1/2047) 1.0))))))
+
+(: snorm12x2_to_unorm8x3 (-> Flonum Flonum (Values Integer Integer Integer)))
+(define (snorm12x2_to_unorm8x3 fx fy)
+  (cond
+    [(and (< -inf.0 fx +inf.0)
+          (< -inf.0 fy +inf.0))
+     (define ux (round (+ (* (max -1.0 (min 1.0 fx)) 2047.0) 2047.0)))
+     (define uy (round (+ (* (max -1.0 (min 1.0 fy)) 2047.0) 2047.0)))
+     (define t (floor (* uy #i1/256)))
+     (values (exact-floor (* ux #i1/16))
+             (exact-floor (+ (* (flfract (* ux #i1/16)) 256.0) t))
+             (exact-floor (- uy (* t 256.0))))]
+    [else
+     (values 0 0 1)]))
+
+(: sign-not-zero (-> Flonum Flonum))
+(define (sign-not-zero x)
+  (if (>= x 0.0) +1.0 -1.0))
+
+(: pack-normal (-> Flonum Flonum Flonum (Values Integer Integer Integer)))
+(define (pack-normal vx vy vz)
+  (define m (/ 1.0 (+ (abs vx) (abs vy) (abs vz))))
+  (define px (* vx m))
+  (define py (* vy m))
+  (snorm12x2_to_unorm8x3
+   (if (> vz 0.0) px (* (- 1.0 (abs py)) (sign-not-zero px)))
+   (if (> vz 0.0) py (* (- 1.0 (abs px)) (sign-not-zero py)))))
+
+(: unpack-normal (-> Integer Integer Integer (Values Flonum Flonum Flonum)))
+(define (unpack-normal bx by bz)
+  (define-values (ex ey) (unorm8x3_to_snorm12x2 bx by bz))
+  (define vz (- 1.0 (abs ex) (abs ey)))
+  (define vx (if (>= vz 0.0) ex (* (- 1.0 (abs ey)) (sign-not-zero ex))))
+  (define vy (if (>= vz 0.0) ey (* (- 1.0 (abs ex)) (sign-not-zero ey))))
+  (define m (sqrt (+ (sqr vx) (sqr vy) (sqr vz))))
+  (values (/ vx m) (/ vy m) (/ vz m)))
+
 #|
 ;; ===================================================================================================
 ;; Shader analogues

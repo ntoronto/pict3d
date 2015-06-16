@@ -5,6 +5,7 @@
          racket/list
          math/flonum
          math/base
+         "fl.rkt"
          "fl3.rkt"
          "flv3.rkt"
          "flv4.rkt"
@@ -38,12 +39,14 @@
 ;; ===================================================================================================
 
 (define zero-flrect3 (FlRect3 zero-flv3 zero-flv3))
+(define unit-flrect3 (FlRect3 -x-y-z-flv3 +x+y+z-flv3))
 (define inf-flrect3 (FlRect3 (flv3 -inf.0 -inf.0 -inf.0)
                              (flv3 +inf.0 +inf.0 +inf.0)))
 
 (: flrect3 (case-> (-> FlV3 FlRect3)
                    (-> FlV3 FlV3 FlRect3)
-                   (-> FlV3 FlV3 FlV3 FlRect3)))
+                   (-> FlV3 FlV3 FlV3 FlRect3)
+                   (-> FlV3 FlV3 FlV3 FlV3 FlRect3)))
 (define flrect3
   (case-lambda
     [(v)  (FlRect3 v v)]
@@ -64,7 +67,19 @@
              (call/flv3-values v3
                (λ (x3 y3 z3)
                  (FlRect3 (flv3 (min x1 x2 x3) (min y1 y2 y3) (min z1 z2 z3))
-                          (flv3 (max x1 x2 x3) (max y1 y2 y3) (max z1 z2 z3)))))))))]))
+                          (flv3 (max x1 x2 x3) (max y1 y2 y3) (max z1 z2 z3)))))))))]
+    [(v1 v2 v3 v4)
+     (call/flv3-values v1
+       (λ (x1 y1 z1)
+         (call/flv3-values v2
+           (λ (x2 y2 z2)
+             (call/flv3-values v3
+               (λ (x3 y3 z3)
+                 (call/flv3-values v4
+                   (λ (x4 y4 z4)
+                     (FlRect3 (flv3 (min x1 x2 x3 x4) (min y1 y2 y3 y4) (min z1 z2 z3 z4))
+                              (flv3 (max x1 x2 x3 x4) (max y1 y2 y3 y4) (max z1 z2 z3 z4)))))))))))]
+    ))
 
 (: flrect3-update (-> FlRect3 FlV3 FlRect3))
 (define (flrect3-update bb v)
@@ -77,6 +92,16 @@
       (define dx (fl3mag m00 m01 m02))
       (define dy (fl3mag m10 m11 m12))
       (define dz (fl3mag m20 m21 m22))
+      (flrect3 (flv3 (- m03 dx) (- m13 dy) (- m23 dz))
+               (flv3 (+ m03 dx) (+ m13 dy) (+ m23 dz))))))
+
+(: transformed-disk-flrect3 (-> FlAffine3 FlRect3))
+(define (transformed-disk-flrect3 t)
+  (call/flaffine3-forward t
+    (λ (m00 m01 _m02 m03 m10 m11 _m12 m13 m20 m21 _m22 m23)
+      (define dx (fl3mag m00 m01 0.0))
+      (define dy (fl3mag m10 m11 0.0))
+      (define dz (fl3mag m20 m21 0.0))
       (flrect3 (flv3 (- m03 dx) (- m13 dy) (- m23 dz))
                (flv3 (+ m03 dx) (+ m13 dy) (+ m23 dz))))))
 
@@ -409,9 +434,9 @@
           (define dz1 (- zmax z))
           (define d (min dx0 dx1 dy0 dy1 dz0 dz1))
           (if (<= d 0.0)
-              (flv3 (max xmin (min xmax x))
-                    (max ymin (min ymax y))
-                    (max zmin (min zmax z)))
+              (flv3 (flclamp x xmin xmax)
+                    (flclamp y ymin ymax)
+                    (flclamp z zmin zmax))
               (flv3 (if (= d dx0) xmin (if (= d dx1) xmax x))
                     (if (= d dy0) ymin (if (= d dy1) ymax y))
                     (if (= d dz0) zmin (if (= d dz1) zmax z)))))))))

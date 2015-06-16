@@ -240,11 +240,12 @@
        (list t v1 v2))))
   
   (for/fold ([picts : (Listof Pict3D)  empty]) ([tr  (in-list trs)])
-   (match-define (list t v1 v2) tr)
-   (cond [(and v1 v2)
-          (define t1 (scale (dir-scale (pos- v2 v1) 0.5)))
-          (define t2 (move (pos- (pos-between v1 v2 0.5) origin)))
-          (define t0 (affine-compose t2 t1))
-          (cons (transform group-box (affine-compose t t0)) picts)]
-         [else
-          picts])))
+    (match-define (list t v1 v2) tr)
+    (define s (and v1 v2 (dir-scale (pos- v2 v1) 0.5)))
+    (cond [(and v1 v2 s (> (min (abs (dir-dx s)) (abs (dir-dy s)) (abs (dir-dz s))) epsilon.0))
+           (define t1 (scale s))
+           (define t2 (move (pos- (pos-between v1 v2 0.5) origin)))
+           (define t0 (affine-compose t2 t1))
+           (cons (transform group-box (affine-compose t t0)) picts)]
+          [else
+           picts])))

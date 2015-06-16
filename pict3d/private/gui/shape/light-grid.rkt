@@ -266,12 +266,8 @@ code
 
 ;; ===================================================================================================
 
-(: light-grid-shape-functions shape-functions)
 (define light-grid-shape-functions
   (shape-functions
-   (λ (s c) s)
-   (λ (s e) s)
-   (λ (s m) s)
    get-light-grid-shape-passes
    (λ (s kind t) (and (eq? kind 'invisible) light-grid-shape-bbox))
    (λ (s t) s)

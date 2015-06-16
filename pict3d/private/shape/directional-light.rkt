@@ -4,13 +4,15 @@
 
 (require racket/match
          racket/flonum
+         racket/list
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          "../math.rkt"
          "../gl.rkt"
          "../memo.rkt"
          "../engine.rkt"
-         "../utils.rkt")
+         "../utils.rkt"
+         "types.rkt")
 
 (provide make-directional-light-shape
          (struct-out directional-light-shape))
@@ -151,14 +153,13 @@ code
 
 ;; ===================================================================================================
 
-(: directional-light-shape-functions shape-functions)
 (define directional-light-shape-functions
-  (shape-functions
-   (λ (s c) s)
-   set-directional-light-shape-emitted
-   (λ (s m) s)
+  (attrib-shape-functions
    get-directional-light-shape-passes
    (λ (s kind t) (and (eq? kind 'invisible) directional-light-shape-bbox))
    directional-light-shape-transform
    (λ (s t) (list (directional-light-shape-transform s t)))
-   (λ (s v dv max-time) (values #f #f))))
+   default-ray-intersect
+   default-set-color
+   set-directional-light-shape-emitted
+   default-set-material))

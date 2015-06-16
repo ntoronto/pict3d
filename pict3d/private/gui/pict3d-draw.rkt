@@ -40,7 +40,7 @@
                [else  (let ([t  (camera-transform (first picts))])
                         (if t t (camera (first picts))))])))
       
-      (define make-proj (if bitmap? bitmap-projection canvas-projection))
+      (define make-proj (if bitmap? bitmap-projective canvas-projective))
       (define proj (make-proj #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov))
       
       (draw-scenes (map pict3d-scene picts) width height view proj background ambient))))

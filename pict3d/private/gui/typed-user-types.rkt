@@ -13,13 +13,31 @@
          math/base
          "../math.rkt"
          "../engine.rkt"
+         "../soup.rkt"
          "../utils.rkt")
 
 (provide
  Tag
  tag?
+ (rename-out [-Interval Interval])
+ interval?
+ interval
+ interval-min
+ interval-max
+ interval-values
+ zero-interval
+ unit-interval
+ (rename-out [-Arc Arc])
+ arc?
+ arc
+ arc-min
+ arc-max
+ arc-values
+ zero-arc
+ circle-arc
  ;; Materials
  (rename-out [-Material Material])
+ flv4->material
  material?
  material
  make-material
@@ -69,6 +87,7 @@
  dir-scale
  dir-dist^2
  dir-dist
+ dir-norm
  dir-normalize
  dir-dot
  dir-cross
@@ -84,6 +103,8 @@
  pos-dist^2
  ;; Vertices
  Vertex
+ vtx->vertex
+ face->vertices
  vertex
  make-vertex
  vertex?
@@ -92,6 +113,11 @@
  vertex-color
  vertex-emitted
  vertex-material
+ set-vertex-pos
+ set-vertex-normal
+ set-vertex-color
+ set-vertex-emitted
+ set-vertex-material
  ;; Affine transforms
  (rename-out [-Affine Affine])
  flaffine3->affine
@@ -111,6 +137,24 @@
  transform-pos
  transform-dir
  transform-norm
+ ;; Smooth functions
+ (rename-out [-Differentiable Differentiable])
+ fldiff3->differentiable
+ differentiable?
+ differentiable
+ Smooth
+ smooth?
+ smooth-function
+ smooth-jacobian
+ flsmooth3->smooth
+ smooth-compose
+ smooth-consistent?
+ smooth-approximate
+ smooth-between
+ deform-pos
+ deform-dir
+ deform-norm
+ deform-affine
  ;; Surface data
  (rename-out [-Surface-Data Surface-Data])
  trace-data->surface-data
@@ -122,6 +166,66 @@
  surface-data-normal
  surface-data-path
  )
+
+;; ===================================================================================================
+;; Intervals
+
+(define print-interval
+  (make-constructor-style-printer
+   (λ ([a : Interval]) 'interval)
+   (λ ([a : Interval]) (list (Interval-min a) (Interval-max a)))))
+
+(struct Interval ([min : Flonum] [max : Flonum])
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-interval)
+
+(define-type -Interval Interval)
+(define interval? Interval?)
+(define interval-min Interval-min)
+(define interval-max Interval-max)
+
+(: interval (-> Real Real Interval))
+(define (interval mn mx)
+  (let ([mn  (fl mn)]
+        [mx  (fl mx)])
+    (Interval (min mn mx) (max mn mx))))
+
+(: interval-values (-> Interval (Values Flonum Flonum)))
+(define (interval-values i)
+  (values (interval-min i) (interval-max i)))
+
+(define zero-interval (Interval 0.0 0.0))
+(define unit-interval (Interval 0.0 1.0))
+
+;; ===================================================================================================
+;; Arcs
+
+(define print-arc
+  (make-constructor-style-printer
+   (λ ([a : Arc]) 'arc)
+   (λ ([a : Arc]) (list (Arc-min a) (Arc-max a)))))
+
+(struct Arc ([min : Flonum] [max : Flonum])
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-arc)
+
+(define-type -Arc Arc)
+(define arc? Arc?)
+(define arc-min Arc-min)
+(define arc-max Arc-max)
+
+(: arc (-> Real Real Arc))
+(define (arc mn mx)
+  (Arc (fl mn) (fl mx)))
+
+(: arc-values (-> Arc (Values Flonum Flonum)))
+(define (arc-values a)
+  (values (arc-min a) (arc-max a)))
+
+(define zero-arc (Arc 0.0 0.0))
+(define circle-arc (Arc 0.0 360.0))
 
 ;; ===================================================================================================
 ;; Materials
@@ -146,12 +250,16 @@
 (define-type -Material Material)
 (define material? Material?)
 
+(: flv4->material (-> FlV4 Material))
+(define (flv4->material v)
+  (if (material? v) v (Material (FlV4-flvector v))))
+
 (: make-material (-> Flonum Flonum Flonum Flonum Material))
 (define (make-material a d s r)
-  (let ([a  (min 1.0 (max 0.0 a))]
-        [d  (min 1.0 (max 0.0 d))]
-        [s  (min 1.0 (max 0.0 s))]
-        [r  (min 1.0 (max 0.0 r))])
+  (let ([a  (flclamp a 0.0 1.0)]
+        [d  (flclamp d 0.0 1.0)]
+        [s  (flclamp s 0.0 1.0)]
+        [r  (flclamp r 0.0 1.0)])
     (Material (flvector a d s r))))
 
 (: material (->* [] [#:ambient Real #:diffuse Real #:specular Real #:roughness Real] Material))
@@ -309,7 +417,7 @@
 (define (flv3-values v)
   (call/flv3-values v values))
 
-(define print-vector-value
+(define print-flv3-value
   (λ ([name : Symbol])
     (make-constructor-style-printer
      (λ ([v : FlV3]) name)
@@ -319,14 +427,14 @@
 (define (print-pos v port mode)
   (cond [(equal? v origin)  (write-string "origin" port)
                             (void)]
-        [else  ((print-vector-value 'pos) v port mode)]))
+        [else  ((print-flv3-value 'pos) v port mode)]))
 
 (: print-dir (-> Dir Output-Port (U Boolean Zero One) Void))
 (define (print-dir dv port mode)
   (define name (hash-ref dir-names dv #f))
   (cond [name  (write-string name port)
                (void)]
-        [else  ((print-vector-value 'dir) dv port mode)]))
+        [else  ((print-flv3-value 'dir) dv port mode)]))
 
 (struct Pos FlV3 ()
   #:transparent
@@ -445,6 +553,21 @@
 (define (dir-dist dv)
   (flv3mag dv))
 
+(: dir-norm (-> Dir Nonnegative-Real Flonum))
+(define (dir-norm dv p)
+  (let ([p  (fl p)])
+    (call/flv3-values dv
+      (λ (dx dy dz)
+        (let ([dx  (abs dx)]
+              [dy  (abs dy)]
+              [dz  (abs dz)])
+          (cond
+            [(= p 2.0)     (flsqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
+            [(> p 1e16)    (max dx dy dz)]
+            [(= p 1.0)     (+ dx dy dz)]
+            [(= p 0.0)     (if (> (max dx dy dz) 0.0) +inf.0 0.0)]
+            [else  (flexpt (+ (flexpt dx p) (flexpt dy p) (flexpt dz p)) (/ p))]))))))
+
 (: dir-normalize (-> Dir (U #f Dir)))
 (define (dir-normalize dv)
   (define v (flv3normalize dv))
@@ -459,19 +582,17 @@
   (flv3->dir (flv3cross dv1 dv2)))
 
 (: dir-project (-> Dir Dir (U #f Dir)))
-(define (dir-project A B)
-  (define d (dir-dist^2 B))
-  (cond [(= d 0.0)  #f]
-        [else  (dir-scale B (/ (dir-dot A B) d))]))
+(define (dir-project dv1 dv2)
+  (define dv (flv3proj dv1 dv2))
+  (and dv (flv3->dir dv)))
 
 (: dir-reject (->* [Dir Dir] [Real] Dir))
 (define (dir-reject dv n [s 1.0])
-  (define proj (dir-project dv n))
-  (if proj (dir- dv (dir-scale proj s)) dv))
+  (flv3->dir (flv3rej dv n (fl s))))
 
 (: dir-reflect (-> Dir Dir Dir))
 (define (dir-reflect dv n)
-  (dir-reject dv n 2.0))
+  (flv3->dir (flv3refl dv n)))
 
 (: angles->dir (-> Real Real Dir))
 (define (angles->dir ang alt)
@@ -530,6 +651,90 @@
   (flv3dist v1 v2))
 
 ;; ===================================================================================================
+;; Homogeneous coordinates
+#|
+Don't know if I want these for anything other than specifying projective matrices
+
+(define print-hom
+  (make-constructor-style-printer
+   (λ ([v : FlV4]) 'hom)
+   (λ ([v : FlV4]) (call/flv4-values v list))))
+
+(struct Hom FlV4 ()
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-hom)
+
+(define-type -Hom Hom)
+(define hom? Hom?)
+
+(: flv4->hom (-> FlV4 Hom))
+(define (flv4->hom v)
+  (if (hom? v) v (Hom (FlV4-flvector v))))
+
+(: rational-flvector4 (-> Symbol Flonum Flonum Flonum Flonum FlVector))
+(define (rational-flvector4 name x y z w)
+  (if (and (< -inf.0 (min x y z w))
+           (< (max x y z w) +inf.0))
+      (flvector x y z w)
+      (error name "expected rational coordinates; given ~e ~e ~e ~e" x y z w)))
+
+(: ->flvector4 (-> Symbol (U FlVector (Listof Real) (Vectorof Real)) FlVector))
+(define (->flvector4 name v)
+  (cond [(flvector? v)
+         (if (= 4 (flvector-length v))
+             (rational-flvector4 name
+                                 (unsafe-flvector-ref v 0)
+                                 (unsafe-flvector-ref v 1)
+                                 (unsafe-flvector-ref v 2)
+                                 (unsafe-flvector-ref v 3))
+             (raise-argument-error name "length-4 flvector, list or vector" v))]
+        [else
+         (match v
+           [(vector x y z w)
+            (rational-flvector4 name (fl x) (fl y) (fl z) (fl w))]
+           [(list x y z w)
+            (rational-flvector4 name (fl x) (fl y) (fl z) (fl w))]
+           [_
+            (raise-argument-error name "length-4 flvector, list or vector" v)])]))
+
+(: hom (case-> (-> (U FlVector (Listof Real) (Vectorof Real)) Hom)
+               (-> Real Real Real Real Hom)))
+(define hom
+  (case-lambda
+    [(v)  (Hom (->flvector4 'hom v))]
+    [(x y z w)  (Hom (rational-flvector4 'hom (fl x) (fl y) (fl z) (fl w)))]))
+
+(define hom-x (λ ([v : Hom]) (flv4-ref v 0)))
+(define hom-y (λ ([v : Hom]) (flv4-ref v 1)))
+(define hom-z (λ ([v : Hom]) (flv4-ref v 2)))
+(define hom-w (λ ([v : Hom]) (flv4-ref v 3)))
+
+(: pos->hom (-> Pos Hom))
+(define (pos->hom v)
+  (call/flv3-values v
+    (λ (x y z)
+      (Hom (flvector x y z 1.0)))))
+
+(: hom->pos (-> Hom (U #f Pos)))
+(define (hom->pos v)
+  (call/flv4-values v
+    (λ (x y z w)
+      (pos (/ x w) (/ y w) (/ z w)))))
+
+(: dir->hom (-> Dir Hom))
+(define (dir->hom v)
+  (call/flv3-values v
+    (λ (dx dy dz)
+      (Hom (flvector dx dy dz 0.0)))))
+
+(: hom->dir (-> Hom Dir))
+(define (hom->dir v)
+  (call/flv4-values v
+    (λ (x y z w)
+      (dir x y z))))
+|#
+;; ===================================================================================================
 ;; Vertex data
 
 (: print-vertex (-> Vertex Output-Port (U #t #f 0 1) Void))
@@ -571,6 +776,41 @@
                 #:material [m #f])
   (let ([n  (if n (dir-normalize n) #f)])
     (make-vertex v n c e m)))
+
+(: set-vertex-pos (-> Vertex Pos Vertex))
+(define (set-vertex-pos vert v)
+  (match-define (Vertex _ n c e m) vert)
+  (Vertex v n c e m))
+
+(: set-vertex-normal (-> Vertex (U #f Dir) Vertex))
+(define (set-vertex-normal vert n)
+  (match-define (Vertex v _ c e m) vert)
+  (Vertex v (and n (dir-normalize n)) c e m))
+
+(: set-vertex-color (-> Vertex (U #f RGBA) Vertex))
+(define (set-vertex-color vert c)
+  (match-define (Vertex v n _ e m) vert)
+  (Vertex v n c e m))
+
+(: set-vertex-emitted (-> Vertex (U #f Emitted) Vertex))
+(define (set-vertex-emitted vert e)
+  (match-define (Vertex v n c _ m) vert)
+  (Vertex v n c e m))
+
+(: set-vertex-material (-> Vertex (U #f Material) Vertex))
+(define (set-vertex-material vert m)
+  (match-define (Vertex v n c e _) vert)
+  (Vertex v n c e m))
+
+(: vtx->vertex (-> vtx Vertex))
+(define (vtx->vertex v)
+  (match-define (vtx p n c e m) v)
+  (make-vertex (flv3->pos p) (flv3->dir n) (flv4->rgba c) (flv4->emitted e) (flv4->material m)))
+
+(: face->vertices (All (A B) (-> (face A B) (Listof Vertex))))
+(define (face->vertices f)
+  (define-values (vtx1 vtx2 vtx3) (face-vtxs f))
+  (list (vtx->vertex vtx1) (vtx->vertex vtx2) (vtx->vertex vtx3)))
 
 ;; ===================================================================================================
 ;; Affine transforms
@@ -640,9 +880,10 @@
 (define (affine-consistent? t)
   (flt3consistent? t))
 
-(: affine (-> Dir Dir Dir Pos Affine))
+(: affine (-> Dir Dir Dir Pos (U #f Affine)))
 (define (affine x y z p)
-  (flaffine3->affine (cols->flaffine3 x y z p)))
+  (define t (cols->flaffine3 x y z p))
+  (and t (flaffine3->affine t)))
 
 (: affine->cols* (-> Affine (Values Dir Dir Dir Pos)))
 (define (affine->cols* t)
@@ -663,7 +904,7 @@
   please use ~a instead\n"
                             old new))))
 
-(: cols->affine (-> Dir Dir Dir Pos Affine))
+(: cols->affine (-> Dir Dir Dir Pos (U #f Affine)))
 (define (cols->affine dx dy dz p)
   (deprecation-warning! 'cols->affine "affine")
   (affine dx dy dz p))
@@ -708,8 +949,183 @@ affine-y-axis, affine-z-axis or affine-origin")
 
 (: transform-norm (-> Dir Affine (U #f Dir)))
 (define (transform-norm v t)
-  (define n (flt3apply/norm t v))
-  (and n (flv3->dir n)))
+  (let ([n  (flt3apply/norm t v)])
+    (and n (flv3->dir n))))
+
+;; ===================================================================================================
+;; Smooth functions
+
+(: print-differentiable (-> Differentiable Output-Port (U #t #f 0 1) Void))
+(define (print-differentiable t out mode)
+  (write-string "#<differentiable>" out)
+  (void))
+
+(struct Differentiable FlDiff3 ()
+  #:transparent
+  #:property prop:custom-print-quotable 'never
+  #:property prop:custom-write print-differentiable)
+
+(define-type -Differentiable Differentiable)
+(define differentiable? Differentiable?)
+
+(: fldiff3->differentiable (-> FlDiff3 Differentiable))
+(define (fldiff3->differentiable t)
+  (if (differentiable? t)
+      t
+      (match-let ([(FlDiff3 f j j-given?)  t])
+        (Differentiable f j j-given?))))
+
+(: pos-pos->values-values (-> (-> Pos Pos) FlFunction3))
+(define ((pos-pos->values-values f) x y z)
+  (call/flv3-values (f (pos x y z)) values))
+
+(: values-values->pos-pos (-> FlFunction3 (-> Pos Pos)))
+(define ((values-values->pos-pos f) v)
+  (define-values (x y z) (call/flv3-values v f))
+  (pos x y z))
+
+(: pos-cols->values-values (-> (-> Pos (Values Dir Dir Dir)) FlJacobian3))
+(define ((pos-cols->values-values f) x y z)
+  (define-values (dx dy dz) (f (pos x y z)))
+  (call/flv3-values dx
+    (λ (m00 m10 m20)
+      (call/flv3-values dy
+        (λ (m01 m11 m21)
+          (call/flv3-values dz
+            (λ (m02 m12 m22)
+              (values m00 m01 m02
+                      m10 m11 m12
+                      m20 m21 m22))))))))
+
+(: values-values->pos-cols (-> FlJacobian3 (-> Pos (Values Dir Dir Dir))))
+(define ((values-values->pos-cols f) v)
+  (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22) (call/flv3-values v f))
+  (values (dir m00 m10 m20)
+          (dir m01 m11 m21)
+          (dir m02 m12 m22)))
+
+(: differentiable (->* [(-> Pos Pos)]
+                       [(U #f (-> Pos (Values Dir Dir Dir)))]
+                       Differentiable))
+(define (differentiable f [j #f])
+  (if j
+      (Differentiable (pos-pos->values-values f)
+                      (pos-cols->values-values j)
+                      #t)
+      (let ([f  (pos-pos->values-values f)])
+        (Differentiable f (make-jacobian f) #f))))
+
+(define-type Smooth (U Affine Differentiable))
+
+(: smooth? (-> Any Boolean : Smooth))
+(define (smooth? t) (or (affine? t) (differentiable? t)))
+
+(: smooth-function (-> Smooth (-> Pos Pos)))
+(define (smooth-function t)
+  (if (differentiable? t)
+      (values-values->pos-pos (FlDiff3-function t))
+      (λ (v) (transform-pos v t))))
+
+(: smooth-jacobian (-> Smooth (-> Pos (Values Dir Dir Dir))))
+(define (smooth-jacobian t)
+  (if (differentiable? t)
+      (values-values->pos-cols (FlDiff3-jacobian t))
+      (let-values ([(dx dy dz _)  (affine->cols t)])
+        (λ (_) (values dx dy dz)))))
+
+(: flsmooth3->smooth (-> FlSmooth3 Smooth))
+(define (flsmooth3->smooth t)
+  (if (flaffine3? t)
+      (flaffine3->affine t)
+      (fldiff3->differentiable t)))
+
+(: smooth-compose2 (-> Smooth Smooth Smooth))
+(define (smooth-compose2 t1 t2)
+  (flsmooth3->smooth (fls3compose t1 t2)))
+
+(: smooth-compose (-> Smooth * Smooth))
+(define (smooth-compose . ts)
+  (if (empty? ts)
+      identity-affine
+      (let ([t1  (first ts)]
+            [ts  (rest ts)])
+        (if (empty? ts)
+            t1
+            (let loop ([t1 t1] [t2  (first ts)] [ts  (rest ts)])
+              (if (empty? ts)
+                  (smooth-compose2 t1 t2)
+                  (loop (smooth-compose2 t1 t2) (first ts) (rest ts))))))))
+
+(: smooth-consistent? (-> Smooth Pos Boolean))
+(define (smooth-consistent? t v)
+  (fls3consistent? t v))
+
+(: smooth-approximate (-> Smooth Pos (U #f Affine)))
+(define (smooth-approximate t v)
+  (let ([t  (fls3approximate t v)])
+    (and t (flaffine3->affine t))))
+
+(: smooth-between (-> Smooth Smooth (U Real (-> Pos Real)) Smooth))
+(define (smooth-between t0 t1 fα)
+  (let ([t0  (if (flaffine3? t0) (flaffine3->fldiff3 t0) t0)]
+        [t1  (if (flaffine3? t1) (flaffine3->fldiff3 t1) t1)]
+        [fα  (cond [(real? fα)  (λ ([_ : Pos]) fα)]
+                   [else  fα])])
+    
+    (match-define (FlDiff3 f0 j0 given0?) t0)
+    (match-define (FlDiff3 f1 j1 given1?) t1)
+    
+    (: f FlFunction3)
+    (define (f x y z)
+      (define-values (x0 y0 z0) (f0 x y z))
+      (define-values (x1 y1 z1) (f1 x y z))
+      (define α (fl (fα (pos x y z))))
+      (values (flblend x0 x1 α)
+              (flblend y0 y1 α)
+              (flblend z0 z1 α)))
+    
+    (: j FlJacobian3)
+    (define (j x y z)
+      (define-values (m00 m01 m02 m10 m11 m12 m20 m21 m22) (j0 x y z))
+      (define-values (n00 n01 n02 n10 n11 n12 n20 n21 n22) (j1 x y z))
+      (define α (fl (fα (pos x y z))))
+       (values (flblend m00 n00 α) (flblend m01 n01 α) (flblend m02 n02 α)
+               (flblend m10 n10 α) (flblend m11 n11 α) (flblend m12 n12 α)
+               (flblend m20 n20 α) (flblend m21 n21 α) (flblend m22 n22 α)))
+    
+    (Differentiable f j (or given0? given1?))))
+
+(: deform-pos (-> Pos Smooth Pos))
+(define (deform-pos v t)
+  (if (affine? t)
+      (transform-pos v t)
+      (flv3->pos (fls3apply/pos t v))))
+
+(: deform-dir (-> Pos Dir Smooth Dir))
+(define (deform-dir v dv t)
+  (if (affine? t)
+      (transform-dir dv t)
+      (flv3->dir (fls3apply/dir t v dv))))
+
+(: deform-norm (-> Pos Dir Smooth (U #f Dir)))
+(define (deform-norm v dv t)
+  (if (affine? t)
+      (transform-norm dv t)
+      (let ([v  (fls3apply/norm t v dv)])
+        (and v (flv3->dir v)))))
+
+(: deform-affine (-> Affine Smooth (U #f Affine)))
+(define (deform-affine t1 t2)
+  (define t (fls3apply/affine t2 t1))
+  (and t (flaffine3->affine t))
+  #;; Equivalent to this when t2 is Affine:
+  (affine-compose t2 t1)
+  #;; Equivalent to this when t2 is Differentiable:
+  (let-values ([(dx dy dz v)  (affine->cols* t1)])
+    (affine (deform-dir v dx t2)
+            (deform-dir v dy t2)
+            (deform-dir v dz t2)
+            (deform-pos v t2))))
 
 ;; ===================================================================================================
 ;; Surface data

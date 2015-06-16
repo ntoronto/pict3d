@@ -410,6 +410,38 @@ void output_2d_rect_vertex(rect bbx, int vertex_id) {
 code
     )))
 
+(define output-unit-cube-vertex-code
+  (make-partial-code
+   "output-unit-cube-vertex"
+   #:definitions
+   (list #<<code
+void output_unit_cube_vertex(mat4 trans, mat4 proj, int vertex_id) {
+  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
+                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
+                mix(-1.0, +1.0, (vertex_id & 4) >> 2),
+                1.0);
+  p = proj * trans * p;
+  gl_Position = vec4(p.xy / p.w, 0.0, 1.0);
+}
+code
+         )))
+
+(define output-unit-quad-vertex-code
+  (make-partial-code
+   "output-unit-quad-vertex"
+   #:definitions
+   (list #<<code
+void output_unit_quad_vertex(mat4 trans, mat4 proj, int vertex_id) {
+  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
+                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
+                0.0,
+                1.0);
+  p = proj * trans * p;
+  gl_Position = vec4(p.xy / p.w, 0.0, 1.0);
+}
+code
+         )))
+
 (define infinity-code
   (make-partial-code
    "infinity"
@@ -492,19 +524,49 @@ code
    #:definitions
    (list
     #<<code
-vec2 pack_normal(vec3 norm) {
-  vec2 res;
-  res = 0.5 * (norm.xy + vec2(1.0, 1.0));
-  res.x *= (norm.z < 0 ? -1.0 : 1.0);
-  return res;
+// Returns +/-1
+vec2 signNotZero(vec2 v) {
+  return vec2((v.x >= 0.0) ? +1.0 : -1.0, (v.y >= 0.0) ? +1.0 : -1.0);
 }
 code
     #<<code
-vec3 unpack_normal(vec2 norm) {
-  vec3 res;
-  res.xy = (2.0 * abs(norm)) - vec2(1.0, 1.0);
-  res.z = (norm.x < 0 ? -1.0 : 1.0) * sqrt(abs(1.0 - res.x * res.x - res.y * res.y));
-  return res;
+// Assume normalized input.  Output is on [-1, 1] for each component.
+vec2 float32x3_to_oct(in vec3 v) {
+  // Project the sphere onto the octahedron, and then onto the xy plane
+  vec2 p = v.xy * (1.0 / (abs(v.x) + abs(v.y) + abs(v.z)));
+  // Reflect the folds of the lower hemisphere over the diagonals
+  return (v.z <= 0.0) ? ((1.0 - abs(p.yx)) * signNotZero(p)) : p;
+}
+code
+    #<<code
+vec3 oct_to_float32x3(vec2 e) {
+  vec3 v = vec3(e.xy, 1.0 - abs(e.x) - abs(e.y));
+  if (v.z < 0) v.xy = (1.0 - abs(v.yx)) * signNotZero(v.xy);
+  return normalize(v);
+}
+code
+    #<<code
+vec3 snorm12x2_to_unorm8x3(vec2 f) {
+  vec2 u = vec2(round(clamp(f, -1.0, 1.0) * 2047 + 2047));
+  float t = floor(u.y / 256.0);
+  return floor(vec3(u.x / 16.0, fract(u.x / 16.0) * 256.0 + t, u.y - t * 256.0));
+}
+code
+    #<<code
+vec2 unorm8x3_to_snorm12x2(vec3 u) {
+  u.y *= (1.0 / 16.0);
+  vec2 s = vec2(u.x * 16.0 + floor(u.y), fract(u.y) * (16.0 * 256.0) + u.z);
+  return clamp(s * (1.0 / 2047.0) - 1.0, vec2(-1.0), vec2(1.0));
+}
+code
+    #<<code
+vec3 unpack_normal(vec3 u) {
+  return oct_to_float32x3(unorm8x3_to_snorm12x2(u));
+}
+code
+    #<<code
+vec3 pack_normal(vec3 n) {
+  return snorm12x2_to_unorm8x3(float32x3_to_oct(n));
 }
 code
     )))
@@ -545,14 +607,12 @@ code
 (define get-surface-fragment-code
   (make-partial-code
    "get-surface-fragment"
-   #:includes (list surface-code
-                    pack-unpack-normal-code)
+   #:includes (list surface-code)
    #:definitions
    (list
     #<<code
 surface get_surface(sampler2D matTex) {
   vec4 mat = texelFetch(matTex, ivec2(gl_FragCoord.xy), 0);
-  //return surface(unpack_normal(mat.rg), mat.a);
   return surface(mat.rgb, mat.a);
 }
 code
@@ -621,8 +681,7 @@ code
   (make-partial-code
    "output-mat-fragment"
    #:includes
-   (list depth-fragment-code
-         pack-unpack-normal-code)
+   (list depth-fragment-code)
    #:out-attributes
    (list (attribute "" 'vec4 "out_mat"))
    #:definitions
@@ -630,7 +689,6 @@ code
     #<<code
 void output_mat(vec3 dir, float roughness, float z) {
   gl_FragDepth = get_frag_depth(z);
-  //out_mat = vec4(pack_normal(normalize(dir)), 1.0, roughness);
   out_mat = vec4(normalize(dir), roughness);
 }
 code
@@ -708,6 +766,32 @@ vec2 unit_sphere_intersect(vec3 origin, vec3 dir) {
   if (disc < 0.0) discard;
   float q = sqrt(disc);
   return vec2(-q,q) - vec2(b);
+}
+code
+    #<<code
+vec2 unit_disk_intersect(vec3 origin, vec3 dir, float r) {
+  float t = -origin.z / dir.z;
+  float d = length(origin + t * dir);
+  t = (r <= d && d <= 1.0) ? t : -1.0;
+  return (dir.z < 0.0) ? vec2(t,-1.0) : vec2(-1.0,t);
+}
+code
+    #<<code
+vec2 unit_cylinder_intersect(vec3 p, vec3 d, float r) {
+  float s = 0.5 * (1.0 - r);
+  float dz1 = s * d.z;
+  float pz1 = 1.0 - s * (p.z + 1.0);
+  float a =  dot(vec3(d.xy,dz1), vec3(d.xy,-dz1));
+  float b = -dot(vec3(d.xy,dz1), vec3(p.xy, pz1)) / a;
+  float c =  dot(vec3(p.xy,pz1), vec3(p.xy,-pz1)) / a;
+  float disc = b*b - c;
+  if (disc < 0.0) discard;
+  float q = sign(a) * sqrt(disc);
+  vec2 t = vec2(b) + vec2(-q,q);
+  return mix(vec2(-1.0), t, step(abs(p.zz + d.zz * t), vec2(1.0)));
+  // Equivalent:
+  //return vec2(1.0 < abs(p.z + d.z * t1) ? -1.0 : t1,
+  //            1.0 < abs(p.z + d.z * t2) ? -1.0 : t2);
 }
 code
     )))

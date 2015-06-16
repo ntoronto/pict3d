@@ -47,30 +47,30 @@
 (: current-pict3d-width (Parameterof Integer Positive-Index))
 (define current-pict3d-width
   (make-parameter default-pict3d-width
-                  (λ ([n : Integer]) (assert (min 1024 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (max 1 (min 1024 n)) index?))))
 
 (: current-pict3d-height (Parameterof Integer Positive-Index))
 (define current-pict3d-height
   (make-parameter default-pict3d-height
-                  (λ ([n : Integer]) (assert (min 1024 (max 1 n)) index?))))
+                  (λ ([n : Integer]) (assert (max 1 (min 1024 n)) index?))))
 
 (: current-pict3d-z-near (Parameterof Real Positive-Flonum))
 (define current-pict3d-z-near
   (make-parameter default-pict3d-z-near
                   (λ ([z : Real])
-                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
+                    (flclamp (fl z) default-pict3d-z-near default-pict3d-z-far))))
 
 (: current-pict3d-z-far (Parameterof Real Positive-Flonum))
 (define current-pict3d-z-far
   (make-parameter default-pict3d-z-far
                   (λ ([z : Real])
-                    (max default-pict3d-z-near (min default-pict3d-z-far (fl z))))))
+                    (flclamp (fl z) default-pict3d-z-near default-pict3d-z-far))))
 
 (: current-pict3d-fov (Parameterof Positive-Real Positive-Flonum))
 (define current-pict3d-fov
   (make-parameter default-pict3d-fov
                   (λ ([z : Positive-Real])
-                    (max 1.0 (min 179.0 (fl z))))))
+                    (flclamp (fl z) 1.0 179.0))))
 
 (: current-pict3d-background (Parameterof RGBA))
 (define current-pict3d-background (make-parameter default-pict3d-background))
@@ -86,6 +86,9 @@
 
 (: current-pict3d-add-grid? (Parameterof Boolean))
 (define current-pict3d-add-grid? (make-parameter #f))
+
+(: current-pict3d-add-wireframe (Parameterof (U #f 'color 'emitted)))
+(define current-pict3d-add-wireframe (make-parameter #f))
 
 (: current-pict3d-auto-camera (Parameterof (-> Pict3D Affine)))
 (define current-pict3d-auto-camera (make-parameter default-pict3d-auto-camera))

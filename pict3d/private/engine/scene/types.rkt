@@ -1,9 +1,12 @@
 #lang typed/racket/base
 
 (require (for-syntax racket/base)
+         racket/match
          racket/list
+         racket/vector
          racket/promise
          "../../math.rkt"
+         "../../math/flt3-unboxed-ops.rkt"
          "../../gl.rkt"
          "../draw.rkt"
          "tags.rkt")
@@ -88,7 +91,7 @@
       #t))
 
 ;; ===================================================================================================
-;; Collision detection types
+;; Collision detection
 
 (struct trace-data
   ([pos : FlV3]
@@ -100,10 +103,7 @@
 ;; Shape types (most basic nonempty scenes)
 
 (struct shape-functions
-  ([set-color : (-> shape FlV4 shape)]
-   [set-emitted : (-> shape FlV4 shape)]
-   [set-material : (-> shape FlV4 shape)]
-   [get-passes : (-> shape passes)]
+  ([get-passes : (-> shape passes)]
    [get-bbox : (-> shape (U 'visible 'invisible) FlAffine3 (U #f bbox))]
    [fast-transform : (-> shape FlAffine3 (U #f shape))]
    [deep-transform : (-> shape FlAffine3 (Listof shape))]
@@ -124,24 +124,27 @@
 (: lazy-passes (-> (HashTable GL-Context passes)))
 (define lazy-passes make-weak-hasheq)
 
-(: shape-set-color (-> shape FlV4 shape))
-(define (shape-set-color s c)
-  ((shape-functions-set-color (shape-vtable s)) s c))
+(: default-get-passes (-> shape passes))
+(define (default-get-passes s) empty-passes)
 
-(: shape-set-emitted (-> shape FlV4 shape))
-(define (shape-set-emitted s e)
-  ((shape-functions-set-emitted (shape-vtable s)) s e))
+(: default-get-bbox (-> shape (U 'visible 'invisible) FlAffine3 #f))
+(define (default-get-bbox s kind t) #f)
 
-(: shape-set-material (-> shape FlV4 shape))
-(define (shape-set-material s m)
-  ((shape-functions-set-material (shape-vtable s)) s m))
+(: default-fast-transform (-> shape FlAffine3 #f))
+(define (default-fast-transform s t) #f)
+
+(: default-deep-transform (-> shape FlAffine3 (List shape)))
+(define (default-deep-transform s t) (list s))
+
+(: default-ray-intersect (-> shape FlV3 FlV3 Nonnegative-Flonum (Values #f #f)))
+(define (default-ray-intersect s v dv max-time) (values #f #f))
 
 (: shape-passes (-> shape passes))
-(define (shape-passes a)
+(define (shape-passes s)
   (hash-ref!
-   (shape-lazy-passes a)
+   (shape-lazy-passes s)
    (get-current-managed-gl-context 'shape-passes)
-   (λ () ((shape-functions-get-passes (shape-vtable a)) a))))
+   (λ () ((shape-functions-get-passes (shape-vtable s)) s))))
 
 (: shape-visible-bbox (-> shape FlAffine3 (U #f bbox)))
 (define (shape-visible-bbox s t)
@@ -204,8 +207,7 @@
 
 (: scene-tags (-> Scene Tags))
 (define (scene-tags s)
-  (cond [(empty-scene? s)  empty-tags]
-        [(node-scene? s)  (node-scene-child-tags s)]
+  (cond [(node-scene? s)  (node-scene-child-tags s)]
         [(trans-scene? s)  (scene-tags (trans-scene-scene s))]
         [(group-scene? s)  (tags-add (scene-tags (group-scene-scene s))
                                      (group-scene-tag s))]

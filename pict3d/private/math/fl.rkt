@@ -15,10 +15,6 @@
 (define 2^564 (flexpt 2.0 564.0))
 (define 2^-564 (flexpt 2.0 -564.0))
 
-(: flequiv? (-> Flonum Flonum Nonnegative-Flonum Boolean))
-(define (flequiv? x y eps)
-  (<= (abs (- x y)) (* (abs y) eps)))
-
 ;(: fast-flfma (-> Flonum Flonum Flonum Flonum))
 ;; Tuned to make observed error bounded by 4.0 ulp
 (define-syntax-rule (fast-flfma x1-stx s-stx x2-stx)
@@ -39,3 +35,15 @@
          (let ([n  (fl n)])
            (define denom (if (n . > . 1e9) pi (* n (fltanpix (/ 1.0 n)))))
            (max 0.0 (* (* (/ 0.25 denom) p) p)))]))
+
+;(: flblend (-> Flonum Flonum Flonum Flonum))
+(define-syntax-rule (flblend x1 x2 α-stx)
+  (let ([α : Flonum  α-stx])
+    (+ (* x1 (- 1.0 α)) (* x2 α))))
+
+;(: flclamp (-> Flonum Flonum Flonum Flonum))
+(define-syntax-rule (flclamp x mn mx)
+  (max mn (min mx x)))
+
+(define-syntax-rule (flnear? x1 x2 eps)
+  (<= (abs (- x1 x2)) eps))

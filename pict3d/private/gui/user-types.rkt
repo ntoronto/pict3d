@@ -5,6 +5,8 @@
          racket/flonum
          (rename-in
           "typed-user-types.rkt"
+          [interval -interval]
+          [arc -arc]
           [rgba  -rgba]
           [emitted  -emitted]
           [pos  -pos]
@@ -13,23 +15,34 @@
 
 (provide (except-out
           (all-from-out "typed-user-types.rkt")
+          interval-values
+          arc-values
           flv4-values
           flv4->rgba
           flv4->emitted
+          flv4->material
           flv3-values
           flv3->pos
           flv3->dir
+          vtx->vertex
+          face->vertices
           flaffine3->affine
+          fldiff3->differentiable
+          flsmooth3->smooth
           trace-data->surface-data
           make-material
           make-vertex
           make-surface-data
+          -interval
+          -arc
           -pos
           -dir
           -rgba
           -emitted
           -affine
           affine->cols*)
+         interval
+         arc
          pos
          dir
          rgba
@@ -41,6 +54,22 @@
     (syntax-case stx ()
       [(_ . args)  (quasisyntax/loc stx (#,id . args))]
       [_  (quasisyntax/loc stx #,id)])))
+
+(define-match-expander interval
+  (λ (stx)
+    (syntax-case stx ()
+      [(_ x y)
+       (syntax/loc stx
+         (? interval? (app interval-values x y)))]))
+  (make-head-expander #'-interval))
+
+(define-match-expander arc
+  (λ (stx)
+    (syntax-case stx ()
+      [(_ x y)
+       (syntax/loc stx
+         (? arc? (app arc-values x y)))]))
+  (make-head-expander #'-arc))
 
 (define-match-expander pos
   (λ (stx)
