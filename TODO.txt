@@ -1,7 +1,9 @@
 ======================================================================================================
 Easy
 
-Reparameterize point lights
+Add Rect (list of intervals) type
+ * Return from `bounding-rectangle`
+ * Accept as argument to shape constructor fuctions
 
 Documentation
  * Add Differentiable, Smooth, deform, tessellate, etc.
@@ -29,9 +31,38 @@ Allow big-bang3d's frame-delay argument to be zero
 ======================================================================================================
 Medium
 
-Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
+Try doing lighting pass before solid object passes, collecting lighting information in a buffer
 
-Polygon (esp. quad) faces in face soup
+Face soup representation
+ * Allow polygons (esp. quads)
+ ? Allow non-planar polygons (requires BSP planes to have a thickness based on vertex-plane distance)
+ * Fast BSP
+ * Fast vertex merge (possibly based on BSP)
+
+Replace triangle-mesh-shape with face-soup-shape to reduce vertex merge and BSP recomputation
+
+High-level face soup shape operations
+ * Combine
+ * CSG intersect
+ * CSG union
+ * CSG subtract
+ * Simplify (edge aware)
+
+Low-level face soup shape operations
+ * Goal: allow defining `deform`
+ * Goal: allow defining `adaptive-tessellate`
+ * Goal: allow defining `plane-vertex-normals`, `merge-vertex-normals`, `smooth-vertex-normals`
+ * Replace vertices
+    * Given vertex only
+    * Given vertex + neighboring vertices
+    * Given vertex + neighboring faces
+ * Replace edges
+    * Given edge only
+    * Given edge + neighboring edges
+    * Given edge + neighboring faces
+ * Replace faces
+    * Given face only
+    * Given face + neighboring faces
 
 New shape constructors
  * polygon
@@ -40,17 +71,20 @@ New shape constructors
  * heightmap/terrain (try a geometry shader)
  * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
  * wrap with texture/skybox
+ * directional lights limited to a fixed volume (e.g. rectangle, ellipsoid, cylinder)
+
+Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 
 ? Physically-based transparency (i.e. proper transmission fractions)
 
-? Special-case transformation matrix struct for translation and rotation
+? Special-case transformation matrix struct for translation, uniform scaling, and rotation
 
 ? Pause big-bang3d programs to get an interactive GUI
 
 ======================================================================================================
 Hard
 
-Never produce +nan.0
+Never produce +nan.0 internally
 
 Automate marshaling vertex data
 

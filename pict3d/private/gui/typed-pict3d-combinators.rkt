@@ -65,10 +65,13 @@
  pipe
  cylinder
  cone
- sunlight
- light
  freeze
  freeze-in-groups
+ ;; Lights
+ default-light-range
+ current-light-range
+ light
+ sunlight
  ;; Transformations
  transform
  scale-x
@@ -520,7 +523,7 @@
 
 (: ring (->* [Pos (U Pos Dir Real)] [#:radii Interval #:arc Arc #:back? Any] Pict3D))
 (define (ring v1 v2 #:radii [radii unit-interval] #:arc [arc circle-arc] #:back? [back? #f])
-  (let-values ([(r1 r2)  (interpret-interval radii 0.0 1.0)]
+  (let-values ([(r1 r2)  (interpret-interval radii 0.0 +inf.0)]
                [(rot a)  (interpret-arc arc)]
                [(back?)  (and back? #t)])
     (cond
@@ -538,32 +541,31 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Pipes, cylinders and cones
 
-(define nonnegative? (λ ([x : Flonum]) (>= x 0.0)))
-
-(define pipe-interval (interval 0.5 1.0))
-
 (: pipe (->* [Pos (U Pos Dir Real)]
-             [#:bottom-radii Interval
-              #:top-radii Interval
+             [#:inside? Any
               #:arc Arc
-              #:inside? Any
-              #:inner-wall? Any #:outer-wall? Any
-              #:bottom-cap? Any #:top-cap? Any
-              #:start-cap? Any #:end-cap? Any]
+              #:bottom-radii Interval
+              #:top-radii Interval
+              #:bottom-cap? Any
+              #:top-cap? Any
+              #:start-cap? Any
+              #:end-cap? Any
+              #:inner-wall? Any
+              #:outer-wall? Any]
              Pict3D))
 (define (pipe v1 v2
-              #:bottom-radii [bottom-radii pipe-interval]
-              #:top-radii [top-radii pipe-interval]
-              #:arc [arc circle-arc]
               #:inside? [inside? #f]
-              #:outer-wall? [outer-wall? #t]
-              #:inner-wall? [inner-wall? #t]
+              #:arc [arc circle-arc]
+              #:bottom-radii [bottom-radii (interval 0.5 1.0)]
+              #:top-radii [top-radii bottom-radii]
               #:bottom-cap? [bottom-cap? #t]
               #:top-cap? [top-cap? #t]
               #:start-cap? [start-cap? #t]
-              #:end-cap? [end-cap? #t])
-  (let-values ([(bot1 bot2)  (interpret-interval bottom-radii 0.0 1.0)]
-               [(top1 top2)  (interpret-interval top-radii 0.0 1.0)]
+              #:end-cap? [end-cap? #t]
+              #:outer-wall? [outer-wall? #t]
+              #:inner-wall? [inner-wall? #t])
+  (let-values ([(bot1 bot2)  (interpret-interval bottom-radii 0.0 +inf.0)]
+               [(top1 top2)  (interpret-interval top-radii 0.0 +inf.0)]
                [(rot a)      (interpret-arc arc)]
                [(inside?)    (and inside? #t)])
     (define t0 (flt3compose (standard-transform v1 v2)
@@ -616,57 +618,57 @@
       (pict3d (scene-union* ss)))))
 
 (: cylinder (->* [Pos (U Pos Dir Real)]
-                 [#:arc Arc
-                  #:inside? Any
+                 [#:inside? Any
+                  #:arc Arc
                   #:top-cap? Any
                   #:bottom-cap? Any
                   #:start-cap? Any
                   #:end-cap? Any
-                  #:wall? Any]
+                  #:outer-wall? Any]
                  Pict3D))
 (define (cylinder v1 v2
-                  #:arc [arc circle-arc]
                   #:inside? [inside? #f]
-                  #:wall? [wall? #t]
+                  #:arc [arc circle-arc]
+                  #:outer-wall? [outer-wall? #t]
                   #:top-cap? [top-cap? #t]
                   #:bottom-cap? [bottom-cap? #t]
                   #:start-cap? [start-cap? #t]
                   #:end-cap? [end-cap? #t])
   (pipe v1 v2
+        #:inside? inside?
         #:bottom-radii unit-interval
         #:top-radii unit-interval
         #:arc arc
-        #:inside? inside?
         #:top-cap? top-cap?
         #:bottom-cap? bottom-cap?
         #:start-cap? start-cap?
         #:end-cap? end-cap?
-        #:outer-wall? wall?))
+        #:outer-wall? outer-wall?))
 
 (: cone (->* [Pos (U Pos Dir Real)]
-             [#:arc Arc
-              #:inside? Any
+             [#:inside? Any
+              #:arc Arc
               #:bottom-cap? Any
               #:start-cap? Any
               #:end-cap? Any
-              #:wall? Any]
+              #:outer-wall? Any]
              Pict3D))
 (define (cone v1 v2
-              #:arc [arc circle-arc]
               #:inside? [inside? #f]
-              #:wall? [wall? #t]
+              #:arc [arc circle-arc]
+              #:outer-wall? [outer-wall? #t]
               #:bottom-cap? [bottom-cap? #t]
               #:start-cap? [start-cap? #t]
               #:end-cap? [end-cap? #t])
   (pipe v1 v2
+        #:inside? inside?
         #:bottom-radii unit-interval
         #:top-radii zero-interval
         #:arc arc
-        #:inside? inside?
         #:bottom-cap? bottom-cap?
         #:start-cap? start-cap?
         #:end-cap? end-cap?
-        #:outer-wall? wall?))
+        #:outer-wall? outer-wall?))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Directional light
@@ -681,20 +683,27 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Point light
 
-(: light (->* [Pos]
-              [Emitted #:attenuation Interval #:radii Interval #:min-radius Real #:max-radius Real]
-              Pict3D))
+(: default-light-range (-> Emitted Real))
+(define (default-light-range e)
+  (flsqrt (/ (emitted-intensity e) #i1/40)))
+
+(: current-light-range (Parameterof (-> Emitted Real)))
+(define current-light-range (make-parameter default-light-range))
+
+(: light (->* [Pos] [Emitted #:range Real #:radii Interval] Pict3D))
 (define (light v [e  (emitted 1.0 1.0 1.0 1.0)]
-               #:attenuation [a  (interval 0.0 20.0)]
-               #:radii [r  (interval (flsqrt (* (max 0.0 (interval-min a)) (emitted-intensity e)))
-                                     (flsqrt (* (max 0.0 (interval-max a)) (emitted-intensity e))))]
-               #:min-radius [r0  (interval-min r)]
-               #:max-radius [r1  (interval-max r)])
-  (let* ([r   (interval r0 r1)]
-         [r0  (interval-min r)]
-         [r1  (interval-max r)])
-    (if (< r0 r1)
-        (pict3d (make-point-light-shape e (move-flt3 v) r0 r1))
+               #:range [range  ((current-light-range) e)]
+               #:radii [radii  unit-interval])
+  ;; At max range, light intensity is 32-bit floating-point epsilon
+  (define max-range (flsqrt (/ (emitted-intensity e) (flexpt 2.0 -23.0))))
+  ;; It would take 419431 lights with this max range to create a discrepancy of at least 0.05
+  ;; in the worst case
+  (let*-values ([(range)  (flclamp (fl range) 0.0 max-range)]
+                ;; Convert fractions of max distance to distances
+                [(r1 r2)  (interpret-interval radii 0.0 1.0)]
+                [(r1 r2)  (values (* r1 range) (* r2 range))])
+    (if (and (> r2 0.0) (< r1 r2))
+        (pict3d (make-point-light-shape (move-flt3 v) e range r1 r2))
         empty-pict3d)))
 
 ;; ---------------------------------------------------------------------------------------------------

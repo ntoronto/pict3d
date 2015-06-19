@@ -393,18 +393,10 @@ code
 void output_2d_rect_vertex(rect bbx, int vertex_id) {
   // output the correct vertices for a triangle strip
   switch (vertex_id) {
-  case 0:
-    gl_Position = vec4(bbx.mins.xy, 0.0, 1.0);
-    break;
-  case 1:
-    gl_Position = vec4(bbx.maxs.x, bbx.mins.y, 0.0, 1.0);
-    break;
-  case 2:
-    gl_Position = vec4(bbx.mins.x, bbx.maxs.y, 0.0, 1.0);
-    break;
-  default:
-    gl_Position = vec4(bbx.maxs.xy, 0.0, 1.0);
-    break;
+    case 0:  gl_Position = vec4(bbx.mins.xy, 0.0, 1.0); break;
+    case 1:  gl_Position = vec4(bbx.maxs.x, bbx.mins.y, 0.0, 1.0); break;
+    case 2:  gl_Position = vec4(bbx.mins.x, bbx.maxs.y, 0.0, 1.0); break;
+    default: gl_Position = vec4(bbx.maxs.xy, 0.0, 1.0); break;
   }
 }
 code
@@ -442,17 +434,20 @@ void output_unit_quad_vertex(mat4 trans, mat4 proj, int vertex_id) {
 code
          )))
 
-(define infinity-code
+(define float-constants-code
   (make-partial-code
    "infinity"
    #:definitions
    (list "const float pos_infinity = 1.0/0.0;"
-         "const float neg_infinity = -pos_infinity;")))
+         "const float neg_infinity = -pos_infinity;"
+         "const float epsilon = 1.1920929e-07;")))
 
 (define impostor-bounds-code
   (make-partial-code
    "impostor-bounds"
-   #:includes (list rect-code infinity-code)
+   #:includes
+   (list rect-code
+         float-constants-code)
    #:definitions
    (list
     #<<code
@@ -504,9 +499,10 @@ code
 (define output-impostor-vertex-code
   (make-partial-code
    "output-impostor-vertex"
-   #:includes (list rect-code
-                    impostor-bounds-code
-                    output-2d-rect-vertex-code)
+   #:includes
+   (list rect-code
+         impostor-bounds-code
+         output-2d-rect-vertex-code)
    #:definitions
    (list
     #<<code
@@ -621,8 +617,10 @@ code
 (define light-fragment-code
   (make-partial-code
    "light-fragment"
-   #:includes (list depth-fragment-code
-                    get-surface-fragment-code)
+   #:includes
+   (list float-constants-code
+         depth-fragment-code
+         get-surface-fragment-code)
    #:out-attributes
    (list (attribute "" 'vec4 "out_diffuse")
          (attribute "" 'vec4 "out_specular"))
@@ -642,8 +640,13 @@ vec3 frag_coord_to_position(vec4 frag_coord, sampler2D depth, mat4 unproj, int w
 }
 code
     #<<code
-vec3 attenuate_invsqr(vec3 light_color, float dist) {
-  return max(vec3(0.0), light_color/(dist*dist));
+vec3 attenuate_invsqr_quad(vec3 light_color, float q, float d) {
+  // Inverse-square attenuation from 0
+  float i0 = min(1.0/epsilon, 1.0/(d*d));
+  // Quadratic attenuation from q/2 to q
+  float i1 = min(1.0/epsilon, 16.0/pow(q,4.0) * pow(max(0.0, q-d), 2.0));
+  // Choose quadratic if d > q/2, inverse square if d <= q/2
+  return max(vec3(0.0), light_color) * mix(i0, i1, step(q*0.5, d));
 }
 code
     #<<code

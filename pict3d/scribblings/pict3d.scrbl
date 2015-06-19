@@ -1,6 +1,8 @@
 #lang scribble/manual
 
-@(require "utils.rkt")
+@(require "utils.rkt"
+          plot/pict
+          racket/math)
 
 @(define-syntax-rule (deftypedparam name id in-type out-type (options ...) pre-flow ...)
    (defproc* ([(name) out-type]
@@ -13,7 +15,6 @@
 
 Pict3D is written in Typed Racket, but can be used in untyped Racket without significant performance
 loss.
-
 
 @defmodule[pict3d]
 
@@ -55,6 +56,8 @@ program.
 
 @section[#:tag "quick"]{Quick Start}
 
+This section is best understood by following along with the examples in DrRacket.
+
 @(define-syntax-rule (define-png name path)
    (begin
      (define-runtime-path the-path path)
@@ -64,8 +67,11 @@ program.
 @(define-png sunlight-off-png "images/sunlight-off.png")
 @(define-png indicators-off-png "images/indicators-off.png")
 @(define-png sunlight-off-indicators-off-png "images/sunlight-off-indicators-off.png")
-@(define-png sunlight-icon-png "images/sunlight-icon.png")
-@(define-png indicators-icon-png "images/indicators-icon.png")
+@(define-png light-indicator-png "images/light-indicator.png")
+@(define-png sunlight-icon-on-png "images/sunlight-icon-on.png")
+@(define-png indicators-icon-on-png "images/indicators-icon-on.png")
+@(define-png grid-icon-on-png "images/grid-icon-on.png")
+@(define-png wireframe-icon-on-png "images/wireframe-icon-on.png")
 @(define-png scale-png "images/scale.png")
 
 @margin-note*{If you get OpenGL errors when using @racketmodname[pict3d], try adding
@@ -82,7 +88,7 @@ They're just extra arrows drawn from the origin along the @italic{x}, @italic{y}
 
 When the mouse hovers over a displayed @racket[Pict3D] instance, it looks something like this:
 
-@indicators-png
+@centered{@indicators-png}
 
 If you're following along in DrRacket, click on it.
 @margin-note*{You can also click and drag to look.
@@ -107,15 +113,22 @@ Right-clicking allows you to copy the information to the clipboard.
 The @scale-png in the upper right shows the scale the @racket[Pict3D] is rendered at.
 Clicking on the @tt{-} and @tt{+} parts decrease and increase the scale.
 
-Clicking the @sunlight-icon-png icon toggles the displayed @racket[Pict3D]'s default lighting, which
-is also @emph{not} part of the scene.
-Clicking the @indicators-icon-png icon toggles the origin axes and other indicators.
-In all, there are three other ways the displayed @racket[Pict3D] can be rendered:
+@margin-note*{The @grid-icon-on-png icon toggles a global grid.
+              The @wireframe-icon-on-png icon toggles triangle wireframes, which are good for showing
+              @tech{tessellations}.}
+Clicking the @sunlight-icon-on-png icon toggles the displayed @racket[Pict3D]'s default lighting,
+which is also @emph{not} part of the scene.
+Clicking the @indicators-icon-on-png icon toggles the origin axes and other indicators.
+With default lighting off and indicators off, the display looks respectively like
 
-@sunlight-off-png @indicators-off-png @sunlight-off-indicators-off-png
+@centered{@sunlight-off-png @hspace[4] @indicators-off-png}
 
-Only the last is a faithful projection into 2D space, identical to what you get by converting the
-sphere into a bitmap:
+With both off, the displayed @racket[Pict3D] looks like this:
+
+@centered{@sunlight-off-indicators-off-png}
+
+The above is the only @emph{faithful} display, identical to what you get by converting the sphere
+into a bitmap:
 @interaction[#:eval pict3d-eval
                     (pict3d->bitmap (sphere origin 1/2))]
 Our @racket[Pict3D] clearly needs better lighting to communicate its shape.
@@ -125,8 +138,11 @@ We'll combine it with a point light source on the @italic{x = 0} plane:
                      (combine (sphere origin 1/2)
                               (light (pos 0 1 1))))]
 If you evaluate @racket[(combine (sphere origin 1/2) (light (pos 0 1 1)))] (i.e. without converting to
-a bitmap) and fly around the scene, you'll find the point light represented as a glowing octahedron.
-If you then click @indicators-icon-png, the octahedron will disappear, because it's not part of the
+a bitmap) and fly around the scene, you'll find the point light represented by a glowing octahedron:
+
+@centered{@light-indicator-png}
+
+If you then click @indicators-icon-on-png, the octahedron will disappear, because it's not part of the
 scene, either.
 The light itself is actually invisible.
 
@@ -140,7 +156,7 @@ In general, a @racket[Pict3D] is comprised of the following kinds of objects.
 Only one group is special: the one named @racket['camera].
 When a @racket[Pict3D] is renderered, if a group named @racket['camera] exists, that group's
 orientation is used as the viewpoint.
-To look down on our sphere, we can combine it with a downard-oriented camera group:
+To look down on our sphere, we can combine it with a downward-oriented camera group:
 @interaction[#:eval pict3d-eval
                     (combine (sphere origin 1/2)
                              (basis 'camera (point-at (pos 0 0 2) origin)))]
@@ -171,7 +187,7 @@ The type and predicate for 3D scenes.
 @deftogether[(@defidform[#:kind "type" Pict3Ds]
               @defproc[(combine [p Pict3Ds] ...) Pict3D])]{
 A @racket[Pict3Ds] instance is either a @racket[Pict3D] or a list of @racket[Pict3D]s; i.e. a tree.
-  
+
 The @racket[combine] function returns a new @racket[Pict3D] that contains all of @racket[Pict3D]
 instances in all of its arguments @racket[p ...].
 Usually, the order they're given in doesn't affect the result.
@@ -195,7 +211,7 @@ If the second argument is a @tech{direction vector} or a scale, the first argume
 center point.
 If @racket[scale] is a direction, the components are interpreted as axis-aligned half-widths.
 @examples[#:eval pict3d-eval
-                 (rectangle origin (dir 1/4 1/2 1))]
+                 (rectangle origin (dir 1/4 1/2 3/4))]
 When @racket[scale] is a real number, @racket[(rectangle center scale)] is equivalent to
 @racket[(rectangle center (dir scale scale scale))], and @racket[(cube center scale)] is equivalent to
 @racket[(rectangle center scale)].
@@ -208,15 +224,15 @@ When @racket[inside?] is non-@racket[#f], the rectangle's surfaces face inward.
 @defproc*[([(ellipsoid [corner1 Pos] [corner2 Pos] [#:inside? inside? Any #f]) Pict3D]
            [(ellipsoid [center Pos] [scale (U Dir Real)] [#:inside? inside? Any #f]) Pict3D]
            [(sphere [center Pos] [radius Real] [#:inside? inside? Any #f]) Pict3D])]{
-Return a @racket[Pict3D] containing the largest ellipsoid that fits inside
+Returns a @racket[Pict3D] containing the largest ellipsoid that fits inside
 @racket[(rectangle corner1 corner2)] or @racket[(rectangle center scale)].
 @examples[#:eval pict3d-eval
                  (combine (ellipsoid origin (pos 1/2 1/2 1/2))
                           (with-color (rgba "red" 0.5)
                             (rectangle origin (pos 1/2 1/2 1/2))))
-                 (combine (ellipsoid origin (dir 1/4 1/2 1))
+                 (combine (ellipsoid origin (dir 1/4 1/2 3/4))
                           (with-color (rgba "red" 0.5)
-                            (rectangle origin (dir 1/4 1/2 1))))]
+                            (rectangle origin (dir 1/4 1/2 3/4))))]
 As with @racket[cube] and @racket[rectangle], @racket[(sphere center radius)]
 is equivalent to @racket[(ellipsoid center radius)].
 
@@ -226,59 +242,126 @@ When @racket[inside?] is non-@racket[#f], the ellipsoid surface faces inward.
 @defproc*[([(cylinder [corner1 Pos]
                       [corner2 Pos]
                       [#:inside? inside? Any #f]
-                      [#:segments segments Natural 32])
+                      [#:arc arc Arc circle-arc]
+                      [#:top-cap? top-cap? Any #t]
+                      [#:bottom-cap? bottom-cap? Any #t]
+                      [#:start-cap? start-cap? Any #t]
+                      [#:end-cap? end-cap? Any #t]
+                      [#:outer-wall? outer-wall? Any #t])
             Pict3D]
            [(cylinder [center Pos]
                       [scale (U Dir Real)]
-                      [#:inside? inside? Any #f]
-                      [#:segments segments Natural 32])
+                      [#:<cylinder-keyword> <cylinder-keyword> <cylinder-keyword-type>]
+                      ...)
             Pict3D])]{
-Return a @racket[Pict3D] containing the largest vertical cylinder that fits inside
+Returns a @racket[Pict3D] containing the largest vertical cylinder that fits inside
 @racket[(rectangle corner1 corner2)] or @racket[(rectangle center scale)].
 @examples[#:eval pict3d-eval
                  (combine (cylinder origin (pos 1/2 1/2 1/2))
                           (with-color (rgba "red" 0.5)
                             (rectangle origin (pos 1/2 1/2 1/2))))
-                 (combine (cylinder origin (dir 1/4 1/2 1))
+                 (combine (cylinder origin (dir 1/4 1/2 3/4))
                           (with-color (rgba "red" 0.5)
-                            (rectangle origin (dir 1/4 1/2 1))))]
+                            (rectangle origin (dir 1/4 1/2 3/4))))]
 When @racket[inside?] is non-@racket[#f], the cylinder's surfaces face inward.
+(See @racket[rectangle].)
+The remaining boolean arguments determine which parts of the cylinder's surface are created.
 
-The @racket[segments] argument determines how many quadrilateral faces are used to approximate the
-cylinder.
+The @racket[arc] argument determines the start and end angle swept out by the vertical cap
+to create the cylinder.
 @examples[#:eval pict3d-eval
-                 (cylinder origin 1/2 #:segments 8)]
+                 (cylinder origin 1/2 #:arc (arc 90 360))]
 }
 
 @defproc*[([(cone [corner1 Pos]
                   [corner2 Pos]
                   [#:inside? inside? Any #f]
-                  [#:segments segments Natural 32]
-                  [#:smooth? smooth? Any #f])
+                  [#:arc arc Arc circle-arc]
+                  [#:bottom-cap? bottom-cap? Any #t]
+                  [#:start-cap? start-cap? Any #t]
+                  [#:end-cap? end-cap? Any #t]
+                  [#:outer-wall? outer-wall? Any #t])
             Pict3D]
            [(cone [center Pos]
                   [scale (U Dir Real)]
-                  [#:inside? inside? Any #f]
-                  [#:segments segments Natural 32]
-                  [#:smooth? smooth? Any #f])
+                  [#:<cone-keyword> <cone-keyword> <cone-keyword-type>]
+                  ...)
             Pict3D])]{
-Return a @racket[Pict3D] containing the largest upward-pointing cone that fits inside
+Returns a @racket[Pict3D] containing the largest upward-pointing cone that fits inside
 @racket[(rectangle corner1 corner2)] or @racket[(rectangle center scale)].
 @examples[#:eval pict3d-eval
                  (combine (cone origin (pos 1/2 1/2 1/2))
                           (with-color (rgba "red" 0.5)
                             (rectangle origin (pos 1/2 1/2 1/2))))
-                 (combine (cone origin (dir 1/4 1/2 1))
+                 (combine (cone origin (dir 1/4 1/2 3/4))
                           (with-color (rgba "red" 0.5)
-                            (rectangle origin (dir 1/4 1/2 1))))]
+                            (rectangle origin (dir 1/4 1/2 3/4))))]
 When @racket[inside?] is non-@racket[#f], the cone's surfaces face inward.
+(See @racket[rectangle].)
+The remaining boolean arguments determine which parts of the cone's surface are created.
 
-The @racket[segments] argument determines how many triangular faces are used to approximate the cone.
+The @racket[arc] argument determines the start and end angle swept out by the triangular cap
+to create the cone.
 @examples[#:eval pict3d-eval
-                 (cone origin 1/2 #:segments 8)]
-When @racket[smooth?] is @racket[#t], the uppermost vertex normals point upward.
+                 (cone origin 1/2 #:arc (arc 90 360))]
+}
+
+@defproc*[([(pipe [corner1 Pos]
+                  [corner2 Pos]
+                  [#:inside? inside? Any #f]
+                  [#:arc arc Arc circle-arc]
+                  [#:bottom-radii bottom-radii Interval (interval 1/2 1)]
+                  [#:top-radii top-radii Interval bottom-radii]
+                  [#:top-cap? top-cap? Any #t]
+                  [#:bottom-cap? bottom-cap? Any #t]
+                  [#:start-cap? start-cap? Any #t]
+                  [#:end-cap? end-cap? Any #t]
+                  [#:inner-wall? inner-wall? Any #t]
+                  [#:outer-wall? outer-wall? Any #t])
+            Pict3D]
+           [(pipe [center Pos]
+                  [scale (U Dir Real)]
+                  [#:<pipe-keyword> <pipe-keyword> <pipe-keyword-type>]
+                  ...)
+            Pict3D])]{
+Returns a @racket[Pict3D] containing the largest vertical, hollow cylinder that fits inside
+@racket[(rectangle corner1 corner2)] or @racket[(rectangle center scale)].
 @examples[#:eval pict3d-eval
-                 (cone origin 1/2 #:segments 8 #:smooth? #t)]
+                 (combine (pipe origin (pos 1/2 1/2 1/2))
+                          (with-color (rgba "red" 0.5)
+                            (rectangle origin (pos 1/2 1/2 1/2))))
+                 (combine (pipe origin (dir 1/4 1/2 3/4))
+                          (with-color (rgba "red" 0.5)
+                            (rectangle origin (dir 1/4 1/2 3/4))))]
+When @racket[inside?] is non-@racket[#f], the pipe's surfaces face inward.
+(See @racket[rectangle].)
+The remaining boolean arguments determine which parts of the pipe's surface are created.
+
+The @racket[arc] argument determines the start and end angle swept out to create the pipe.
+@examples[#:eval pict3d-eval
+                 (pipe origin 1/2 #:arc (arc 90 360))]
+
+The @racket[bottom-radii] and @racket[top-radii] intervals give the @emph{fractional} radius
+of the inner and outer wall, on the top and bottom of the pipe.
+@examples[#:eval pict3d-eval
+                 (pipe origin 3/4
+                       #:arc (arc 90 0)
+                       #:top-radii (interval 1/2 5/8)
+                       #:bottom-radii (interval 1/4 1))]
+The fractional radii may exceed @racket[1].
+@examples[#:eval pict3d-eval
+                 (let* ([a  (arc 135 45)]
+                        [p  (with-color (rgba "crimson")
+                              (pipe origin (dir 1/2 1/2 1/16)
+                                    #:arc a #:bottom-radii (interval 7/8 9/8)))])
+                   (deform
+                     (tessellate
+                      (combine (move-z p -11/16)
+                               (move-z p 11/16)
+                               (with-color (rgba "lavender")
+                                 (pipe origin (dir 1/2 1/2 5/8)
+                                       #:arc a #:bottom-radii (interval 7/8 1)))))
+                     (bend -45 (interval -1/2 1/2))))]
 }
 
 @defproc[(triangle [corner1 (U Pos Vertex)]
@@ -323,27 +406,188 @@ for @racket[triangle].
 
 A quad's corners are not required to lie in a plane, so its default normal is a best-fit direction
 vector computed using @hyperlink["http://dl.acm.org/citation.cfm?id=130783"]{Newell's method}.
-
-The quad is split into two triangles in a way that makes both triangles as close to
-@hyperlink["http://en.wikipedia.org/wiki/Regular_polygon"]{regular} as possible.
 }
+
+@(define light-plot
+   (parameterize ([plot-x-ticks  no-ticks]
+                  [plot-y-ticks  no-ticks])
+     (plot
+      (list
+       (x-ticks (list (tick 0 #t "0")
+                      (tick 4.5 #t "r/2")
+                      (tick 9 #t "r")))
+       (y-ticks (list (tick 0 #t "0")
+                      (tick 4/81 #t "4/r²")))
+       (function (λ (d) (/ (sqr d)))
+                 #:color 4 #:width 3 #:style 'long-dash
+                 #:label "1/d² (ideal)")
+       (function (λ (d) (* (/ 16 (expt 9 4))
+                           (sqr (- 9 d))))
+                 #:color 3 #:width 3 #:style 'short-dash
+                 #:label "16/r⁴·(r-d)²")
+       (function (λ (d)
+                   (if (<= d (/ 9 2))
+                       (/ (sqr d))
+                       (* (/ 16 (expt 9 4))
+                          (sqr (max 0 (- 9 d))))))
+                 #:color 'white
+                 #:width 1.5)
+       (function (λ (d)
+                   (if (<= d (/ 9 2))
+                       (/ (sqr d))
+                       (* (/ 16 (expt 9 4))
+                          (sqr (max 0 (- 9 d))))))
+                 #:color 'red
+                 #:width 1.5
+                 #:style 'dot
+                 #:label "Pict3D")
+       (lines (list (list 4.5 -4/81) (list 4.5 4/81) (list +nan.0 +nan.0)
+                    (list 0 4/81) (list 4.5 4/81) (list +nan.0 +nan.0)
+                    (list 9 -4/81) (list 9 0) (list +nan.0 +nan.0)
+                    (list 0 0) (list 9 0) (list +nan.0 +nan.0))
+              #:color 0 #:width 0.5 #:style 'long-dash)
+       (points (list (list 4.5 4/81)
+                     (list 9 0))
+               #:size 7
+               #:sym 'fullcircle
+               #:fill-color 'white
+               #:line-width 1
+               #:color 0))
+      #:x-min 0
+      #:x-max 12
+      #:y-min -1/81
+      #:y-max 12/81
+      #:x-label "distance (d)"
+      #:y-label "attenuation"
+      #:title "Attenuation at distance from point light"
+      #:legend-anchor 'top-right)))
 
 @defproc[(light [position Pos]
                 [color Emitted (emitted "white")]
-                [#:min-radius min-radius Real 0]
-                [#:max-radius max-radius Real (sqrt (* 20 (emitted-intensity e)))]) Pict3D]{
+                [#:range r Real ((current-light-range) color)]
+                [#:radii radii Interval unit-interval])
+         Pict3D]{
 Returns a @racket[Pict3D] containing a point light source at @racket[position], with emitted color
 @racket[color].
 @examples[#:eval pict3d-eval
                  (pict3d->bitmap
                   (combine (sphere origin 1)
-                           (light (pos 0 1.5 1.5) (emitted "oldlace" 5))))
+                           (light (pos 0 1.5 1.5) (emitted "oldlace" 5))))]
+
+A naive rendering algorithm would take time proportional to @italic{n·m}, where @italic{n} is the
+number of objects in a scene and @italic{m} is the number of lights.
+Pict3D uses @hyperlink["https://en.wikipedia.org/wiki/Deferred_shading"]{deferred lighting}
+algorithms that take time proportional to @italic{n+m}.
+
+Deferred lighting algorithms ``draw'' each light on every fragment of the rendered scene that
+shows a surface the light might illuminate.
+An ideal point light illuminates surfaces at any distance, so each ideal point light would have to be
+drawn on the entire rendered scene.
+@margin-note*{Even with these optimizations, lights tend to take more time to render than solid
+              objects. Try to use only a few thousand well-spaced lights.}
+Adding ideal point lights quickly becomes prohibitively expensive, so Pict3D restricts each
+light's effect to a light-specific range @racket[r].
+
+Instead of forcing a light's effect to zero at distance @racket[r], Pict3D forces smooth attenuation
+to zero over a finite range. Forced attenuation starts at distance @racket[(/ r 2)] and follows a
+quadratic curve. The quadratic curve's first derivative matches the ideal's curve's first derivative
+at @racket[(/ r 2)], and is zero at @racket[r] (so the overall attenuation is
+@hyperlink["https://en.wikipedia.org/wiki/Smoothness"]{C¹-continuous}),
+which reduces visual artifacts.
+
+@centered{@light-plot}
+
+With the default value of @racket[r], forced attenuation starts when ideal attenuation is
+4/40 = 0.1, and ends when ideal attenuation would be 1/40 = 0.025.
+(See @racket[current-light-range].)
+Thus, a single light's effect with the default @racket[r] tends to be hard to distinguish from an
+ideal light's effect.
+Much smaller values of @racket[r] can result in major discrepancies.
+@examples[#:eval pict3d-eval
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 10 10 1))
+                           (light (pos 0 0 1) (emitted "orange" 1))))
+                 
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 10 10 1))
+                           (light (pos 0 0 1) (emitted "orange" 1) #:range +inf.0)))
+                 
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 10 10 1))
+                           (light (pos 0 0 1) (emitted "orange" 1) #:range 1.5)))]
+In fact, with @racket[#:range 1] in the above example, the light has no apparent effect at all.
+
+Small ranges are useful when a light is used for a local visual effect (such as a magical shine
+on a blade) or when many lights in one area slow down rendering too much.
+
+Large ranges are useful when many weak lights illuminate a surface.
+Try to choose the smallest large range that gives an effect similar to that of
+@racket[#:range +inf.0].
+@examples[#:eval pict3d-eval
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 5 5 1))
+                           (for*/list ([x  (in-range -5 5.5 0.5)]
+                                       [y  (in-range -5 5.5 0.5)])
+                             (light (pos x y 1/2) (emitted "orange" 1/100)))))
+                 
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 5 5 1))
+                           (for*/list ([x  (in-range -5 5.5 0.5)]
+                                       [y  (in-range -5 5.5 0.5)])
+                             (light (pos x y 1/2) (emitted "orange" 1/100)
+                                    #:range (* (sqrt 1/100) 25)))))]
+
+The @racket[radii] argument restricts the light's area of effect to minimum and maximum
+@emph{fractions} of @racket[r].
+@examples[#:eval pict3d-eval
                  (pict3d->bitmap 
-                  (combine (rectangle (pos -1 -1 -1) (pos 1 1 0))
-                           (light (pos 0 0 1)
-                                  (emitted "orange" 10)
-                                  #:min-radius 1.25
-                                  #:max-radius 1.28)))]
+                  (combine (rectangle (pos 0 0 -1) 1)
+                           (light (pos 0 0 1) (emitted "orange" 10)
+                                  #:range 30 #:radii (interval 0.044 0.045))))]
+Here, the light affects surfaces at distances only in the range [30·0.044,30·0.45] = [1.32,1.35].
+
+Transforming a light may change its initially spherical area of effect to an ellipsoid.
+This allows lights inside of solid objects to approximate light emission from the objects' surfaces.
+@examples[#:eval pict3d-eval
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 2 2 1))
+                           (transform
+                            (combine (with-emitted (emitted "plum" 2)
+                                       (cylinder origin 1))
+                                     (light origin (emitted "plum" 5)))
+                            (affine-compose
+                             (rotate-z 30)
+                             (move-z 1/4)
+                             (rotate-x 90)
+                             (scale (dir 1/8 1/8 1))))))]
+Using many smaller, unscaled lights gives a better approximation, and works well for deformed objects.
+@examples[#:eval pict3d-eval
+                 (pict3d->bitmap
+                  (combine (rectangle (pos 0 0 -1) (dir 2 2 1))
+                           (deform
+                             (combine (with-emitted (emitted "plum" 2)
+                                        (tessellate
+                                         (scale (cylinder origin 1) (dir 1/8 1/8 1))))
+                                      (for/list ([z  (in-range 0 17)])
+                                        (light (pos 0 0 (- (* 2 (/ z 16)) 1))
+                                               (emitted "plum" 1/150))))
+                             (smooth-compose
+                              (rotate-z 30)
+                              (move-z 1/4)
+                              (rotate-x 90)
+                              (bend -135 (interval -1 1))))))]
+}
+
+@deftogether[(@deftypedparam[current-light-range range-fun (-> Emitted Real) (-> Emitted Real)
+                             (#:value default-light-range)]
+              @defthing[default-light-range (-> Emitted Real)
+                        #:value (λ (color) (sqrt (/ (emitted-intensity color) 1/40)))])]{
+The default value producer for @racket[light]'s @racket[#:range] argument, and its default value.
+These are provided to make it easy to change every light's range at once.
+
+The default value is arrived at by solving the ideal attenuation equation @italic{l = i/r}²
+for @italic{r}, where @italic{i} is @racket[(emitted-intensity color)] and @italic{l} = 1/40.
+That is, it finds the range at which an ideal light's attenuation is 1/40.
 }
 
 @defproc[(sunlight [direction Dir] [color Emitted (emitted "white")]) Pict3D]{
@@ -356,7 +600,7 @@ Returns a @racket[Pict3D] containing an omnipresent, directional light source.
 
 @defproc*[([(arrow [start Pos] [end Pos] [#:normalize? normalize? Any #f]) Pict3D]
            [(arrow [start Pos] [direction Dir] [#:normalize? normalize? Any #f]) Pict3D])]{
-Return a @racket[Pict3D] containing an arrow drawn from @racket[start] to @racket[end], or from
+Returns a @racket[Pict3D] containing an arrow drawn from @racket[start] to @racket[end], or from
 @racket[start] in the direction @racket[direction].
 When @racket[normalize?] is non-@racket[#f], the arrow has length @racket[1].
 

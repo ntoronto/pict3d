@@ -80,7 +80,7 @@
 
 (: point-light-indicator (-> point-light-shape Pict3D))
 (define (point-light-indicator a)
-  (match-define (point-light-shape _ _ e0 t0 r0 r1) a)
+  (match-define (point-light-shape _ _ t0 e0 qmax rmin rmax) a)
   ;; i = intensity
   (define i (flv4-ref e0 3))
   ;; e = emitted color of octahedron
@@ -91,7 +91,7 @@
   (define t (affine-compose (flaffine3->affine t0) (scale s)))
   (freeze
    (combine
-    (pict3d (make-point-light-shell-shape e0 t0 (* 0.99 r0) (* 1.01 r1)))
+    (pict3d (make-point-light-shell-shape t0 e0 qmax rmin rmax))
     (transform (unit-octahedron black-color e ambient-material #f) t))))
 
 (: scene-light-indicators (-> Scene (Listof Pict3D)))

@@ -33,7 +33,7 @@
 ;; Program for pass 0: light
 
 (define light-grid-vertex-attributes
-  (list (attribute "" 'float/byte "vert_id")))
+  (list (attribute "" 'float/byte "vertex_id")))
 
 (define light-grid-fragment-attributes
   (list (attribute "smooth" 'vec3 "frag_dir")
@@ -45,33 +45,25 @@
 (define light-grid-vertex-code
   (make-vertex-code
    "light-grid-vertex"
-   #:standard-uniforms (list (standard-uniform "" 'mat4 "unproj" 'unproj)
-                             (standard-uniform "" 'int "width" 'width)
-                             (standard-uniform "" 'int "height" 'height))
+   #:standard-uniforms
+   (list (standard-uniform "" 'mat4 "unproj" 'unproj)
+         (standard-uniform "" 'int "width" 'width)
+         (standard-uniform "" 'int "height" 'height))
    #:in-attributes light-grid-vertex-attributes
    #:out-attributes light-grid-fragment-attributes
    #<<code
 // output the right vertices for a triangle strip
-switch (int(vert_id)) {
-case 0:
-  gl_Position = vec4(-1.0, -1.0, 0.0, 1.0);
-  break;
-case 1:
-  gl_Position = vec4(+1.0, -1.0, 0.0, 1.0);
-  break;
-case 2:
-  gl_Position = vec4(-1.0, +1.0, 0.0, 1.0);
-  break;
-default:
-  gl_Position = vec4(+1.0, +1.0, 0.0, 1.0);
-  break;
-}
+vec4 p = vec4(mix(-1.0, +1.0, int(vertex_id) & 1),
+              mix(-1.0, +1.0, (int(vertex_id) & 2) >> 1),
+              0.0,
+              1.0);
+gl_Position = p;
 
-vec4 dir = unproj * gl_Position;
-vec4 dir0 = unproj * (gl_Position + vec4(0,+4.0/height,0,0));
-vec4 dir1 = unproj * (gl_Position + vec4(0,-4.0/height,0,0));
-vec4 dir2 = unproj * (gl_Position + vec4(+4.0/width,0,0,0));
-vec4 dir3 = unproj * (gl_Position + vec4(-4.0/width,0,0,0));
+vec4 dir = unproj * p;
+vec4 dir0 = unproj * (p + vec4(0,+4.0/height,0,0));
+vec4 dir1 = unproj * (p + vec4(0,-4.0/height,0,0));
+vec4 dir2 = unproj * (p + vec4(+4.0/width,0,0,0));
+vec4 dir3 = unproj * (p + vec4(-4.0/width,0,0,0));
 
 frag_dir = vec3(dir.xy / dir.z, 1.0);
 frag_dir0 = vec3(dir0.xy / dir0.z, 1.0);
@@ -222,7 +214,7 @@ code
    light-grid-fragment-code))
 
 (define-singleton/context (light-grid-program)
-  (log-pict3d-info "<engine> creating point light shell program")
+  (log-pict3d-info "<engine> creating light grid program")
   (program-code->gl-program light-grid-program-code))
 
 ;; ===================================================================================================

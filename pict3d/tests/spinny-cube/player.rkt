@@ -10,7 +10,7 @@
      (with-color (rgba "DeepSkyBlue")
        (with-emitted (emitted "DeepSkyBlue" 0.25)
          (cube origin 0.9))))
-   (group (light origin (emitted "azure" 0.75)) 'light)))
+   (group (light origin (emitted "azure" 0.5)) 'light)))
 
 (define face
   (combine
@@ -30,7 +30,7 @@
    (with-emitted (emitted "yellow" 0.75)
      (deform (tessellate (sphere origin 1/8) #:max-angle (/ 90 5))
        (extend (dir 1/8 1/8 1/8))))
-   (group (light origin (emitted "yellow" #i1/16)) 'light)))
+   (group (light origin (emitted "yellow" #i1/4)) 'light)))
 
 (define unscaled-player
   (combine

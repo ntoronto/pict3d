@@ -2,17 +2,23 @@
 
 (require racket/list
          racket/match
+         racket/draw
+         racket/class
          "../private/lazy-gui.rkt"
          "../private/gui/indicators.rkt"
          "../private/engine.rkt")
 
 (provide pict3d->sniplike-bitmap)
 
+(define wireframe-material
+  (material #:ambient 1.0 #:diffuse 0.0 #:specular 0.0 #:roughness 1.0))
+
 ;(: pict3d->sniplike-bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 (define (pict3d->sniplike-bitmap p width height)
   (define add-sunlight? (current-pict3d-add-sunlight?))
   (define add-indicators? (current-pict3d-add-indicators?))
   (define add-grid? (current-pict3d-add-grid?))
+  (define add-wireframe (current-pict3d-add-wireframe))
   
   (define s (pict3d-scene p))
   (define scale 1.0)
@@ -42,6 +48,18 @@
                           scale))
         empty))
   
+  (define wireframe-pict3ds
+    (case add-wireframe
+      [(color)    (list (parameterize ([current-color  (rgba "black")]
+                                       [current-emitted  (emitted "black" 0)]
+                                       [current-material  wireframe-material])
+                          (wireframe p)))]
+      [(emitted)  (list (parameterize ([current-color  (rgba "white")]
+                                       [current-emitted  (emitted 1 0 1 1)]
+                                       [current-material  wireframe-material])
+                          (wireframe p #:width 1.0)))]
+      [else       empty]))
+  
   (define view
     (let ([t  (camera-transform p)])
       (if t t ((current-pict3d-auto-camera) p))))
@@ -58,7 +76,14 @@
           (cons p picts))))
   
   (define picts
-    (cons p (append sunlight-pict3ds light-pict3ds axes-pict3ds)))
+    (cons p (append sunlight-pict3ds light-pict3ds axes-pict3ds wireframe-pict3ds)))
   
-  (parameterize ([current-pict3d-auto-camera  (λ (_) view)])
-    (pict3d->bitmap (combine picts) width height)))
+  (define pict-bm
+    (parameterize ([current-pict3d-auto-camera  (λ (_) view)])
+      (pict3d->bitmap (combine picts) width height)))
+  
+  (define bm (make-bitmap (+ width 4) (+ height 4)))
+  (define dc (make-object bitmap-dc% bm))
+  (send dc draw-rectangle 0 0 (+ width 4) (+ height 4))
+  (send dc draw-bitmap pict-bm 2 2)
+  bm)
