@@ -1376,18 +1376,11 @@
 ;; Arrows
 
 (define (up-arrow)
-  (freeze
-   (combine
-    (rectangle (pos #i-1/64 #i-1/64 #i0)
-               (pos #i1/64 #i1/64 #i56/64))
-    (let ([p  (triangle (pos #i2/64 #i2/64 #i56/64)
-                        (pos #i-2/64 #i2/64 #i56/64)
-                        (pos #i0 #i0 #i1))])
-      (combine p (rotate-z p 90.0) (rotate-z p 180.0) (rotate-z p 270.0)))
-    (quad (pos #i2/64 #i2/64 #i56/64)
-          (pos #i2/64 #i-2/64 #i56/64)
-          (pos #i-2/64 #i-2/64 #i56/64)
-          (pos #i-2/64 #i2/64 #i56/64)))))
+  (define t (flt3compose (move-z-flt3 0.5) (scale-flt3 (flv3 #i2/64 #i2/64 0.5))))
+  (define cc (current-color))
+  (define ce (current-emitted))
+  (define cm (current-material))
+  (pict3d (make-arrow-scene t 0.5 #i1/8 0.125 cc ce cm #f)))
 
 (: arrow (->* [Pos (U Pos Dir)] [#:normalize? Any] Pict3D))
 (define (arrow from to #:normalize? [normalize? #f])

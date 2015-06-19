@@ -10,7 +10,8 @@
          "shape/triangle-outline.rkt"
          "shape/rectangle.rkt"
          "shape/polygon.rkt"
-         "shape/frozen-scene.rkt")
+         "shape/frozen-scene.rkt"
+         "shape/composite.rkt")
 
 (provide (all-from-out
           "shape/types.rkt"
@@ -23,4 +24,5 @@
           "shape/triangle-outline.rkt"
           "shape/rectangle.rkt"
           "shape/polygon.rkt"
-          "shape/frozen-scene.rkt"))
+          "shape/frozen-scene.rkt"
+          "shape/composite.rkt"))
