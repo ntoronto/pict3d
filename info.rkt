@@ -13,15 +13,18 @@
                "pconvert-lib"
                "pict-lib" ; why?
                "profile-lib" ; for tests
+               "pfds"
                ))
 
 (define build-deps '("draw-doc"
                      "gui-doc"
                      "gui-lib"
                      "racket-doc"
-                     "plot-lib"  ; why?
+                     "plot-lib"
+                     "plot-gui-lib"
+                     "images-lib"
                      "htdp-doc"
-                     "htdp-lib"  ; why?
+                     "htdp-lib"
                      "pict-doc"
                      "typed-racket-doc"
                      ))
