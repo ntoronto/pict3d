@@ -20,6 +20,7 @@
                     racket/flonum
                     racket/match
                     images/flomap
+                    (only-in plot plot function)
                     (only-in 2htdp/universe
                              big-bang)
                     (only-in typed/racket/base
@@ -28,6 +29,7 @@
                              Symbol String Listof Pair Vectorof FlVector Flonum Integer
                              Positive-Real Positive-Index Positive-Flonum Void
                              Positive-Integer
+                             Nonnegative-Real
                              Instance)
                     (only-in typed/racket/draw
                              Color%
@@ -62,6 +64,8 @@
   (let ([eval  (make-log-based-eval log-file eval-mode)])
     (eval '(begin
              (require (for-syntax racket/base)
+                      racket/flonum
+                      racket/math
                       racket/match
                       racket/pretty
                       (rename-in pict3d/private/lazy-gui
@@ -102,6 +106,7 @@
     (eval '(begin
              (require pict3d/private/lazy-gui
                       racket/flonum
+                      racket/math
                       racket/match)))
     eval))
 

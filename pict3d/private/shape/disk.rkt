@@ -467,37 +467,40 @@ code
 (define (disk-shape-ray-intersect s v dv max-time)
   (let ([s  (assert s disk-shape?)])
     (define t (disk-shape-affine s))
-    (define back? (disk-shape-back? s))
-    (define vz (flv3 0.0 0.0 (disk-shape-z-offset s)))
-    (define max-angle (disk-shape-max-angle s))
-    ;; Convert ray to local coordinates
     (define tinv (flt3inverse t))
-    (define sv (flv3- (flt3apply/pos tinv v) vz))
-    (define sdv (flt3apply/dir tinv dv))
-    (define sdz (flv3-ref sdv 2))
-    (cond
-      ;; Back face culling
-      [(= sdz 0.0)                    (values #f #f)]
-      [(and (< sdz 0.0) back?)        (values #f #f)]
-      [(and (> sdz 0.0) (not back?))  (values #f #f)]
-      [else
-       ;; Compute intersection
-       (define time (unit-disk-line-intersect sv sdv (disk-shape-inner-radius s)))
-       (cond [(and time (>= time 0.0) (<= time max-time))
-              ;; Known: time is not +nan.0 (which can happen when dv is zero-flv3)
-              (define sp (flv3fma sdv time sv))
-              (define angle (let ([angle  (atan (flv3-ref sp 1) (flv3-ref sp 0))])
-                              (if (< angle 0.0) (+ angle (* 2.0 pi)) angle)))
-              (cond [(<= angle max-angle)
-                     (define data
-                       (delay (define p (flv3fma dv time v))
-                              (define n (flt3apply/norm t (if back? -z-flv3 +z-flv3)))
-                              (trace-data p n empty)))
-                     (values time data)]
-                    [else
-                     (values #f #f)])]
+    (cond [tinv
+           (define back? (disk-shape-back? s))
+           (define vz (flv3 0.0 0.0 (disk-shape-z-offset s)))
+           (define max-angle (disk-shape-max-angle s))
+           ;; Convert ray to local coordinates
+           (define sv (flv3- (flt3apply/pos tinv v) vz))
+           (define sdv (flt3apply/dir tinv dv))
+           (define sdz (flv3-ref sdv 2))
+           (cond
+             ;; Back face culling
+             [(= sdz 0.0)                    (values #f #f)]
+             [(and (< sdz 0.0) back?)        (values #f #f)]
+             [(and (> sdz 0.0) (not back?))  (values #f #f)]
              [else
-              (values #f #f)])])))
+              ;; Compute intersection
+              (define time (unit-disk-line-intersect sv sdv (disk-shape-inner-radius s)))
+              (cond [(and time (>= time 0.0) (<= time max-time))
+                     ;; Known: time is not +nan.0 (which can happen when dv is zero-flv3)
+                     (define sp (flv3fma sdv time sv))
+                     (define angle (let ([angle  (atan (flv3-ref sp 1) (flv3-ref sp 0))])
+                                     (if (< angle 0.0) (+ angle (* 2.0 pi)) angle)))
+                     (cond [(<= angle max-angle)
+                            (define data
+                              (delay (define p (flv3fma dv time v))
+                                     (define n (flt3apply/norm t (if back? -z-flv3 +z-flv3)))
+                                     (trace-data p n empty)))
+                            (values time data)]
+                           [else
+                            (values #f #f)])]
+                    [else
+                     (values #f #f)])])]
+          [else
+           (values #f #f)])))
 
 ;; ===================================================================================================
 ;; Tessellation
@@ -506,25 +509,27 @@ code
 (define (make-disk-deform-data t z back?)
   (define tinv (flt3inverse t))
   (define vz (flv3 0.0 0.0 z))
-  (deform-data
-   (λ (v1 v2 α)
-     (let* ([v1  (flt3apply/pos tinv v1)]
-            [v2  (flt3apply/pos tinv v2)]
-            [v1  (flv3- v1 vz)]
-            [v2  (flv3- v2 vz)]
-            [v  (flv3normalize (flv3blend v1 v2 α))]
-            [v  (if v (flv3* v (flblend (flv3mag v1) (flv3mag v2) α)) zero-flv3)]
-            [v  (flv3+ v vz)]
-            [v  (flt3apply/pos t v)])
-       v))
-   (λ (vtx1 vtx2 v)
-     (let* ([vtx1   (flt3apply/vtx tinv vtx1)]
-            [vtx2   (flt3apply/vtx tinv vtx2)]
-            [v      (flt3apply/pos tinv v)]
-            [vtx12  (vtx-interpolate vtx1 vtx2 v)]
-            [vtx12  (set-vtx-normal vtx12 (if back? -z-flv3 +z-flv3))]
-            [vtx12  (flt3apply/vtx t vtx12)])
-       vtx12))))
+  (if tinv
+      (deform-data
+        (λ (v1 v2 α)
+          (let* ([v1  (flt3apply/pos tinv v1)]
+                 [v2  (flt3apply/pos tinv v2)]
+                 [v1  (flv3- v1 vz)]
+                 [v2  (flv3- v2 vz)]
+                 [v  (flv3normalize (flv3blend v1 v2 α))]
+                 [v  (if v (flv3* v (flblend (flv3mag v1) (flv3mag v2) α)) zero-flv3)]
+                 [v  (flv3+ v vz)]
+                 [v  (flt3apply/pos t v)])
+            v))
+        (λ (vtx1 vtx2 v)
+          (let* ([vtx1   (flt3apply/vtx tinv vtx1)]
+                 [vtx2   (flt3apply/vtx tinv vtx2)]
+                 [v      (flt3apply/pos tinv v)]
+                 [vtx12  (vtx-interpolate vtx1 vtx2 v)]
+                 [vtx12  (set-vtx-normal vtx12 (if back? -z-flv3 +z-flv3))]
+                 [vtx12  (flt3apply/vtx t vtx12)])
+            vtx12)))
+      linear-deform-data))
 
 (: disk-shape-tessellate (-> shape FlAffine3 Positive-Flonum Nonnegative-Flonum
                              (Values Null (Listof (face deform-data #f)))))

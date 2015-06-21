@@ -7,13 +7,40 @@
 
 (provide (all-defined-out))
 
-#;
-(: call/flv12-values (All (A) (-> FlVector
-                                  (-> Flonum Flonum Flonum Flonum
-                                      Flonum Flonum Flonum Flonum
-                                      Flonum Flonum Flonum Flonum
-                                      A)
-                                  A)))
+(: check-flvector (-> Symbol FlVector FlVector))
+(define (check-flvector name vs)
+  (for ([i : Nonnegative-Fixnum  (in-range (flvector-length vs))])
+    (define v (unsafe-flvector-ref vs i))
+    (unless (< -inf.0 v +inf.0)
+      (error name "expected rationals; given ~e" vs)))
+  vs)
+
+(define-syntax-rule (call/flv9-values vs-stx f)
+  (let ([vs  (ann vs-stx FlVector)])
+    (f (unsafe-flvector-ref vs  0)
+       (unsafe-flvector-ref vs  1)
+       (unsafe-flvector-ref vs  2)
+       (unsafe-flvector-ref vs  3)
+       (unsafe-flvector-ref vs  4)
+       (unsafe-flvector-ref vs  5)
+       (unsafe-flvector-ref vs  6)
+       (unsafe-flvector-ref vs  7)
+       (unsafe-flvector-ref vs  8))))
+
+(define-syntax-rule (call/flv9+1-values vs-stx v-stx f)
+  (let ([vs  (ann vs-stx FlVector)]
+        [v   (ann v-stx Flonum)])
+    (f (unsafe-flvector-ref vs  0)
+       (unsafe-flvector-ref vs  1)
+       (unsafe-flvector-ref vs  2)
+       (unsafe-flvector-ref vs  3)
+       (unsafe-flvector-ref vs  4)
+       (unsafe-flvector-ref vs  5)
+       (unsafe-flvector-ref vs  6)
+       (unsafe-flvector-ref vs  7)
+       (unsafe-flvector-ref vs  8)
+       v)))
+
 (define-syntax-rule (call/flv12-values vs-stx f)
   (let ([vs  (ann vs-stx FlVector)])
     (f (unsafe-flvector-ref vs  0)
@@ -28,6 +55,23 @@
        (unsafe-flvector-ref vs  9)
        (unsafe-flvector-ref vs 10)
        (unsafe-flvector-ref vs 11))))
+
+(define-syntax-rule (call/flv12+1-values vs-stx v-stx f)
+  (let ([vs  (ann vs-stx FlVector)]
+        [v   (ann v-stx Flonum)])
+    (f (unsafe-flvector-ref vs  0)
+       (unsafe-flvector-ref vs  1)
+       (unsafe-flvector-ref vs  2)
+       (unsafe-flvector-ref vs  3)
+       (unsafe-flvector-ref vs  4)
+       (unsafe-flvector-ref vs  5)
+       (unsafe-flvector-ref vs  6)
+       (unsafe-flvector-ref vs  7)
+       (unsafe-flvector-ref vs  8)
+       (unsafe-flvector-ref vs  9)
+       (unsafe-flvector-ref vs 10)
+       (unsafe-flvector-ref vs 11)
+       v)))
 
 (: flv12->f32vector (-> FlVector F32Vector))
 (define (flv12->f32vector vs)
@@ -49,14 +93,6 @@
       (ptr-set! ptr _float 11 v11)))
   vec)
 
-#;
-(: call/flv16-values (All (A) (-> FlVector
-                                  (-> Flonum Flonum Flonum Flonum
-                                      Flonum Flonum Flonum Flonum
-                                      Flonum Flonum Flonum Flonum
-                                      Flonum Flonum Flonum Flonum
-                                      A)
-                                  A)))
 (define-syntax-rule (call/flv16-values vs-stx f)
   (let ([vs  (ann vs-stx FlVector)])
     (f (unsafe-flvector-ref vs  0)
@@ -75,6 +111,27 @@
        (unsafe-flvector-ref vs 13)
        (unsafe-flvector-ref vs 14)
        (unsafe-flvector-ref vs 15))))
+
+(define-syntax-rule (call/flv16+1-values vs-stx v-stx f)
+  (let ([vs  (ann vs-stx FlVector)]
+        [v   (ann v-stx Flonum)])
+    (f (unsafe-flvector-ref vs  0)
+       (unsafe-flvector-ref vs  1)
+       (unsafe-flvector-ref vs  2)
+       (unsafe-flvector-ref vs  3)
+       (unsafe-flvector-ref vs  4)
+       (unsafe-flvector-ref vs  5)
+       (unsafe-flvector-ref vs  6)
+       (unsafe-flvector-ref vs  7)
+       (unsafe-flvector-ref vs  8)
+       (unsafe-flvector-ref vs  9)
+       (unsafe-flvector-ref vs 10)
+       (unsafe-flvector-ref vs 11)
+       (unsafe-flvector-ref vs 12)
+       (unsafe-flvector-ref vs 13)
+       (unsafe-flvector-ref vs 14)
+       (unsafe-flvector-ref vs 15)
+       v)))
 
 (: flv16->f32vector (-> FlVector F32Vector))
 (define (flv16->f32vector vs)

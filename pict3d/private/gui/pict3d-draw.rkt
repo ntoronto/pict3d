@@ -1,11 +1,12 @@
 #lang typed/racket/base
 
 (require racket/list
+         "../math.rkt"
          "../engine.rkt"
          "pict3d-struct.rkt"
          "pict3d-combinators.rkt"
          "parameters.rkt"
-         "typed-user-types.rkt")
+         "user-types.rkt")
 
 (provide draw-pict3ds)
 
@@ -35,10 +36,11 @@
           [height  (assert (max 1 height) index?)])
       
       (define view
-        (camera->view
-         (cond [(affine? camera)  camera]
-               [else  (let ([t  (camera-transform (first picts))])
-                        (if t t (camera (first picts))))])))
+        (->flaffine3
+         (camera->view
+          (cond [(affine? camera)  camera]
+                [else  (let ([t  (camera-transform (first picts))])
+                         (if t t (camera (first picts))))]))))
       
       (define make-proj (if bitmap? bitmap-projective canvas-projective))
       (define proj (make-proj #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov))

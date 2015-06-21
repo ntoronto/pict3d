@@ -183,6 +183,16 @@
 ;; ===================================================================================================
 ;; Transpose application
 
+(define-syntax-rule (call/linear3-tapply
+                      m00 m01 m02
+                      m10 m11 m12
+                      m20 m21 m22
+                      x y z
+                      k)
+  (k (fl3dot m00 m10 m20 x y z)
+     (fl3dot m01 m11 m21 x y z)
+     (fl3dot m02 m12 m22 x y z)))
+
 (define-syntax-rule (call/affine3-tapply
                       m00 m01 m02 m03
                       m10 m11 m12 m13

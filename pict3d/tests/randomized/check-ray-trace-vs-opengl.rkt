@@ -13,7 +13,7 @@
          [p  (set-color p (rgba 1))]
          [p  (set-emitted p (emitted 0))]
          [p  (plane-vertex-normals p)])
-    (combine p (light l (emitted 3) #:attenuation (interval 0.0 1000.0)))))
+    (combine p (light l (emitted 3) #:range 1000.0))))
 
 (define (render/ray-trace p)
   (let ([p  (dress-up p)])

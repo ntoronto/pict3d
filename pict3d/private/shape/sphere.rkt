@@ -107,19 +107,21 @@
 (: make-sphere-deform-data (-> FlAffine3 deform-data))
 (define (make-sphere-deform-data t)
   (define tinv (flt3inverse t))
-  (deform-data
-   (λ (v1 v2 α)
-     (let* ([v  (flv3blend (flt3apply/pos tinv v1) (flt3apply/pos tinv v2) α)]
-            [v  (flv3normalize v)]
-            [v  (if v v zero-flv3)])
-       (flt3apply/pos t v)))
-   (λ (vtx1 vtx2 v)
-     (let* ([v      (flt3apply/pos tinv v)]
-            [vtx1   (flt3apply/vtx tinv vtx1)]
-            [vtx2   (flt3apply/vtx tinv vtx2)]
-            [vtx12  (vtx-interpolate vtx1 vtx2 v)]
-            [vtx12  (flt3apply/vtx t vtx12)])
-       vtx12))))
+  (if tinv
+      (deform-data
+        (λ (v1 v2 α)
+          (let* ([v  (flv3blend (flt3apply/pos tinv v1) (flt3apply/pos tinv v2) α)]
+                 [v  (flv3normalize v)]
+                 [v  (if v v zero-flv3)])
+            (flt3apply/pos t v)))
+        (λ (vtx1 vtx2 v)
+          (let* ([v      (flt3apply/pos tinv v)]
+                 [vtx1   (flt3apply/vtx tinv vtx1)]
+                 [vtx2   (flt3apply/vtx tinv vtx2)]
+                 [vtx12  (vtx-interpolate vtx1 vtx2 v)]
+                 [vtx12  (flt3apply/vtx t vtx12)])
+            vtx12)))
+      linear-deform-data))
 
 (define octahedron-vss
   (list (list +z-flv3 +x-flv3 +y-flv3)

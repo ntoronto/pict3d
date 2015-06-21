@@ -139,7 +139,8 @@
 (: inverse-bilinear (-> FlV3 FlV3 FlV3 FlV3 FlV3 (Values (U #f Flonum) (U #f Flonum))))
 (define (inverse-bilinear p0 p1 p2 p3 p)
   (define n (flv3polygon-perp p0 p1 p2 p3))
-  (define plane-t (flt3inverse (point-at-flt3 p n)))
+  ;; point-at always returns an invertible transformation
+  (define plane-t (assert (flt3inverse (point-at-flt3 p n)) values))
   ;; p is 0,0,0 under this transformation
   (define-values (x0 y0 _z0) (call/flv3-values (flt3apply/pos plane-t p0) values))
   (define-values (x1 y1 _z1) (call/flv3-values (flt3apply/pos plane-t p1) values))
@@ -241,16 +242,15 @@
 (define (quad-shape-deform s t)
   (match-define (quad-shape _ _ vtxs back? _) s)
   (define n (vector-length vtxs))
-  (define-values (first-vtx first-d) (fls3apply/vtx t (vector-ref vtxs 0)))
-  (define new-back? (if (>= first-d 0.0) back? (not back?)))
-  (define new-vtxs (make-vector n (if (< first-d 0.0) (vtx-flip-normal first-vtx) first-vtx)))
+  (define-values (vtx0 d0 c0?) (fls3apply/vtx t (vector-ref vtxs 0)))
+  (define new-back? (if c0? back? (not back?)))
+  (define new-vtxs (make-vector n (if c0? vtx0 (vtx-flip-normal vtx0))))
   (let loop ([i : Positive-Fixnum  1])
     (cond
       [(< i n)
-       (define-values (vtxi di) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
-       (cond [(or (and (> first-d 0.0) (> di 0.0))
-                  (and (< first-d 0.0) (< di 0.0)))
-              (unsafe-vector-set! new-vtxs i (if (< di 0.0) (vtx-flip-normal vtxi) vtxi))
+       (define-values (vtxi di ci?) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
+       (cond [(eq? c0? ci?)
+              (unsafe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
               (loop (+ i 1))]
              [else
               (triangle-mesh-shape-deform (quad-shape-mesh (assert s quad-shape?)) t)])]

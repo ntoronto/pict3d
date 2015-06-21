@@ -71,7 +71,8 @@ New shape constructors
  * heightmap/terrain (try a geometry shader)
  * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
  * wrap with texture/skybox
- * directional lights limited to a fixed volume (e.g. rectangle, ellipsoid, cylinder)
+ * directional light volumes (e.g. rectangle, ellipsoid, cylinder)
+ * ambient light volumes
 
 Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
 

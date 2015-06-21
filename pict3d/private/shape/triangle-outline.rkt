@@ -366,7 +366,7 @@ code
   (match-define (face new-vtx1 new-vtx2 new-vtx3 _ _ _ _)
     (fls3apply/face t (face vtx1 vtx2 vtx3 #f #f #f #f)))
   (define new-vtxs (vector new-vtx1 new-vtx2 new-vtx3))
-  (define-values (test-vtx2 d2) (fls3apply/vtx t vtx2))
+  (define-values (test-vtx2 d2 c2?) (fls3apply/vtx t vtx2))
   (define flipped? (not (equal? new-vtx2 test-vtx2)))
   (define new-corners
     (cond [flipped?  (vector (vector-ref corners 0) (vector-ref corners 2) (vector-ref corners 1))]

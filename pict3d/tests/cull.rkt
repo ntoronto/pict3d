@@ -36,7 +36,7 @@
     (for*/list : (Listof Pos) ([z  (list -1.0 1.0)]
                                [y  (list -1.0 1.0)]
                                [x  (list -1.0 1.0)])
-      (let* ([tinv : FlTransform3  (flt3inverse t)]
+      (let* ([tinv : FlTransform3  (assert (flt3inverse t) values)]
              [v : FlV3  (flv3 x y z)]
              [v : FlV3  (flt3apply/pos tinv v)])
         (call/flv3-values v pos))))

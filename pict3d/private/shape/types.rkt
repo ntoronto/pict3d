@@ -141,17 +141,20 @@
 (define (transformed-shape-intersect t inside? v dv max-time shape-intersects intersect-normal)
   ;; Convert ray to local coordinates
   (define tinv (flt3inverse t))
-  (define sv (flt3apply/pos tinv v))
-  (define sdv (flt3apply/dir tinv dv))
-  ;; Compute intersection
-  (define-values (tmin tmax) (shape-intersects sv sdv))
-  (define time (if inside? tmax tmin))
-  (cond [(and time (>= time 0.0) (<= time max-time))
-         (define data
-           (delay (define p (flv3fma dv time v))
-                  (define n (let ([n  (intersect-normal sv sdv time)])
-                              (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))
-                  (trace-data p n empty)))
-         (values time data)]
+  (cond [tinv
+         (define sv (flt3apply/pos tinv v))
+         (define sdv (flt3apply/dir tinv dv))
+         ;; Compute intersection
+         (define-values (tmin tmax) (shape-intersects sv sdv))
+         (define time (if inside? tmax tmin))
+         (cond [(and time (>= time 0.0) (<= time max-time))
+                (define data
+                  (delay (define p (flv3fma dv time v))
+                         (define n (let ([n  (intersect-normal sv sdv time)])
+                                     (and n (flt3apply/norm t (if inside? (flv3neg n) n)))))
+                         (trace-data p n empty)))
+                (values time data)]
+               [else
+                (values #f #f)])]
         [else
          (values #f #f)]))

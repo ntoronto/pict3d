@@ -4,7 +4,9 @@
          "../math.rkt"
          "../engine.rkt"
          "pict3d-struct.rkt"
-         "typed-user-types.rkt")
+         "user-types.rkt"
+         (only-in "typed-user-types.rkt"
+                  flaffine3->affine))
 
 (provide (all-defined-out))
 

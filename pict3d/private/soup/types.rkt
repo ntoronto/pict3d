@@ -10,7 +10,8 @@ Speed up edge queries by storing a vertex index
 ? Move vtx outward
 |#
 
-(require racket/match
+(require racket/unsafe/ops
+         racket/match
          racket/list
          racket/promise
          math/flonum
@@ -132,19 +133,21 @@ Speed up edge queries by storing a vertex index
   (define memo ((inst make-hasheq vtx vtx)))
   (λ (v) (hash-ref! memo v (λ () (flt3apply/vtx t v)))))
 
-(: fls3apply/vtx (-> FlSmooth3 vtx (Values vtx Flonum)))
+(: fls3apply/vtx (-> FlSmooth3 vtx (Values vtx Flonum Boolean)))
 (define (fls3apply/vtx t v)
   (match-define (vtx p n c e m) v)
-  (let-values ([(p n d)  (fls3apply/pos+norm+det t p n)])
-    (values (vtx p (if n n zero-flv3) c e m) d)))
+  (let-values ([(p n d c?)  (fls3apply/all t p n)])
+    (values (vtx p (if n n zero-flv3) c e m) d c?)))
 
-(: make-fls3apply/vtx (-> FlSmooth3 (-> vtx (Values vtx Flonum))))
+(: make-fls3apply/vtx (-> FlSmooth3 (-> vtx (Values vtx Flonum Boolean))))
 (define (make-fls3apply/vtx t)
-  (define memo ((inst make-hasheq vtx (Pair vtx Flonum))))
+  (define memo ((inst make-hasheq vtx (Vector vtx Flonum Boolean))))
   (λ (v)
-    (define vals (hash-ref! memo v (λ () (let-values ([(v d)  (fls3apply/vtx t v)])
-                                           (cons v d)))))
-    (values (car vals) (cdr vals))))
+    (define vals (hash-ref! memo v (λ () (let-values ([(v d c?)  (fls3apply/vtx t v)])
+                                           (vector v d c?)))))
+    (values (unsafe-vector-ref vals 0)
+            (unsafe-vector-ref vals 1)
+            (unsafe-vector-ref vals 2))))
 
 ;; ===================================================================================================
 ;; Faces
@@ -225,29 +228,29 @@ Speed up edge queries by storing a vertex index
 (: flt3apply/face (All (A B) (-> FlAffine3 (face A B) (face A B))))
 (define (flt3apply/face t f)
   (transform-face (λ ([v : vtx]) (flt3apply/vtx t v))
-                  (< (flaffine3-determinant t) 0.0)
+                  (not (flaffine3-consistent? t))
                   f))
 
 (: make-flt3apply/face (All (A B) (-> FlAffine3 (-> (face A B) (face A B)))))
 (define (make-flt3apply/face t)
   (define transform (make-flt3apply/vtx t))
-  (define reverse? (< (flaffine3-determinant t) 0.0))
+  (define reverse? (not (flaffine3-consistent? t)))
   (λ (f) (transform-face transform reverse? f)))
 
-(: deform-face (All (A B) (-> (-> vtx (values vtx Flonum)) (face A B) (face A B))))
+(: deform-face (All (A B) (-> (-> vtx (values vtx Flonum Boolean)) (face A B) (face A B))))
 (define (deform-face deform f)
   (match-define (face vtx1 vtx2 vtx3 data data12 data23 data31) f)
-  (let-values ([(vtx1 d1)  (deform vtx1)]
-               [(vtx2 d2)  (deform vtx2)]
-               [(vtx3 d3)  (deform vtx3)])
-    (define (pos) (let*-values ([(vtx1)  (if (< d1 0.0) (vtx-flip-normal vtx1) vtx1)]
-                                [(vtx2)  (if (< d2 0.0) (vtx-flip-normal vtx2) vtx2)]
-                                [(vtx3)  (if (< d3 0.0) (vtx-flip-normal vtx3) vtx3)]
+  (let-values ([(vtx1 d1 c1?)  (deform vtx1)]
+               [(vtx2 d2 c2?)  (deform vtx2)]
+               [(vtx3 d3 c3?)  (deform vtx3)])
+    (define (pos) (let*-values ([(vtx1)  (if c1? vtx1 (vtx-flip-normal vtx1))]
+                                [(vtx2)  (if c2? vtx2 (vtx-flip-normal vtx2))]
+                                [(vtx3)  (if c3? vtx3 (vtx-flip-normal vtx3))]
                                 [(vtx1 vtx2 vtx3)  (fix-face-normals vtx1 vtx2 vtx3)])
                     (face vtx1 vtx2 vtx3 data data12 data23 data31)))
-    (define (neg) (let*-values ([(vtx1)  (if (> d1 0.0) (vtx-flip-normal vtx1) vtx1)]
-                                [(vtx2)  (if (> d2 0.0) (vtx-flip-normal vtx2) vtx2)]
-                                [(vtx3)  (if (> d3 0.0) (vtx-flip-normal vtx3) vtx3)]
+    (define (neg) (let*-values ([(vtx1)  (if c1? (vtx-flip-normal vtx1) vtx1)]
+                                [(vtx2)  (if c2? (vtx-flip-normal vtx2) vtx2)]
+                                [(vtx3)  (if c3? (vtx-flip-normal vtx3) vtx3)]
                                 [(vtx1 vtx3 vtx2)  (fix-face-normals vtx1 vtx3 vtx2)])
                     (face vtx3 vtx2 vtx1 data data23 data12 data31)))
     (define mn (min d1 d2 d3))
@@ -256,9 +259,9 @@ Speed up edge queries by storing a vertex index
     (cond [(>= mn (* m -1e-8))  (pos)]
           [(<= mx (* m +1e-8))  (neg)]
           [else
-           (define-values (vtx123 d123)
+           (define-values (vtx123 d123 c123?)
              (deform (vtx-average (list (face-vtx1 f) (face-vtx2 f) (face-vtx3 f)))))
-           (if (>= d123 0.0) (pos) (neg))])))
+           (if c123? (pos) (neg))])))
 
 (: fls3apply/face (All (A B) (-> FlSmooth3 (face A B) (face A B))))
 (define (fls3apply/face t f)

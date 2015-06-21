@@ -656,35 +656,37 @@ Rectangle indexes
 (: make-cylinder-deform-data (-> FlAffine3 Nonnegative-Flonum Boolean deform-data))
 (define (make-cylinder-deform-data t r inside?)
   (define tinv (flt3inverse t))
-  (deform-data
-   (λ (v1 v2 α)
-     (call/flv3-values (flt3apply/pos tinv v1)
-       (λ (x1 y1 z1)
-         (call/flv3-values (flt3apply/pos tinv v2)
-           (λ (x2 y2 z2)
-             (let* ([x  (flblend x1 x2 α)]
-                    [y  (flblend y1 y2 α)]
-                    [z  (flblend z1 z2 α)]
-                    [m1  (flsqrt (+ (* x1 x1) (* y1 y1)))]
-                    [m2  (flsqrt (+ (* x2 x2) (* y2 y2)))]
-                    [s  (/ (flblend m1 m2 α)
-                           (flsqrt (+ (* x x) (* y y))))]
-                    [x  (* s x)]
-                    [y  (* s y)]
-                    [v  (if (and (< -inf.0 (min x y)) (< (max x y) +inf.0))
-                            (flv3 x y z)
-                            (flv3 0.0 0.0 z))]
-                    [v  (flt3apply/pos t v)])
-               v))))))
-   (λ (vtx1 vtx2 v)
-     (let* ([vtx1   (flt3apply/vtx tinv vtx1)]
-            [vtx2   (flt3apply/vtx tinv vtx2)]
-            [v      (flt3apply/pos tinv v)]
-            [vtx12  (vtx-interpolate vtx1 vtx2 v)]
-            [n      (cylinder-surface-normal r v)]
-            [vtx12  (set-vtx-normal vtx12 (if n (if inside? (flv3neg n) n) +z-flv3))]
-            [vtx12  (flt3apply/vtx t vtx12)])
-       vtx12))))
+  (if tinv
+      (deform-data
+        (λ (v1 v2 α)
+          (call/flv3-values (flt3apply/pos tinv v1)
+            (λ (x1 y1 z1)
+              (call/flv3-values (flt3apply/pos tinv v2)
+                (λ (x2 y2 z2)
+                  (let* ([x  (flblend x1 x2 α)]
+                         [y  (flblend y1 y2 α)]
+                         [z  (flblend z1 z2 α)]
+                         [m1  (flsqrt (+ (* x1 x1) (* y1 y1)))]
+                         [m2  (flsqrt (+ (* x2 x2) (* y2 y2)))]
+                         [s  (/ (flblend m1 m2 α)
+                                (flsqrt (+ (* x x) (* y y))))]
+                         [x  (* s x)]
+                         [y  (* s y)]
+                         [v  (if (and (< -inf.0 (min x y)) (< (max x y) +inf.0))
+                                 (flv3 x y z)
+                                 (flv3 0.0 0.0 z))]
+                         [v  (flt3apply/pos t v)])
+                    v))))))
+        (λ (vtx1 vtx2 v)
+          (let* ([vtx1   (flt3apply/vtx tinv vtx1)]
+                 [vtx2   (flt3apply/vtx tinv vtx2)]
+                 [v      (flt3apply/pos tinv v)]
+                 [vtx12  (vtx-interpolate vtx1 vtx2 v)]
+                 [n      (cylinder-surface-normal r v)]
+                 [vtx12  (set-vtx-normal vtx12 (if n (if inside? (flv3neg n) n) +z-flv3))]
+                 [vtx12  (flt3apply/vtx t vtx12)])
+            vtx12)))
+      linear-deform-data))
 
 (: cylinder-shape-tessellate (-> shape FlAffine3 Positive-Flonum Nonnegative-Flonum
                                  (Values Null (Listof (face deform-data #f)))))

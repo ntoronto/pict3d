@@ -621,16 +621,15 @@ code
 (define (triangle-mesh-shape-deform s t)
   (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
   (define n (vector-length vtxs))
-  (define-values (first-vtx first-d) (fls3apply/vtx t (vector-ref vtxs 0)))
-  (define new-back? (if (>= first-d 0.0) back? (not back?)))
-  (define new-vtxs (make-vector n (if (< first-d 0.0) (vtx-flip-normal first-vtx) first-vtx)))
+  (define-values (vtx0 d0 c0?) (fls3apply/vtx t (vector-ref vtxs 0)))
+  (define new-back? (if c0? back? (not back?)))
+  (define new-vtxs (make-vector n (if c0? vtx0 (vtx-flip-normal vtx0))))
   (let loop ([i : Positive-Fixnum  1])
     (cond
       [(< i n)
-       (define-values (vtxi di) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
-       (cond [(or (and (> first-d 0.0) (> di 0.0))
-                  (and (< first-d 0.0) (< di 0.0)))
-              (unsafe-vector-set! new-vtxs i (if (< di 0.0) (vtx-flip-normal vtxi) vtxi))
+       (define-values (vtxi di ci?) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
+       (cond [(eq? ci? c0?)
+              (unsafe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
               (loop (+ i 1))]
              [else
               (define new-idxs (if back? (vector-reverse idxs) idxs))

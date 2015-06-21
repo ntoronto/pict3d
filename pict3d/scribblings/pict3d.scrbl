@@ -218,7 +218,15 @@ When @racket[scale] is a real number, @racket[(rectangle center scale)] is equiv
 
 When @racket[inside?] is non-@racket[#f], the rectangle's surfaces face inward.
 @examples[#:eval pict3d-eval
-                 (rectangle origin (pos 1.25 1.25 1.25) #:inside? #t)]
+                 (rectangle origin (pos 1.25 1.25 1.25) #:inside? #t)
+                 (deform
+                   (tessellate
+                    (combine (with-color (rgba "firebrick")
+                               (combine 
+                                (rectangle (pos 0 0 5/8) (dir 1/2 1/2 1/8))
+                                (rectangle (pos 0 0 -5/8) (dir 1/2 1/2 1/8))))
+                             (rectangle origin (dir 1/2 1/2 4/8))))
+                   (twist 120))]
 }
 
 @defproc*[([(ellipsoid [corner1 Pos] [corner2 Pos] [#:inside? inside? Any #f]) Pict3D]
@@ -236,7 +244,14 @@ Returns a @racket[Pict3D] containing the largest ellipsoid that fits inside
 As with @racket[cube] and @racket[rectangle], @racket[(sphere center radius)]
 is equivalent to @racket[(ellipsoid center radius)].
 
+@examples[#:eval pict3d-eval
+                 (adaptive-deform
+                  (with-color (rgba "turquoise")
+                    (ellipsoid (pos 0 -1/2 0) (dir 1/4 1/4 1)))
+                  (twist 360))]
+
 When @racket[inside?] is non-@racket[#f], the ellipsoid surface faces inward.
+(See @racket[rectangle].)
 }
 
 @defproc*[([(cylinder [corner1 Pos]
@@ -270,7 +285,18 @@ The remaining boolean arguments determine which parts of the cylinder's surface 
 The @racket[arc] argument determines the start and end angle swept out by the vertical cap
 to create the cylinder.
 @examples[#:eval pict3d-eval
-                 (cylinder origin 1/2 #:arc (arc 90 360))]
+                 (cylinder origin 1/2 #:arc (arc 90 360))
+                 (move (bend (combine
+                              (tessellate
+                               (with-color (rgba "lightsteelblue")
+                                 (cylinder (pos 0 0 1) (dir 1/4 1/4 1) #:arc (arc -90 90)))
+                               #:max-edge 1/12)
+                              (with-color (rgba "slategray")
+                                (combine
+                                 (rectangle (pos 1/8 0 -1/8) (dir 3/16 5/16 1/8))
+                                 (rectangle (pos 1/8 0 (+ 2 1/8)) (dir 3/16 5/16 1/8)))))
+                             -180 (interval 0 2))
+                       (dir (/ 2 pi) 0 1/4))]
 }
 
 @defproc*[([(cone [corner1 Pos]
@@ -337,7 +363,8 @@ When @racket[inside?] is non-@racket[#f], the pipe's surfaces face inward.
 (See @racket[rectangle].)
 The remaining boolean arguments determine which parts of the pipe's surface are created.
 
-The @racket[arc] argument determines the start and end angle swept out to create the pipe.
+The @racket[arc] argument determines the start and end angle swept out by a trapezoid to create the
+pipe.
 @examples[#:eval pict3d-eval
                  (pipe origin 1/2 #:arc (arc 90 360))]
 
@@ -361,7 +388,49 @@ The fractional radii may exceed @racket[1].
                                (with-color (rgba "lavender")
                                  (pipe origin (dir 1/2 1/2 5/8)
                                        #:arc a #:bottom-radii (interval 7/8 1)))))
-                     (bend -45 (interval -1/2 1/2))))]
+                     (bend 45 (interval -1/2 1/2))))]
+}
+
+@defproc*[([(ring [corner1 Pos]
+                  [corner2 Pos]
+                  [#:back? back? Any #f]
+                  [#:arc arc Arc circle-arc]
+                  [#:radii radii Interval unit-interval])
+            Pict3D]
+           [(ring [center Pos]
+                  [scale (U Dir Real)]
+                  [#:<ring-keyword> <ring-keyword> <ring-keyword-type>]
+                  ...)
+            Pict3D])]{
+Returns a @racket[Pict3D] containing a disk or a ring, placed vertically in the center of the
+rectangle defined by @racket[corner1] and @racket[corner2], or by @racket[center] and @racket[scale].
+@examples[#:eval pict3d-eval
+                 (combine (ring origin (pos 1/2 1/2 1/2))
+                          (with-color (rgba "red" 0.5)
+                            (rectangle origin (pos 1/2 1/2 1/2))))
+                 (combine (ring origin (dir 1/4 1/2 3/4))
+                          (with-color (rgba "red" 0.5)
+                            (rectangle origin (dir 1/4 1/2 3/4))))]
+
+When @racket[back?] is non-@racket[#f], the ring surface faces downward.
+
+The @racket[arc] argument determine the start and end angle swept out by a line to create the ring.
+
+The @racket[radii] interval argument gives the @emph{fractional} radii of the inner and outer circle.
+
+@examples[#:eval pict3d-eval
+                 (deform
+                   (tessellate
+                    (combine
+                     (ring origin 2 #:arc (arc 90 360) #:radii (interval 3/4 1))
+                     (with-color (rgba 1 1/4 1/4)
+                       (ring origin 2 #:arc (arc 90 360) #:radii (interval 2/4 3/4)))
+                     (with-color (rgba 1/4 1/2 1)
+                       (ring origin 2 #:arc (arc 90 360) #:radii (interval 1/4 2/4))))
+                    #:max-edge 1/8
+                    #:max-angle 5)
+                   (displace (λ (x y) (* 1/8 (+ (sin (* 4 (atan y x)))
+                                                (sin (* pi (+ (sqr x) (sqr y)))))))))]
 }
 
 @defproc[(triangle [corner1 (U Pos Vertex)]
@@ -543,7 +612,8 @@ The @racket[radii] argument restricts the light's area of effect to minimum and 
                  (pict3d->bitmap 
                   (combine (rectangle (pos 0 0 -1) 1)
                            (light (pos 0 0 1) (emitted "orange" 10)
-                                  #:range 30 #:radii (interval 0.044 0.045))))]
+                                  #:range 30
+                                  #:radii (interval 0.044 0.045))))]
 Here, the light affects surfaces at distances only in the range [30·0.044,30·0.45] = [1.32,1.35].
 
 Transforming a light may change its initially spherical area of effect to an ellipsoid.
@@ -575,7 +645,7 @@ Using many smaller, unscaled lights gives a better approximation, and works well
                               (rotate-z 30)
                               (move-z 1/4)
                               (rotate-x 90)
-                              (bend -135 (interval -1 1))))))]
+                              (bend 135 (interval -1 1))))))]
 }
 
 @deftogether[(@deftypedparam[current-light-range range-fun (-> Emitted Real) (-> Emitted Real)
@@ -838,6 +908,70 @@ For any other attribute, omission or @racket[#f] indicates that the attribute sh
 Return the attributes of @racket[vertex].
 }
 
+@subsection[#:tag "interval"]{Interval Arguments}
+
+@deftogether[(@defidform[#:kind "type" Interval]
+              @defthing[#:kind "predicate" interval? (-> Any Boolean : Interval)])]{
+The type and predicate of closed intervals.
+}
+
+@defproc[(interval [min Real] [max Real]) Interval]{
+Constructs an @racket[Interval] value from its endpoints.
+Endpoints may be given in either order and are converted to flonums.
+@examples[#:eval normal-eval
+                 (interval 0 -1)
+                 (interval -inf.0 +inf.0)]
+}
+
+@deftogether[(@defthing[zero-interval Interval #:value (interval 0 0)]
+              @defthing[unit-interval Interval #:value (interval 0 1)])]{
+Common intervals.
+}
+
+@deftogether[(@defproc[(interval-min [i Interval]) Flonum]
+              @defproc[(interval-max [i Interval]) Flonum])]{
+Return the endpoints of @racket[i].
+
+You'll usually want to use @racket[match] or @racket[match-define] instead:
+@interaction[#:eval normal-eval
+                    (match-define (interval mn mx) (interval 1 -1))
+                    (list mn mx)]
+}
+
+@subsection[#:tag "arc"]{Arc Arguments}
+
+@deftogether[(@defidform[#:kind "type" Arc]
+              @defthing[#:kind "predicate" arc? (-> Any Boolean : Arc)])]{
+The type and predicate of closed arcs.
+}
+
+@defproc[(arc [start Real] [end Real]) Arc]{
+Constructs an @racket[Arc] value from its start and end angles.
+Angles are converted to flonums and normalized so that @racket[start] is in [0,360) and @racket[end]
+is no less than @racket[start].
+@examples[#:eval normal-eval
+                 (arc 0 0)
+                 (arc 0 360)
+                 (arc -90 90)
+                 (arc 90 -90)
+                 (arc 0 450)]
+}
+
+@deftogether[(@defthing[zero-arc Arc #:value (arc 0 0)]
+              @defthing[circle-arc Arc #:value (arc 0 360)])]{
+Common arcs.
+}
+
+@deftogether[(@defproc[(arc-start [a Arc]) Flonum]
+              @defproc[(arc-end [a Arc]) Flonum])]{
+Return the start and end angles of @racket[a].
+
+You'll usually want to use @racket[match] or @racket[match-define] instead:
+@interaction[#:eval normal-eval
+                    (match-define (arc start end) (arc 360 0))
+                    (list start end)]
+}
+
 @;{===================================================================================================
    ===================================================================================================
    ===================================================================================================
@@ -1014,6 +1148,11 @@ equivalent to @racket[(dir-scale dv -1)].
 @deftogether[(@defproc[(dir-dist [dv Dir]) Flonum]
               @defproc[(dir-dist^2 [dv Dir]) Flonum])]{
 Return the distance and squared distance represented by @racket[dv].
+}
+
+@defproc[(dir-norm [dv Dir] [p Nonnegative-Real]) Flonum]{
+Return the distance represented by @racket[dv] under the L-@racket[p]
+@hyperlink["https://en.wikipedia.org/wiki/Norm_%28mathematics%29#p-norm"]{norm}.
 }
 
 @defproc[(dir-normalize [dv Dir]) (U #f Dir)]{
@@ -1450,9 +1589,59 @@ Equivalent to:
 @racketblock[(map-group/transform pict path (λ ([t : Affine] _) t))]
 }
 
-@subsection[#:tag "affine"]{Scene Transformations}
+@;{===================================================================================================
+   ===================================================================================================
+   ===================================================================================================
+   }
 
-TODO: exposition about @deftech{affine transformations}
+@section[#:tag "affine"]{Transformation}
+
+TODO: exposition about @deftech{linear transformations} and @deftech{affine transformations}
+
+@subsection[#:tag "affine-types"]{Basic Transformation Data Types}
+
+@deftogether[(@defidform[#:kind "type" Linear]
+              @defthing[#:kind "predicate" linear? (-> Any Boolean : Linear)])]{
+The type and predicate for linear transformations.
+}
+
+@defproc[(linear [dx Dir] [dy Dir] [dz Dir]) Linear]{
+Converts three axes into a @tech{linear transformation}.
+}
+
+@deftogether[(@defproc[(linear-x-axis [t Linear]) Dir]
+              @defproc[(linear-y-axis [t Linear]) Dir]
+              @defproc[(linear-z-axis [t Linear]) Dir])]{
+Return the axes of @racket[t] separately; i.e.
+@racketblock[(match-define (linear dx dy dz) t)]
+is equivalent to
+@racketblock[(define dx (linear-x-axis t))
+             (define dy (linear-y-axis t))
+             (define dz (linear-z-axis t))]
+}
+
+@defthing[identity-linear Linear]{
+The identity linear transformation: each axis is a coordinate axis.
+@examples[#:eval normal-eval
+                 identity-linear]
+}
+
+@defproc[(linear-compose [t Linear] ...) Linear]{
+Composes any number of @tech{linear transformations}.
+Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
+}
+
+@defproc[(linear-inverse [t Linear]) Linear]{
+Returns the inverse of the transformation @racket[t].
+Because @racket[Linear] instances store their inverses, this operation is cheap.
+
+If @racket[t] isn't invertible, @racket[linear-inverse] raises an error.
+See @racket[linear-singular?].
+}
+
+@defproc[(linear-singular? [t Linear]) Boolean]{
+Returns @racket[#t] when @racket[(linear-inverse t)] would raise an error.
+}
 
 @deftogether[(@defidform[#:kind "type" Affine]
               @defthing[#:kind "predicate" affine? (-> Any Boolean : Affine)])]{
@@ -1476,19 +1665,50 @@ is equivalent to
              (define p  (affine-origin t))]
 }
 
+@defthing[identity-affine Affine]{
+The identity affine transformation: each axis is a coordinate axis, and its origin is @racket[origin].
+@examples[#:eval normal-eval
+                 identity-affine
+                 (affine-origin identity-affine)]
+}
+
 @defproc[(affine-compose [t Affine] ...) Affine]{
-Compose any number of @tech{affine transformations}.
+Composes any number of @tech{affine transformations}.
 Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
 }
 
 @defproc[(affine-inverse [t Affine]) Affine]{
 Returns the inverse of the transformation @racket[t].
 Because @racket[Affine] instances store their inverses, this operation is cheap.
+
+If @racket[t] isn't invertible, @racket[affine-inverse] raises an error.
+See @racket[affine-singular?].
 }
 
-@defthing[identity-affine Affine]{
-The identity transformation: each axis is a coordinate axis, and its origin is @racket[origin].
+@defproc[(affine-singular? [t Affine]) Boolean]{
+Returns @racket[#t] when @racket[(affine-inverse t)] would raise an error.
 }
+
+@deftogether[(@defproc[(linear-consistent? [t Linear]) Boolean]
+              @defproc[(affine-consistent? [t Affine]) Boolean])]{
+Return @racket[#t] when @racket[t] preserves
+@hyperlink["http://en.wikipedia.org/wiki/Orientation_%28vector_space%29"]{orientation}, or handedness.
+An inconsistent transformation turns clockwise-oriented shapes or directions counterclockwise, and
+vice-versa.
+
+Some 3D engines are sensitive to consistency: they will render shapes inside-out or turn normals the
+wrong direction when inconsistent transformations are applied.
+Pict3D's rendering engine is not sensitive to consistency.
+@examples[#:eval pict3d-eval
+                 (define pict (cube origin 1/2))
+                 (define t (scale -1))
+                 (affine-consistent? t)
+                 (transform pict t)]
+These functions are helpful for writing algorithms that preprocess geometric data in a
+consistency-insensitive way.
+}
+
+@subsection[#:tag "affine-transforms"]{Transformation Combiners and Constructors}
 
 @defproc[(transform [pict Pict3D] [t Affine]) Pict3D]{
 Transforms @racket[pict] by applying @racket[t].
@@ -1528,10 +1748,10 @@ This is often not what you want.
 To scale @racket[pict] with a different center, see @racket[scale/center].
 }
 
-@deftogether[(@defproc[#:link-target? #f (scale [dv (U Real Dir)]) Affine]
-              @defproc[#:link-target? #f (scale-x [dx Real]) Affine]
-              @defproc[#:link-target? #f (scale-y [dy Real]) Affine]
-              @defproc[#:link-target? #f (scale-z [dz Real]) Affine])]{
+@deftogether[(@defproc[#:link-target? #f (scale [dv (U Real Dir)]) Linear]
+              @defproc[#:link-target? #f (scale-x [dx Real]) Linear]
+              @defproc[#:link-target? #f (scale-y [dy Real]) Linear]
+              @defproc[#:link-target? #f (scale-z [dz Real]) Linear])]{
 Transformation-returning versions of the above.
 Any @racket[(scale pict ...)] is equivalent to @racket[(transform pict (scale ...))].
 }
@@ -1548,10 +1768,10 @@ This is often not what you want.
 To rotate @racket[pict] around a different center, see @racket[rotate/center].
 }
 
-@deftogether[(@defproc[#:link-target? #f (rotate [axis Dir] [angle Real]) Affine]
-              @defproc[#:link-target? #f (rotate-x [angle Real]) Affine]
-              @defproc[#:link-target? #f (rotate-y [angle Real]) Affine]
-              @defproc[#:link-target? #f (rotate-z [angle Real]) Affine])]{
+@deftogether[(@defproc[#:link-target? #f (rotate [axis Dir] [angle Real]) Linear]
+              @defproc[#:link-target? #f (rotate-x [angle Real]) Linear]
+              @defproc[#:link-target? #f (rotate-y [angle Real]) Linear]
+              @defproc[#:link-target? #f (rotate-z [angle Real]) Linear])]{
 Transformation-returning versions of the above.
 Any @racket[(rotate pict ...)] is equivalent to @racket[(transform pict (rotate ...))].
 }
@@ -1711,23 +1931,6 @@ In the second @racket[Pict3D], the directions have been flattened along with the
 In the third, they maintain their orthogonality to the surface.
 }
 
-@defproc[(affine-consistent? [t Affine]) Affine]{
-Returns @racket[#t] when @racket[t] preserves
-@hyperlink["http://en.wikipedia.org/wiki/Orientation_%28vector_space%29"]{orientation}, or handedness.
-An inconsistent transformation turns clockwise-oriented shapes or directions counterclockwise, and
-vice-versa.
-
-Some 3D engines are sensitive to consistency; i.e. they will render shapes inside-out when
-inconsistent transformations are applied.
-Pict3D's rendering engine is @emph{not} one of those.
-@examples[#:eval pict3d-eval
-                 (define pict (cube origin 1/2))
-                 (define t (scale -1))
-                 (affine-consistent? t)
-                 (transform pict t)]
-A transformation is consistent when its matrix determinant is positive.
-}
-
 @defproc[(camera-transform [pict Pict3D]) (U #f Affine)]{
 Returns the camera used to orient the initial view, if at least one @racket['camera] @tech{basis} is
 in @racket[pict].
@@ -1784,6 +1987,313 @@ A less common use is to build a ray tracer in very few lines of code, such as th
                                (code:comment "compute brightness, apply gamma correction")
                                (expt (* a b) (/ 1.0 2.2))]
                               [else  0.0]))))]
+}
+
+@;{===================================================================================================
+   ===================================================================================================
+   ===================================================================================================
+   }
+
+@section[#:tag "smooth"]{Deformation and Tessellation}
+
+TODO: exposition about @deftech{deformation} and @deftech{tessellation} and @deftech{Jacobian}
+
+@subsection[#:tag "smooth-types"]{Basic Deformation Data Types}
+
+@deftogether[(@defidform[#:kind "type" Smooth]
+              @defthing[#:kind "predicate" smooth? (-> Any Boolean : Smooth)])]{
+The type and predicate for three-dimensional, almost-everywhere continuously differentiable
+functions.
+This includes @racket[Affine] (and thus @racket[Linear]) as a subtype.
+}
+
+@defproc*[([(smooth [f (-> Pos Pos)]) Smooth]
+           [(smooth [f (-> Pos Pos)] [j (-> Pos Linear)]) Smooth])]{
+Creates a deformation function. If only @racket[f] is given, it is numerically differentiated to
+construct the @tech{Jacobian} function. Otherwise, @racket[j] is used.
+
+@bold{Warning:} If @racket[f] is numerically differentiated, it may be evaluated outside of its
+intended domain.
+}
+
+@deftogether[(@defproc[(smooth-function [t Smooth]) (-> Pos Pos)]
+              @defproc[(smooth-jacobian [t Smooth]) (-> Pos Linear)])]{
+Return the function represented by @racket[t] and its @tech{Jacobian} matrix of partial derivatives.
+
+When @racket[t] is @racket[Linear] or @racket[Affine], @racket[(smooth-function t)] is equivalent to
+@racket[(λ (v) (transform-pos v t))].
+
+When @racket[t] is @racket[Linear], @racket[(smooth-jacobian t)] is equivalent to @racket[(λ (_) t)].
+
+When @racket[t] is @racket[Affine], @racket[(smooth-jacobian t)] is equivalent to
+@racketblock[(match-let ([(affine dx dy dz v)  t])
+               (λ (_) (linear dx dy dz)))]
+}
+
+@defthing[identity-smooth Smooth]{
+The identity deformation. Equivalent to @racket[identity-linear] and @racket[identity-affine].
+}
+
+@defproc[(smooth-compose [t Smooth] ...) Smooth]{
+Composes any number of @tech{deformations}.
+Applying the result applies each @racket[t] once, in reverse order (just like @racket[compose]).
+
+@examples[#:eval pict3d-eval
+                 (combine
+                  (deform (tessellate (rectangle (pos 0 0 2) (dir 1/8 1/4 2))
+                                      #:segments 48)
+                    (smooth-compose
+                     (move-x (/ -2 pi))
+                     (bend 360 (interval 0 4))
+                     (twist 45)
+                     (rotate-z 45)))
+                  (basis 'camera (point-at (pos 1/2 1 1/2) (pos 1/8 0 1/8))))]
+}
+
+@defproc[(smooth-approximate [t Smooth] [v Pos]) Affine]{
+Returns the best linear approximation of @racket[t] at point @racket[v].
+
+If @racket[t] is @racket[Linear] or @racket[Affine], this simply returns @racket[t].
+Otherwise, @racket[(smooth-approximate t v)] is equivalent to
+@racketblock[(match-let ([(linear dx dy dz)  ((smooth-jacobian f) v)])
+               (define v0 ((smooth-function f) v))
+               (affine dx dy dz (pos+ origin (pos- v0 v))))]
+}
+
+@defproc[(smooth-singular? [t Smooth] [v Pos]) Boolean]{
+Returns @racket[#t] when inverting @racket[((smooth-jacobian t) v)] would raise an error.
+See @racket[linear-inverse] and @racket[linear-singular?].
+}
+
+@defproc[(smooth-consistent? [t Smooth] [v Pos]) Boolean]{
+Returns @racket[#t] when @racket[t] preserves orientation, or handedness, at @racket[v].
+See @racket[linear-consistent?].
+}
+
+@subsection[#:tag "tesselation"]{Tessellation}
+
+@defproc[(tessellate [pict Pict3D]
+                     [#:segments segments Integer (current-tessellate-segments)]
+                     [#:max-edge max-edge (U #f Real) (current-tessellate-max-edge)]
+                     [#:max-angle max-angle Real (current-tessellate-max-angle)])
+         Pict3D]{
+Approximates @racket[pict] with triangles so @tech{deformations} can be applied to their vertices.
+
+Each kind of shape has its own tessellation algorithm, which follows the these general guidelines:
+@itemlist[
+ @item{Edges that approximate part of an arc represent no more than @racket[max-angle] degrees
+       of the arc.}
+ @item{Other edges are shorter than @racket[max-edge].}
+]
+When @racket[max-edge] is @racket[#f] (the default), it's computed as @racket[(/ l segments)], where
+@racket[l] is the length of the longest axis of @racket[pict]'s bounding rectangle.
+
+@examples[#:eval pict3d-eval
+                 (current-pict3d-add-wireframe 'color)
+                 (combine
+                  (tessellate (rectangle origin (dir 1/4 1/4 1))
+                              #:segments 4)
+                  (basis 'camera (point-at (pos 0.75 0.75 1.25) origin)))
+                 (tessellate (sphere origin 1/2)
+                             #:max-angle (/ 90 4))
+                 (tessellate (cylinder origin 1/2 #:arc (arc 90 45))
+                             #:max-angle 45 #:max-edge 1/4)
+                 (tessellate (cone origin 1/2)
+                             #:max-angle 30 #:segments 32)
+                 (current-pict3d-add-wireframe #f)]
+}
+
+@defproc[(adaptive-tessellate
+          [pict Pict3D]
+          [t Smooth identity-smooth]
+          [#:segments segments Integer (current-adaptive-segments)]
+          [#:max-edge max-edge (U #f Real) (current-adaptive-max-edge)]
+          [#:max-angle max-angle Real (current-adaptive-max-angle)]
+          [#:max-iters max-iters Integer (current-adaptive-max-iters)])
+         Pict3D]{
+Tries to tessellate @racket[pict] in a way that reduces visual artifacts when deformed by @racket[t].
+This function is available for completeness; usually @racket[adaptive-deform] is more appropriate.
+                    
+@examples[#:eval pict3d-eval
+                 (current-pict3d-add-wireframe 'color)
+                 (define c (basis 'camera (point-at (pos 2.5 1.5 1.0)
+                                                    (dir -0.75 -0.5 -0.25))))
+                 (define t (bend 90 (interval -1/2 1/2)))
+                 (define p (adaptive-tessellate (cylinder origin (dir 1/2 1/2 2)) t))
+                 (combine c p)
+                 (combine c (deform p t))
+                 (current-pict3d-add-wireframe #f)]
+
+Except for @racket[max-iters], the keyword arguments have similar meaning to those of
+@racket[tessellate].
+However, @racket[adaptive-tessellate]
+@itemlist[#:style 'ordered
+ @item{Requests an initial tessellation of each shape with @racket[max-angle = 90] and
+       @racket[max-edge = +inf.0].}
+ @item{For up to @racket[max-iters] iterations, splits triangle edges that, @emph{when transformed},
+       would be too long or represent too many degrees of an arc, and moves the new vertex onto the
+       shape's surface.}
+ @item{For up to 3 iterations, splits triangle edges that change orientation when transformed, 
+       using @racket[flbracketed-root] to solve for locations at which @racket[t]'s
+       @tech{Jacobian} determinant is zero.}
+]
+This is a lot of extra work, which usually can't be done at interactive speeds.
+On the other hand, @racket[adaptive-tessellate] sometimes uses fewer triangles (this is still a
+work in progress), and can deal better with deformations with discontinuities and local
+noninvertibility.
+
+@examples[#:eval pict3d-eval
+                 (define t
+                   (smooth (λ (v)
+                             (match-define (pos x y z) v)
+                             (pos x y (* x z)))))
+                 (deform (tessellate (ellipsoid (pos -1/3 0 0) (dir 1 1/2 1/2))) t)
+                 (adaptive-deform (ellipsoid (pos -1/3 0 0) (dir 1 1/2 1/2)) t)]
+}
+
+@deftogether[(@deftypedparam[current-tessellate-segments segments Integer Natural (#:value 12)]
+              @deftypedparam[current-tessellate-max-edge max-edge (U #f Real) (U #f Positive-Flonum)
+                                                         (#:value #f)]
+              @deftypedparam[current-tessellate-max-angle max-angle Real Flonum (#:value 15.0)])]{
+Default keyword argument values for @racket[tessellate].
+}
+
+@deftogether[(@deftypedparam[current-adaptive-segments segments Integer Natural (#:value 0)]
+              @deftypedparam[current-adaptive-max-edge max-edge (U #f Real) (U #f Positive-Flonum)
+                                                       (#:value #f)]
+              @deftypedparam[current-adaptive-max-angle max-angle Real Flonum (#:value 15.0)]
+              @deftypedparam[current-adaptive-max-iters max-iters Integer Natural (#:value 5)])]{
+Default keyword argument values for @racket[adaptive-tessellate] and @racket[adaptive-deform].
+}
+
+@subsection[#:tag "smooth-deforms"]{Deformation Constructors and Combiners}
+
+@deftogether[(@defproc[(deform-pos [v Pos] [t Smooth]) Pos]
+              @defproc[(deform-dir [v Pos] [dv Dir] [t Smooth]) Dir]
+              @defproc[(deform-norm [v Pos] [dv Dir] [t Smooth]) (U #f Dir)])]{
+Apply @tech{deformation} @racket[t] to a position, direction or normal.
+
+These are analogous to @racket[transform-pos], @racket[transform-dir] and @racket[transform-norm],
+respectively.
+(In fact, when @racket[t] is @racket[Affine], they simply apply their affine counterparts.)
+The main difference is that @racket[deform-dir] and @racket[deform-norm] require a position
+argument to apply the @tech{Jacobian} to.
+}
+
+@defproc[(deform-affine [t0 Affine] [t Smooth]) (U #f Affine)]{
+Applies @tech{deformation} @racket[t] to an affine transformation.
+
+If @racket[t] is @racket[Affine], this is equivalent to @racket[(affine-compose t t0)].
+Otherwise, it's equivalent to
+@racketblock[(match-let ([(affine dx dy dz v)  t0])
+               (affine (deform-dir v dx t)
+                       (deform-dir v dy t)
+                       (deform-dir v dz t)
+                       (deform-pos v t)))]
+
+Group transformations, and untessellated solid objects such as @racket[sphere]s, are deformed
+using @racket[deform-affine].
+}
+
+@defproc[(deform [pict Pict3D] [t Smooth]) Pict3D]{
+Deforms @racket[pict] by applying @racket[t] to its positions, normals and affine transformations.
+}
+
+@defproc[(adaptive-deform
+          [pict Pict3D]
+          [t Smooth]
+          [#:segments segments Integer (current-adaptive-segments)]
+          [#:max-edge max-edge (U #f Real) (current-adaptive-max-edge)]
+          [#:max-angle max-angle Real (current-adaptive-max-angle)]
+          [#:max-iters max-iters Integer (current-adaptive-max-iters)])
+         Pict3D]{
+Tries to tessellate @racket[pict] in a way that reduces visual artifacts when deformed by @racket[t],
+and then deforms the tessellation by @racket[t].
+See @racket[adaptive-tessellate] for discussion and examples.
+}
+
+@defproc*[([(local-deform [t Smooth] [local-t Affine]) Smooth]
+           [(local-deform [pict Pict3D] [t Smooth] [local-t Affine]) Pict3D])]{
+Applies @racket[t] to @racket[pict] in the local coordinate space defined by @racket[local-t], or
+returns a @racket[Smooth] function that does so. Analogous to @racket[local-transform].
+
+The two-argument version is equivalent to
+@racket[(smooth-compose local-t t (affine-inverse local-t))].
+In English, undo @racket[local-t], do @racket[t], then redo @racket[local-t].
+}
+
+@defproc[(twist [pict Pict3D] [angle Real]) Pict3D]{
+Twists @racket[pict] around the @italic{z} axis, @racket[angle] degrees per unit height.
+@examples[#:eval pict3d-eval
+                 (twist (tessellate (pipe origin (dir 1 1/2 1))) 90)]
+In the above example, the pipe is twisted 180 degrees: 90 degrees for one unit below the origin,
+and 90 degrees for one unit above the origin.
+}
+
+@defproc[(displace [pict Pict3D] [f (-> Flonum Flonum Real)]) Pict3D]{
+Adds @racket[(f x y)] to every point's @italic{z} coordinate in @racket[pict].
+@examples[#:eval pict3d-eval
+                 (displace (tessellate (rectangle origin (dir 2/3 2/3 1/4)))
+                           (λ (x y) (- (sqr x) (sqr y))))]
+}
+
+@defproc*[([(bend [pict Pict3D] [angle Real]) Pict3D]
+           [(bend [pict Pict3D] [angle Real] [zrange Interval]) Pict3D])]{
+Bends @racket[pict] by bending an interval of the @italic{z} axis @racket[angle] degrees
+counterclockwise around the @italic{y} axis.
+
+If @racket[zrange] is given, only that interval on the @italic{z} axis is bent; otherwise,
+the entire @italic{z} extent of @racket[pict] is used.
+The bent interval always retains its length.
+
+@examples[#:eval pict3d-eval
+                 (combine
+                  (bend (tessellate (ellipsoid origin (dir 1/8 1/16 1)))
+                        270)
+                  (with-color (rgba "orange")
+                    (bend (tessellate (rectangle origin (dir 1/8 1/4 1)))
+                          -180))
+                  (with-color (rgba "lightgreen" 0.5)
+                    (bend (tessellate (cone (pos 0 0 1) (dir 1/4 1/8 1)))
+                          90 (interval 1/2 2)))
+                  (with-color (rgba "crimson" 0.5)
+                    (bend (tessellate (cylinder (pos 0 0 -1) (dir 1/4 1/8 1)))
+                          -45 (interval -1/2 -2)))
+                  (basis 'camera (point-at (pos 0.8 1.6 0.5) (pos 0 0 1/4))))]
+}
+
+@deftogether[(@defproc[#:link-target? #f (bend [angle Real] [zrange Interval]) Smooth]
+              @defproc[#:link-target? #f (twist [angle Real]) Smooth]
+              @defproc[#:link-target? #f (displace [f (-> Flonum Flonum Real)]) Smooth])]{
+Deformation-returning versions of the above.
+}
+
+@defproc[(smooth-between [t1 Smooth] [t2 Smooth] [α (U Real (-> Pos Real))]) Smooth]{
+Returns an average of @racket[t1] and @racket[t2], weighted by @racket[α].
+When @racket[α] is a function, the weight at each point @racket[v] is @racket[(α v)].
+
+One use for @racket[smooth-between] is to apply a deformation to a small pocket of space, by
+blending between that deformation and @racket[identity-smooth].
+@examples[#:eval pict3d-eval
+                 (eval:alts (require plot)
+                            (require (only-in plot/pict plot function)))
+
+                 (define (f1 z) (exp (- (sqr z))))
+                 (define (f2 z) (if (> (sqr z) 1) 0 (sqrt (- 1 (sqr z)))))
+                 
+                 (plot (list (function f1 #:label "f1")
+                             (function f2 #:color 2 #:label "f2"))
+                       #:x-min -2 #:x-max 2 #:y-min 0 #:y-max 1
+                       #:x-label "z" #:y-label "α")
+                 
+                 (define (α1 v) (f1 (pos-z v)))
+                 (define (α2 v) (f2 (pos-z v)))
+                 
+                 (define p (tessellate (rectangle origin (dir 1/2 1/2 2)) #:segments 24))
+                 (define c (basis 'camera (point-at (pos 2 2 1) (pos 0 0 1/4))))
+                 (combine c (deform p (twist 90)))
+                 (combine c (deform p (smooth-between identity-smooth (twist 90) α1)))
+                 (combine c (deform p (smooth-between identity-smooth (twist 90) α2)))]
 }
 
 @;{===================================================================================================
@@ -1927,9 +2437,14 @@ for how these parameters are used when rendering on a canvas or to a bitmap.
 
 @deftogether[(@deftypedparam[current-pict3d-add-sunlight? add-sunlight? Boolean Boolean (#:value #t)]
               @deftypedparam[current-pict3d-add-indicators? add-indicators? Boolean Boolean
-                                                            (#:value #t)])]{
-Determine whether directional lights and indicators are initially added to interactive
-@racket[Pict3D] displays.
+                                                            (#:value #t)]
+              @deftypedparam[current-pict3d-add-grid? add-grid? Boolean Boolean (#:value #f)]
+              @deftypedparam[current-pict3d-add-wireframe add-wireframe
+                                                          (U #f 'color 'emitted)
+                                                          (U #f 'color 'emitted)
+                                                          (#:value #f)])]{
+Determine whether directional lights, indicators, the grid, and wireframes are initially added to
+interactive @racket[Pict3D] displays.
 See @secref{quick}.
 }
 

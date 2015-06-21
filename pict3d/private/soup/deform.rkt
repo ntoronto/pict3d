@@ -129,8 +129,8 @@
   (define (maybe-add-edge es vtx1 vtx2 d1 d2 blend)
     ;; Determine whether the edge passes through a discontinuity
     (define m (max (abs d1) (abs d2)))
-    (cond [(or (and (< -inf.0 d1 (* m -1e-8)) (> +inf.0 d2 (* m +1e-8)))
-               (and (> +inf.0 d1 (* m +1e-8)) (< -inf.0 d2 (* m -1e-8))))
+    (cond [(or (and (< -inf.0 d1 (* m -1e-8)) (< (* m +1e-8) d2 +inf.0))
+               (and (< -inf.0 d2 (* m -1e-8)) (< (* m +1e-8) d1 +inf.0)))
            (define v1 (vtx-position vtx1))
            (define v2 (vtx-position vtx2))
            ;; We get nice results by splitting them as close as possible to the discontinuity

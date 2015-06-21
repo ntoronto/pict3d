@@ -144,12 +144,14 @@
 
 (: transform-planes (-> FlAffine3 (Listof FlPlane3) (Listof FlPlane3)))
 (define (transform-planes t0 planes)
-  (if (identity-flaffine3? t0)
-      planes
-      (let ([tinv0 : FlAffine3  (flt3inverse t0)])
-        (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
-          (define new-p (flt3apply/plane tinv0 p))
-          (if new-p (cons new-p planes) planes)))))
+  (cond [(identity-flaffine3? t0)  planes]
+        [else
+         (define tinv0 (flt3inverse t0))
+         (cond [tinv0
+                (for/fold ([planes : (Listof FlPlane3)  empty]) ([p  (in-list planes)])
+                  (define new-p (flt3apply/plane tinv0 p))
+                  (if new-p (cons new-p planes) planes))]
+               [else  empty])]))
 
 (: nonempty-scene-for-each! (-> Nonempty-Scene
                                 (Listof FlPlane3)
@@ -405,9 +407,11 @@
     (cond
       [(shape? s)
        (define-values (time data) (shape-ray-intersect s v dv max-time))
-       (if (or (not time) (not data))
-           (values #f #f)
-           (values time (fix-trace-data data (flt3inverse t) path)))]
+       (cond [(or (not time) (not data))  (values #f #f)]
+             [else
+              (define tinv (flt3inverse t))
+              (cond [tinv  (values time (fix-trace-data data tinv path))]
+                    [else  (values #f #f)])])]
       [(node-scene? s)
        (define b (node-scene-visible-bbox s))
        (cond
@@ -473,13 +477,15 @@
                [else
                 (brute-force-fallback s1 s2)])])])]
       [(trans-scene? s)
-       (define t0 (flt3inverse (trans-scene-affine s)))
-       (loop (trans-scene-scene s)
-             (flt3apply/pos t0 v)
-             (flt3apply/dir t0 dv)
-             (flt3compose t0 t)
-             path
-             max-time)]
+       (define tinv0 (flt3inverse (trans-scene-affine s)))
+       (if tinv0
+           (loop (trans-scene-scene s)
+                 (flt3apply/pos tinv0 v)
+                 (flt3apply/dir tinv0 dv)
+                 (flt3compose tinv0 t)
+                 path
+                 max-time)
+           (values #f #f))]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (cond [(empty-scene? s0)  (values #f #f)]
@@ -581,8 +587,8 @@
          [(trans-scene? s)
           (define t0 (trans-scene-affine s))
           (define s0 (trans-scene-scene s))
-          (let* ([inv-t0 : FlAffine3  (flt3inverse t0)]
-                 [new-p : (U #f FlPlane3)  (flt3apply/plane inv-t0 p)])
+          (let* ([inv-t0  (flt3inverse t0)]
+                 [new-p   (and inv-t0 (flt3apply/plane inv-t0 p))])
             (cond [new-p  (define new-s0 (loop s0 new-p))
                           (cond [(eq? new-s0 s0)  s]
                                 [else  (make-trans-scene new-s0 t0)])]
@@ -616,11 +622,15 @@
       [(trans-scene? s)
        (define t0 (trans-scene-affine s))
        (define s0 (trans-scene-scene s))
-       (define new-t (flt3compose (flt3inverse t0) t))
-       (define new-b (bbox-transform orig-b new-t))
-       (define new-s0 (loop s0 new-t new-b))
-       (cond [(eq? new-s0 s0)  s]
-             [else  (make-trans-scene new-s0 t0)])]
+       (define tinv0 (flt3inverse t0))
+       (cond [tinv0
+              (define new-t (flt3compose tinv0 t))
+              (define new-b (bbox-transform orig-b new-t))
+              (define new-s0 (loop s0 new-t new-b))
+              (cond [(eq? new-s0 s0)  s]
+                    [else  (make-trans-scene new-s0 t0)])]
+             [else
+              empty-scene])]
       [(group-scene? s)
        (define s0 (group-scene-scene s))
        (define new-s0 (loop s0 t b))

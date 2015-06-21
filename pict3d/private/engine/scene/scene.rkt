@@ -242,10 +242,12 @@ Scenes should allow O(log(n))
               ;; If we got one...
               (when new-b
                 ;; ... transform it back into this node's coordinate space...
-                (let ([new-b  (bbox-transform new-b (flt3inverse t))])
+                (let* ([tinv   (flt3inverse t)]
+                       [new-b  (and tinv (bbox-transform new-b tinv))])
                   ;; ... and if it's not terrible, and transforming it into world-space coordinates
                   ;; also isn't terrible...
-                  (when (and (< (bbox-badness new-b) max-badness)
+                  (when (and new-b
+                             (< (bbox-badness new-b) max-badness)
                              (< (bbox-badness (bbox-transform new-b t)) max-badness))
                     ;; ... then we might as well keep the awful thing
                     (set-node-scene-bbox! s new-b))))

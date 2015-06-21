@@ -59,7 +59,7 @@
 
 #;; Wrap around the y axis (which is a discontinuous line)
 (define f
-  (differentiable
+  (smooth
    (λ (v)
      (match-define (pos x y z) v)
      (pos (* (+ 2.0 z) (sin (* 0.5 pi x)))
@@ -90,7 +90,7 @@
     f)))
 
 (define (change-norm k l)
-  (differentiable
+  (smooth
    (λ (v)
      (match-define (pos x y z) v)
      (define numer

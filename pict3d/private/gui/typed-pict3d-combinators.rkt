@@ -12,7 +12,16 @@
          "../soup.rkt"
          "../shape.rkt"
          "../utils.rkt"
-         "typed-user-types.rkt"
+         "user-types.rkt"
+         (only-in "typed-user-types.rkt"
+                  trace-data->surface-data
+                  flv3->pos
+                  flv3->dir
+                  face->vertices
+                  fllinear3->linear
+                  flaffine3->affine
+                  flafflin3->afflin
+                  make-material)
          "pict3d-struct.rkt"
          "parameters.rkt"
          "shape/light-grid.rkt"
@@ -273,7 +282,8 @@
 
 (: basis (-> Tag Affine Pict3D))
 (define (basis n t)
-  (pict3d (make-trans-scene (make-group-scene empty-scene n) t)))
+  (pict3d (make-trans-scene (make-group-scene empty-scene n)
+                            (->flaffine3 t))))
 
 (: group-tag (-> Pict3D (U #f Tag)))
 (define (group-tag p)
@@ -417,21 +427,12 @@
 
 (: interpret-arc (->* [Arc] [Flonum] (Values Flonum Flonum)))
 (define (interpret-arc a [eps 1e-8])
-  (define-values (a1 a2) (arc-values a))
-  (if (= a1 a2)
-      (let ([a1  (- a1 (* 360.0 (floor (/ a1 360.0))))])
-        (values (degrees->radians a1) 0.0))
-      (let*-values ([(a1 a2)  (let ([d  (* 360.0 (floor (/ a1 360.0)))])
-                                (values (- a1 d) (- a2 d)))]
-                    [(a2)     (let ([a2  (- a2 (* 360.0 (floor (/ a2 360.0))))])
-                                (if (<= a2 a1) (+ a2 360.0) a2))]
-                    [(a1 a2)  (values (degrees->radians a1)
-                                      (degrees->radians a2))])
-        (values a1 (flclamp/snap (- a2 a1) 0.0 (* 2.0 pi) eps (- (* 2.0 pi) eps))))))
+  (match-define (arc (app degrees->radians a1) (app degrees->radians a2)) a)
+  (values a1 (flclamp/snap (- a2 a1) 0.0 (* 2.0 pi) eps (- (* 2.0 pi) eps))))
 
 (: interpret-interval (->* [Interval Flonum Flonum] [Flonum] (Values Flonum Flonum)))
 (define (interpret-interval x mn mx [eps 1e-8])
-  (define-values (x1 x2) (interval-values x))
+  (match-define (interval x1 x2) x)
   (values (flclamp/snap x1 mn mx (+ mn eps) (- mx eps))
           (flclamp/snap x2 mn mx (+ mn eps) (- mx eps))))
 
@@ -731,15 +732,20 @@
 
 (: transform (-> Pict3D Affine Pict3D))
 (define (transform p t)
-  (if (eq? t identity-affine) p (pict3d (make-trans-scene (pict3d-scene p) t))))
+  (cond
+    [(eq? t identity-linear)  p]
+    [else  (pict3d (make-trans-scene (pict3d-scene p) (->flaffine3 t)))]))
 
-(: make-transformer (All (A) (-> (-> A FlAffine3)
-                                 (case-> (-> A Affine)
-                                         (-> Pict3D A Pict3D)))))
+(: make-transformer
+   (All (A) (case-> (-> (-> A FlLinear3) (case-> (-> A Linear) (-> Pict3D A Pict3D)))
+                    (-> (-> A FlAffLin3) (case-> (-> A Affine) (-> Pict3D A Pict3D))))))
 (define (make-transformer f)
   (case-lambda
-    [(v)  (flaffine3->affine (f v))]
-    [(p v)  (transform p (flaffine3->affine (f v)))]))
+    [(v)  (define t (f v))
+          (if (fllinear3? t)
+              (fllinear3->linear t)
+              (flaffine3->affine t))]
+    [(p v)  (transform p (flafflin3->afflin (f v)))]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
@@ -803,26 +809,30 @@
 (define rotate-x
   (make-transformer (λ ([a : Real])
                       (let ([a  (fl a)])
-                        (if (= a 0.0) identity-affine (rotate-x-flt3 (degrees->radians a)))))))
+                        (cond [(= a 0.0)  identity-linear]
+                              [else  (rotate-x-flt3 (degrees->radians a))])))))
 
 (define rotate-y
   (make-transformer (λ ([a : Real])
                       (let ([a  (fl a)])
-                        (if (= a 0.0) identity-affine (rotate-y-flt3 (degrees->radians a)))))))
+                        (cond [(= a 0.0)  identity-linear]
+                              [else  (rotate-y-flt3 (degrees->radians a))])))))
 
 (define rotate-z
   (make-transformer (λ ([a : Real])
                       (let ([a  (fl a)])
-                        (if (= a 0.0) identity-affine (rotate-z-flt3 (degrees->radians a)))))))
+                        (cond [(= a 0.0)  identity-linear]
+                              [else  (rotate-z-flt3 (degrees->radians a))])))))
 
-(: rotate (case-> (-> Dir Real Affine)
+(: rotate (case-> (-> Dir Real Linear)
                   (-> Pict3D Dir Real Pict3D)))
 (define rotate
   (case-lambda
     [(v a)
      (let ([a  (fl a)]
            [v : FlV3  (check-axis 'rotate v)])
-       (if (= a 0.0) identity-affine (flaffine3->affine (rotate-flt3 v (degrees->radians a)))))]
+       (cond [(= a 0.0)  identity-linear]
+             [else  (fllinear3->linear (rotate-flt3 v (degrees->radians a)))]))]
     [(p v a)
      (transform p (rotate v a))]))
 
@@ -918,7 +928,7 @@
               (if (> max-edge 0.0) max-edge +inf.0)))))
       +inf.0))
 
-(: tessellate (->* [Pict3D] [#:segments Integer #:max-edge Real #:max-angle Real] Pict3D))
+(: tessellate (->* [Pict3D] [#:segments Integer #:max-edge (U #f Real) #:max-angle Real] Pict3D))
 (define (tessellate p
                     #:segments [n (current-tessellate-segments)]
                     #:max-edge [max-edge (current-tessellate-max-edge)]
@@ -956,12 +966,16 @@
                          (loop (node-scene-pos s) t inv-t deform-t))]
        [(trans-scene? s)
         (let ([t  (flt3compose t (trans-scene-affine s))])
-          (define new-t (let ([new-t  (fls3apply/affine t0 t)])
-                          (if new-t new-t identity-flaffine3)))
+          (define-values (new-t inv-new-t)
+            (let* ([new-t  (fls3apply/affine t0 t)]
+                   [inv-new-t  (flt3inverse new-t)])
+              ;; Don't like this hack...
+              (if inv-new-t
+                  (values new-t inv-new-t)
+                  (values identity-flaffine3 identity-flaffine3))))
+          (define deform-t (delay (fls3compose inv-new-t (fls3compose t0 t))))
           (make-trans-scene
-           (let* ([inv-t     (flt3inverse new-t)]
-                  [deform-t  (delay (fls3compose inv-t (fls3compose t0 t)))])
-             (loop (trans-scene-scene s) t inv-t deform-t))
+           (loop (trans-scene-scene s) t inv-new-t deform-t)
            (flt3compose inv-t new-t)))]
        [(group-scene? s)
         (group-scene (loop (group-scene-scene s) t inv-t deform-t)
@@ -1017,12 +1031,12 @@
 ;; ---------------------------------------------------------------------------------------------------
 ;; Deformation functions
 
-(: displace (case-> (-> (-> Flonum Flonum Real) Differentiable)
+(: displace (case-> (-> (-> Flonum Flonum Real) Smooth)
                     (-> Pict3D (-> Flonum Flonum Real) Pict3D)))
 (define displace
   (case-lambda
     [(f)
-     (differentiable
+     (smooth
       (λ (v)
         (call/flv3-values v
           (λ (x y z)
@@ -1030,13 +1044,13 @@
     [(p f)
      (deform p (displace f))]))
 
-(: twist (case-> (-> Real Differentiable)
+(: twist (case-> (-> Real Smooth)
                  (-> Pict3D Real Pict3D)))
 (define twist
   (case-lambda
     [(speed)
      (let ([speed  (degrees->radians (fl speed))])
-       (differentiable
+       (smooth
         (λ (v)
           (call/flv3-values v
             (λ (x y z)
@@ -1060,13 +1074,13 @@
         [(> x (- dx))  (+ x dx)]
         [else  0.0]))
 
-(: extend (case-> (-> (U Real Dir) Differentiable)
+(: extend (case-> (-> (U Real Dir) Smooth)
                   (-> Pict3D (U Real Dir) Pict3D)))
 (define extend
   (case-lambda
     [(d)
      (define-values (dx dy dz) (interpret-scale d))
-     (differentiable
+     (smooth
       (λ (v)
         (call/flv3-values v
           (λ (x y z)
@@ -1078,7 +1092,7 @@
 
 (: bend-smooth (-> Real Interval Smooth))
 (define (bend-smooth angle zivl)
-  (define-values (zmin zmax) (interval-values zivl))
+  (match-define (interval zmin zmax) zivl)
   (let ([angle  (degrees->radians (fl angle))])
     (cond
       ;; If angle too small, or interval too large or irrational, return identity
@@ -1089,7 +1103,7 @@
        (define zofs (cond [(> zmin 0.0)  zmin]
                           [(< zmax 0.0)  zmax]
                           [else  0.0]))
-       (differentiable
+       (smooth
         (λ (v)
           (call/flv3-values v
             (λ (x y z)
@@ -1097,11 +1111,10 @@
               (define c (cos (* angle α)))
               (define s (sin (* angle α)))
               (define o (/ zsize angle))
-              (pos (+ (- (* (+ o x) c) o)
-                      (* (- s)
-                         (cond [(>= z zmax)  (- z zmax)]
-                               [(<= z zmin)  (- z zmin)]
-                               [else  0.0])))
+              (pos (+ (- o (* (+ o x) c))
+                      (* s (cond [(>= z zmax)  (- z zmax)]
+                                 [(<= z zmin)  (- z zmin)]
+                                 [else  0.0])))
                    y
                    (+ (* (+ o x) s)
                       (* c (cond [(>= z zmax)  (- z zmax)]
@@ -1135,7 +1148,7 @@
                         (-> Pict3D Smooth Affine Pict3D)))
 (define local-deform
   (case-lambda
-    [(t local-t)  (smooth-compose local-t (smooth-compose t (affine-inverse local-t)))]
+    [(t local-t)  (smooth-compose local-t t (affine-inverse local-t))]
     [(pict t local-t)  (deform pict (local-deform t local-t))]))
 
 ;; ===================================================================================================
@@ -1209,17 +1222,21 @@
     (pict3d-scene p)
     (λ (s t)
       (define tinv (flt3inverse t))
-      (define h (face-vertex-fun g cc ce cm))
-      (define-values (ss fs) (scene-extract-faces s))
-      ;; Group them because we don't want things touching at just a vertex to get smoothed
-      (define fss (face-soup-group (make-face-soup fs)))
-      (define sss (map (λ ([fs : (Listof (face deform-data #f))])
-                         (let* ([fs  (transform-faces fs t)]
-                                [fs  (map-face-vertices fs h)]
-                                [fs  (transform-faces fs tinv)])
-                           (faces->triangle-mesh-shapes fs)))
-                       fss))
-      (scene-union* (cons (scene-union* ss) (map scene-union* sss)))))))
+      (cond
+        [tinv
+         (define h (face-vertex-fun g cc ce cm))
+         (define-values (ss fs) (scene-extract-faces s))
+         ;; Group them because we don't want things touching at just a vertex to get smoothed
+         (define fss (face-soup-group (make-face-soup fs)))
+         (define sss (map (λ ([fs : (Listof (face deform-data #f))])
+                            (let* ([fs  (transform-faces fs t)]
+                                   [fs  (map-face-vertices fs h)]
+                                   [fs  (transform-faces fs tinv)])
+                              (faces->triangle-mesh-shapes fs)))
+                          fss))
+         (scene-union* (cons (scene-union* ss) (map scene-union* sss)))]
+        [else
+         empty-scene])))))
 
 (: replace-vertices/adjacent (-> Pict3D (-> (Listof Vertex) (Listof (Listof Vertex)) Vertex) Pict3D))
 (define (replace-vertices/adjacent p g)
@@ -1231,17 +1248,21 @@
     (pict3d-scene p)
     (λ (s t)
       (define tinv (flt3inverse t))
-      (define h (face-vertex/adjacent-fun g cc ce cm))
-      (define-values (ss fs) (scene-extract-faces s))
-      ;; Group them because we don't want things touching at just a vertex to get smoothed
-      (define fss (face-soup-group (make-face-soup fs)))
-      (define sss (map (λ ([fs : (Listof (face deform-data #f))])
-                         (let* ([fs  (transform-faces fs t)]
-                                [fs  (map-face-vertices/adjacent fs h)]
-                                [fs  (transform-faces fs tinv)])
-                           (faces->triangle-mesh-shapes fs)))
-                       fss))
-      (scene-union* (cons (scene-union* ss) (map scene-union* sss)))))))
+      (cond
+        [tinv
+         (define h (face-vertex/adjacent-fun g cc ce cm))
+         (define-values (ss fs) (scene-extract-faces s))
+         ;; Group them because we don't want things touching at just a vertex to get smoothed
+         (define fss (face-soup-group (make-face-soup fs)))
+         (define sss (map (λ ([fs : (Listof (face deform-data #f))])
+                            (let* ([fs  (transform-faces fs t)]
+                                   [fs  (map-face-vertices/adjacent fs h)]
+                                   [fs  (transform-faces fs tinv)])
+                              (faces->triangle-mesh-shapes fs)))
+                          fss))
+         (scene-union* (cons (scene-union* ss) (map scene-union* sss)))]
+        [else
+         empty-scene])))))
 
 (: vertex-normal-or-zero (-> Vertex FlV3))
 (define (vertex-normal-or-zero vert)
@@ -1492,9 +1513,9 @@
 ;; In OpenGL, +z is toward the viewer and +y is up
 ;; In Pict3D, +z is away from the viewer and +y is down (like typical bitmap coordinates)
 (define (camera->view t)
-  (flaffine3->affine
-   (flt3compose (scale-flt3 +x-y-z-flv3)
-                (flt3inverse t))))
+  (define tinv (flt3inverse t))
+  (cond [tinv  (flafflin3->afflin (flt3compose (scale-flt3 +x-y-z-flv3) tinv))]
+        [else  (raise-argument-error 'camera->view "invertible Affine" t)]))
 
 (: camera-ray-dir
    (->* [Affine]
@@ -1506,10 +1527,12 @@
                         #:z-near [z-near (current-pict3d-z-near)]
                         #:z-far [z-far (current-pict3d-z-far)]
                         #:fov [fov (current-pict3d-fov)])
-  (define unview (flt3inverse (camera->view t)))
+  (define unview (assert (flt3inverse (camera->view t)) values))
   (define unproj
-    (flt3inverse
-     (bitmap-projective #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov)))
+    (assert
+     (flt3inverse
+      (bitmap-projective #:width width #:height height #:z-near z-near #:z-far z-far #:fov fov))
+     values))
   (define w (fl (max 1 width)))
   (define h (fl (max 1 height)))
   (λ (x y)

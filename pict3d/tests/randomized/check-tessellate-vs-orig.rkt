@@ -5,7 +5,7 @@
 
 (provide check-tessellate-vs-orig)
 
-(define l (light (pos 1.0 1.5 2.0) (emitted 3) #:attenuation (interval 0.0 1000.0)))
+(define l (light (pos 1.0 1.5 2.0) (emitted 3) #:range 1000.0))
 
 (define (tess p)
   (tessellate p #:segments 16 #:max-angle 5))

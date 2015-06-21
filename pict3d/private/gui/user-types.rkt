@@ -11,6 +11,7 @@
           [emitted  -emitted]
           [pos  -pos]
           [dir  -dir]
+          [linear  -linear]
           [affine  -affine]))
 
 (provide (except-out
@@ -26,8 +27,10 @@
           flv3->dir
           vtx->vertex
           face->vertices
+          fllinear3->linear
+          flafflin3->afflin
           flaffine3->affine
-          fldiff3->differentiable
+          fldiff3->smooth
           flsmooth3->smooth
           trace-data->surface-data
           make-material
@@ -39,7 +42,9 @@
           -dir
           -rgba
           -emitted
+          -linear
           -affine
+          linear->cols*
           affine->cols*)
          interval
          arc
@@ -47,6 +52,7 @@
          dir
          rgba
          emitted
+         linear
          affine)
 
 (define-for-syntax (make-head-expander id)
@@ -102,6 +108,14 @@
        (syntax/loc stx
          (? emitted? (app flv4-values r g b i)))]))
   (make-head-expander #'-emitted))
+
+(define-match-expander linear
+  (λ (stx)
+    (syntax-case stx ()
+      [(_ dx dy dz)
+       (syntax/loc stx
+         (? linear? (app linear->cols* dx dy dz)))]))
+  (make-head-expander #'-linear))
 
 (define-match-expander affine
   (λ (stx)

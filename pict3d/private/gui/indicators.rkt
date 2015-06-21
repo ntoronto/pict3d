@@ -9,7 +9,12 @@
          "../shape.rkt"
          "shape/point-light-shell.rkt"
          "parameters.rkt"
-         "typed-user-types.rkt"
+         "user-types.rkt"
+         (only-in "typed-user-types.rkt"
+                  flv3->pos
+                  make-vertex
+                  make-material
+                  flaffine3->affine)
          "typed-pict3d-combinators.rkt"
          "pict3d-struct.rkt")
 
@@ -20,12 +25,6 @@
          scene-basis-indicators
          group-box
          group-boxes)
-
-(: affine-position (-> Affine Pos))
-(define (affine-position t)
-  (call/flaffine3-forward t
-    (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
-      (pos m03 m13 m23))))
 
 (define standard-over-light
   (sunlight (dir -0.25 -0.5 -1.0) (emitted 1.0)))
@@ -169,7 +168,7 @@
   (define t (scale s))
   (map (λ ([nt : (Pair Tag FlAffine3)])
          (define t0 (flaffine3->affine (cdr nt)))
-         (cons (flv3->pos (affine-position t0))
+         (cons (flv3->pos (affine-origin t0))
                (transform basis-axes (affine-compose t0 t))))
        (scene-group-transforms scene 'all)))
 

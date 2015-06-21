@@ -27,7 +27,7 @@
                            (pos 0.09094614884673538 -0.8542693331685399 1.1253311917175866)
                            (dir 0.03270156461460315 0.4989294616121821 -0.8660254037885581))))
 
-(combine (adaptive-deform p (smooth-compose (differentiable (λ (x) x)) (move-x 1)))
+(combine (adaptive-deform p (smooth-compose (smooth (λ (x) x)) (move-x 1)))
          (basis 'camera (point-at (pos 1.5 1.5 1.5) origin)))
 
 (adaptive-deform
@@ -35,7 +35,7 @@
                 (basis 'bob (point-at (pos 1.5 0 0) +x)))
        '(bob)
        (sphere (pos 0 0 1/2) 1/2))
- (differentiable
+ (smooth
   (λ (v)
     (match-define (pos x y z) v)
     (pos (* x z) y z))))
@@ -57,7 +57,7 @@
 
 (combine
  (adaptive-deform segments (smooth-compose (affine +x +y (dir 0.25 0 1) origin)
-                                           (differentiable (λ (v) v))))
+                                           (smooth (λ (v) v))))
  (basis 'camera (point-at (pos 0 4.5 2.5) (dir 0 -1.0 0.15))))
 
 (combine
@@ -73,7 +73,7 @@
    (combine
     (adaptive-deform
      segments
-     (differentiable
+     (smooth
       (λ (v)
         (match-define (pos x y z) v)
         (pos (+ x (sin (* 3 z))) y z))))
@@ -84,7 +84,7 @@ squig
  (combine
   (adaptive-deform
    (ungroup (ungroup (ungroup (ungroup segments '(top)) '(top)) '(top)) '(top))
-   (differentiable
+   (smooth
     (λ (v)
       (match-define (pos x y z) v)
       (pos (+ x (sin (* 3 z))) y z))))
