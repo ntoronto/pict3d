@@ -309,10 +309,9 @@
 (define (replace-in-group p n f)
   (replace-group p n (λ (p) (group (f (group-contents p)) (group-tag p)))))
 
-(: ungroup (-> Pict3D (U (Listof Tag) Affine) Pict3D))
+(: ungroup (-> Pict3D (Listof Tag) Pict3D))
 (define (ungroup p n)
-  (cond [(affine? n) p]
-        [else (replace-group p n group-contents)]))
+  (replace-group p n group-contents))
 
 (: remove-group (-> Pict3D (Listof Tag) Pict3D))
 (define (remove-group p n)
@@ -335,12 +334,11 @@
       (scene-map-group/transform (pict3d-scene p) n (λ ([t : FlAffine3] [s : group-scene])
                                                       (f (flaffine3->affine t) (pict3d s))))))
 
-(: find-group-transforms (-> Pict3D (U (Listof Tag) Affine) (Listof Affine)))
+(: find-group-transforms (-> Pict3D (Listof Tag) (Listof Affine)))
 (define (find-group-transforms p n)
-  (cond [(affine? n) (list n)]
-        [else (map-group/transform p n (λ ([t : Affine] _) t))]))
+  (map-group/transform p n (λ ([t : Affine] _) t)))
 
-(: find-group-transform (-> Pict3D (U (Listof Tag) Affine) Affine))
+(: find-group-transform (-> Pict3D (Listof Tag) Affine))
 (define (find-group-transform p n)
   (: fail (-> Index Nothing))
   (define (fail m)
@@ -1314,9 +1312,21 @@
 ;; ===================================================================================================
 ;; Combining scenes
 
+(: ungroup-or-affine (-> Pict3D (U (Listof Tag) Affine) Pict3D))
+(define (ungroup-or-affine p n)
+  (if (affine? n) p (ungroup p n)))
+
+(: find-group-transforms-or-affine (-> Pict3D (U (Listof Tag) Affine) (Listof Affine)))
+(define (find-group-transforms-or-affine p n)
+  (if (affine? n) (list n) (find-group-transforms-or-affine p n)))
+
+(: find-group-transform-or-affine (-> Pict3D (U (Listof Tag) Affine) Affine))
+(define (find-group-transform-or-affine p n)
+  (if (affine? n) n (find-group-transform p n)))
+
 (: set-origin (-> Pict3D (U (Listof Tag) Affine) Pict3D))
 (define (set-origin p n)
-  (transform p (affine-inverse (find-group-transform p n))))
+  (transform p (affine-inverse (find-group-transform-or-affine p n))))
 
 (: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (pin* p1 n1 p2 [n2 empty])
@@ -1352,31 +1362,31 @@
   (combine
    p1
    (relocate p2
-             (find-group-transform p2 n2)
-             (find-group-transform p1 n1))))
+             (find-group-transform-or-affine p2 n2)
+             (find-group-transform-or-affine p1 n1))))
 
 (: glue (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (glue p1 n1 p2 [n2 empty])
   (combine
-   (ungroup p1 n1)
-   (relocate (ungroup p2 n2)
-             (find-group-transform p2 n2)
-             (find-group-transform p1 n1))))
+   (ungroup-or-affine p1 n1)
+   (relocate (ungroup-or-affine p2 n2)
+             (find-group-transform-or-affine p2 n2)
+             (find-group-transform-or-affine p1 n1))))
 
 (: join* (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (join* p1 n1 p2 [n2 empty])
   (let ([p2 (set-origin p2 n2)])
     (combine
      p1
-     (for/list ([t1 (in-list (find-group-transforms p1 n1))]) : (Listof Pict3D)
+     (for/list ([t1 (in-list (find-group-transforms-or-affine p1 n1))]) : (Listof Pict3D)
        (transform p2 t1)))))
 
 (: glue* (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (glue* p1 n1 p2 [n2 empty])
-  (let ([p2 (ungroup (set-origin p2 n2) n2)])
+  (let ([p2 (ungroup-or-affine (set-origin p2 n2) n2)])
     (combine
-     (ungroup p1 n1)
-     (for/list ([t1 (in-list (find-group-transforms p1 n1))]) : (Listof Pict3D)
+     (ungroup-or-affine p1 n1)
+     (for/list ([t1 (in-list (find-group-transforms-or-affine p1 n1))]) : (Listof Pict3D)
        (transform p2 t1)))))
 
 ;; ===================================================================================================
@@ -1443,14 +1453,6 @@
                        (surface-data-normal data))]
         [else  (values #f #f)]))
 
-(: trace/point-at (-> Pict3D Pos (U Pos Dir) (U #f Affine)))
-(define (trace/point-at p v1 to)
-  (define data (trace/data p v1 to))
-  (cond [(and data (surface-data-normal data))
-         (point-at (surface-data-pos data)
-                   (surface-data-normal data))]
-        [else #f]))
-
 (: find-surface-endpoints (-> Pict3D Dir (Values (U #f Pos) (U #f Pos))))
 (define (find-surface-endpoints p dv)
   (define-values (v1 v2) (bounding-rectangle p))
@@ -1486,14 +1488,6 @@
   (cond [data  (values (surface-data-pos data)
                        (surface-data-normal data))]
         [else  (values #f #f)]))
-
-(: surface/point-at (->* [Pict3D Dir] [#:inside? Any] (U #f Affine)))
-(define (surface/point-at p dv #:inside? [inside? #f])
-  (define data (surface/data p dv #:inside? inside?))
-  (cond [(and data (surface-data-normal data))
-         (point-at (surface-data-pos data)
-                   (surface-data-normal data))]
-        [else #f]))
 
 ;; ===================================================================================================
 ;; Camera/view
