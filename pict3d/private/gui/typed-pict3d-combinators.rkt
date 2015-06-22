@@ -20,7 +20,7 @@
                   face->vertices
                   fllinear3->linear
                   flaffine3->affine
-                  flafflin3->afflin
+                  flafflin3->affine
                   make-material)
          "pict3d-struct.rkt"
          "parameters.rkt"
@@ -745,7 +745,7 @@
           (if (fllinear3? t)
               (fllinear3->linear t)
               (flaffine3->affine t))]
-    [(p v)  (transform p (flafflin3->afflin (f v)))]))
+    [(p v)  (transform p (flafflin3->affine (f v)))]))
 
 ;; ---------------------------------------------------------------------------------------------------
 ;; Scale
@@ -1528,7 +1528,7 @@
 ;; In Pict3D, +z is away from the viewer and +y is down (like typical bitmap coordinates)
 (define (camera->view t)
   (define tinv (flt3inverse t))
-  (cond [tinv  (flafflin3->afflin (flt3compose (scale-flt3 +x-y-z-flv3) tinv))]
+  (cond [tinv  (flafflin3->affine (flt3compose (scale-flt3 +x-y-z-flv3) tinv))]
         [else  (raise-argument-error 'camera->view "invertible Affine" t)]))
 
 (: camera-ray-dir

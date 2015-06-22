@@ -133,9 +133,9 @@
  linear-singular?
  linear-consistent?
  ;; Affine transforms
- (rename-out [AffLin Affine])
+ Affine
  flaffine3->affine
- flafflin3->afflin
+ flafflin3->affine
  affine?
  identity-affine
  affine
@@ -152,7 +152,7 @@
  transform-dir
  transform-norm
  ;; Smooth functions
- (rename-out [Smooth+ Smooth])
+ Smooth
  fldiff3->smooth
  flsmooth3->smooth
  smooth?
@@ -941,56 +941,56 @@ Don't know if I want these for anything other than specifying projective matrice
 
 (define print-affine
   (make-constructor-style-printer
-   (λ ([t : Affine]) 'affine)
-   (λ ([t : Affine])
+   (λ ([t : Only-Affine]) 'affine)
+   (λ ([t : Only-Affine])
      (list (affine-x-axis t)
            (affine-y-axis t)
            (affine-z-axis t)
            (affine-origin t)))))
 
-(: affine-equal? (-> Affine Affine (-> Any Any Boolean) Boolean))
+(: affine-equal? (-> Only-Affine Only-Affine (-> Any Any Boolean) Boolean))
 (define (affine-equal? t1 t2 _)
   (equal? (FlAffine3-forward t1)
           (FlAffine3-forward t2)))
 
-(: affine-hash (-> Affine (-> Any Integer) Integer))
+(: affine-hash (-> Only-Affine (-> Any Integer) Integer))
 (define (affine-hash t hash)
   (hash (FlAffine3-forward t)))
 
-(struct Affine FlAffine3 ()
+(struct Only-Affine FlAffine3 ()
   #:transparent
   #:property prop:custom-print-quotable 'never
   #:property prop:custom-write print-affine
   #:property prop:equal+hash (list affine-equal? affine-hash affine-hash))
 
+(define-type Affine (U Linear Only-Affine))
+(define affine? (λ (v) (or (Linear? v) (Only-Affine? v))))
+
 (: flaffine3->affine (-> FlAffine3 Affine))
 (define (flaffine3->affine t)
-  (if (Affine? t)
+  (if (Only-Affine? t)
       t
-      (Affine (FlAffine3-forward t)
-              (FlAffine3-inverse t)
-              (FlAffine3-forward-det t)
-              (FlAffine3-inverse-den t)
-              (FlAffine3-forward-data-vec t)
-              (FlAffine3-inverse-data-vec t))))
+      (Only-Affine (FlAffine3-forward t)
+                   (FlAffine3-inverse t)
+                   (FlAffine3-forward-det t)
+                   (FlAffine3-inverse-den t)
+                   (FlAffine3-forward-data-vec t)
+                   (FlAffine3-inverse-data-vec t))))
 
-(: identity-affine AffLin)
-(define identity-affine identity-linear)
-
-(define-type AffLin (U Linear Affine))
-(define affine? (λ (v) (or (Linear? v) (Affine? v))))
-
-(: flafflin3->afflin (-> FlAffLin3 AffLin))
-(define (flafflin3->afflin t)
+(: flafflin3->affine (-> FlAffLin3 Affine))
+(define (flafflin3->affine t)
   (if (fllinear3? t)
-      (flaffine3->affine (->flaffine3 t))
+      (fllinear3->linear t)
       (flaffine3->affine t)))
 
-(: affine-compose2 (-> AffLin AffLin AffLin))
-(define (affine-compose2 t1 t2)
-  (flafflin3->afflin (flt3compose t1 t2)))
+(: identity-affine Affine)
+(define identity-affine identity-linear)
 
-(: affine-compose (-> AffLin * AffLin))
+(: affine-compose2 (-> Affine Affine Affine))
+(define (affine-compose2 t1 t2)
+  (flafflin3->affine (flt3compose t1 t2)))
+
+(: affine-compose (-> Affine * Affine))
 (define (affine-compose . ts)
   (if (empty? ts)
       identity-affine
@@ -1003,17 +1003,17 @@ Don't know if I want these for anything other than specifying projective matrice
                   (affine-compose2 t1 t2)
                   (loop (affine-compose2 t1 t2) (first ts) (rest ts))))))))
 
-(: affine-inverse (-> AffLin AffLin))
+(: affine-inverse (-> Affine Affine))
 (define (affine-inverse t)
   (define tinv (flt3inverse t))
-  (cond [tinv  (flafflin3->afflin tinv)]
+  (cond [tinv  (flafflin3->affine tinv)]
         [else  (raise-argument-error 'affine-inverse "invertible Affine" t)]))
 
-(: affine-singular? (-> AffLin Boolean))
+(: affine-singular? (-> Affine Boolean))
 (define (affine-singular? t)
   (flt3singular? t))
 
-(: affine-consistent? (-> AffLin Boolean))
+(: affine-consistent? (-> Affine Boolean))
 (define (affine-consistent? t)
   (flt3consistent? t))
 
@@ -1021,7 +1021,7 @@ Don't know if I want these for anything other than specifying projective matrice
 (define (affine x y z p)
   (flaffine3->affine (cols->flaffine3 x y z p)))
 
-(: affine->cols* (-> AffLin (Values Dir Dir Dir Pos)))
+(: affine->cols* (-> Affine (Values Dir Dir Dir Pos)))
 (define (affine->cols* t)
   (cond [(linear? t)
          (define-values (dx dy dz) (linear->cols* t))
@@ -1034,7 +1034,7 @@ Don't know if I want these for anything other than specifying projective matrice
                      (dir m02 m12 m22)
                      (pos m03 m13 m23))))]))
 
-(: affine-x-axis (-> AffLin Dir))
+(: affine-x-axis (-> Affine Dir))
 (define (affine-x-axis t)
   (if (linear? t)
       (linear-x-axis t)
@@ -1042,7 +1042,7 @@ Don't know if I want these for anything other than specifying projective matrice
         (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
           (dir m00 m10 m20)))))
 
-(: affine-y-axis (-> AffLin Dir))
+(: affine-y-axis (-> Affine Dir))
 (define (affine-y-axis t)
   (if (linear? t)
       (linear-y-axis t)
@@ -1050,7 +1050,7 @@ Don't know if I want these for anything other than specifying projective matrice
         (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
           (dir m01 m11 m21)))))
 
-(: affine-z-axis (-> AffLin Dir))
+(: affine-z-axis (-> Affine Dir))
 (define (affine-z-axis t)
   (if (linear? t)
       (linear-z-axis t)
@@ -1058,7 +1058,7 @@ Don't know if I want these for anything other than specifying projective matrice
         (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
           (dir m02 m12 m22)))))
 
-(: affine-origin (-> AffLin Pos))
+(: affine-origin (-> Affine Pos))
 (define (affine-origin t)
   (if (linear? t)
       origin
@@ -1066,15 +1066,15 @@ Don't know if I want these for anything other than specifying projective matrice
         (λ (m00 m01 m02 m03 m10 m11 m12 m13 m20 m21 m22 m23)
           (pos m03 m13 m23)))))
 
-(: transform-pos (-> Pos AffLin Pos))
+(: transform-pos (-> Pos Affine Pos))
 (define (transform-pos v t)
   (flv3->pos (flt3apply/pos t v)))
 
-(: transform-dir (-> Dir AffLin Dir))
+(: transform-dir (-> Dir Affine Dir))
 (define (transform-dir v t)
   (flv3->dir (flt3apply/dir t v)))
 
-(: transform-norm (-> Dir AffLin (U #f Dir)))
+(: transform-norm (-> Dir Affine (U #f Dir)))
 (define (transform-norm v t)
   (let ([n  (flt3apply/norm t v)])
     (and n (flv3->dir n))))
@@ -1082,22 +1082,25 @@ Don't know if I want these for anything other than specifying projective matrice
 ;; ===================================================================================================
 ;; Smooth functions
 
-(: print-smooth (-> Smooth Output-Port (U #t #f 0 1) Void))
+(: print-smooth (-> Only-Smooth Output-Port (U #t #f 0 1) Void))
 (define (print-smooth t out mode)
   (write-string "#<smooth>" out)
   (void))
 
-(struct Smooth FlDiff3 ()
+(struct Only-Smooth FlDiff3 ()
   #:transparent
   #:property prop:custom-print-quotable 'never
   #:property prop:custom-write print-smooth)
 
-(: fldiff3->smooth (-> FlDiff3 Smooth))
+(: fldiff3->smooth (-> FlDiff3 Only-Smooth))
 (define (fldiff3->smooth t)
-  (if (Smooth? t)
+  (if (Only-Smooth? t)
       t
       (match-let ([(FlDiff3 f j j-given?)  t])
-        (Smooth f j j-given?))))
+        (Only-Smooth f j j-given?))))
+
+(define-type Smooth (U Affine Only-Smooth))
+(define smooth? (λ (v) (or (affine? v) (Only-Smooth? v))))
 
 (: pos-pos->flv3-flv3 (-> (-> Pos Pos) (-> FlV3 FlV3)))
 (define ((pos-pos->flv3-flv3 f) v)
@@ -1118,42 +1121,39 @@ Don't know if I want these for anything other than specifying projective matrice
 (: smooth (->* [(-> Pos Pos)] [(U #f (-> Pos Linear))] Smooth))
 (define (smooth f [j #f])
   (if j
-      (Smooth (pos-pos->flv3-flv3 f)
-              (pos-cols->flv3-fllinear3 j)
-              #t)
+      (Only-Smooth (pos-pos->flv3-flv3 f)
+                   (pos-cols->flv3-fllinear3 j)
+                   #t)
       (let ([f  (pos-pos->flv3-flv3 f)])
-        (Smooth f (make-jacobian f) #f))))
+        (Only-Smooth f (make-jacobian f) #f))))
 
-(define-type Smooth+ (U AffLin Smooth))
-(define smooth? (λ (v) (or (affine? v) (Smooth? v))))
-
-(: identity-smooth Smooth+)
+(: identity-smooth Smooth)
 (define identity-smooth identity-affine)
 
-(: smooth-function (-> Smooth+ (-> Pos Pos)))
+(: smooth-function (-> Smooth (-> Pos Pos)))
 (define (smooth-function t)
-  (if (Smooth? t)
-      (flv3-flv3->pos-pos (FlDiff3-function t))
-      (λ (v) (transform-pos v t))))
+  (if (affine? t)
+      (λ (v) (transform-pos v t))
+      (flv3-flv3->pos-pos (FlDiff3-function t))))
 
-(: smooth-jacobian (-> Smooth+ (-> Pos Linear)))
+(: smooth-jacobian (-> Smooth (-> Pos Linear)))
 (define (smooth-jacobian t)
   (cond [(linear? t)  (λ (_) t)]
-        [(Affine? t)  (let ([t  (fllinear3->linear (flaffine3-linear-part t))])
+        [(affine? t)  (let ([t  (fllinear3->linear (flaffine3-linear-part t))])
                         (λ (_) t))]
         [else         (flv3-fllinear3->pos-cols (FlDiff3-jacobian t))]))
 
-(: flsmooth3->smooth (-> FlSmooth3 Smooth+))
+(: flsmooth3->smooth (-> FlSmooth3 Smooth))
 (define (flsmooth3->smooth t)
   (cond [(FlLinear3? t)  (fllinear3->linear t)]
         [(FlAffine3? t)  (flaffine3->affine t)]
         [else            (fldiff3->smooth t)]))
 
-(: smooth-compose2 (-> Smooth+ Smooth+ Smooth+))
+(: smooth-compose2 (-> Smooth Smooth Smooth))
 (define (smooth-compose2 t1 t2)
   (flsmooth3->smooth (fls3compose t1 t2)))
 
-(: smooth-compose (-> Smooth+ * Smooth+))
+(: smooth-compose (-> Smooth * Smooth))
 (define (smooth-compose . ts)
   (if (empty? ts)
       identity-affine
@@ -1166,19 +1166,19 @@ Don't know if I want these for anything other than specifying projective matrice
                   (smooth-compose2 t1 t2)
                   (loop (smooth-compose2 t1 t2) (first ts) (rest ts))))))))
 
-(: smooth-singular? (-> Smooth+ Pos Boolean))
+(: smooth-singular? (-> Smooth Pos Boolean))
 (define (smooth-singular? t v)
   (fls3singular? t v))
 
-(: smooth-consistent? (-> Smooth+ Pos Boolean))
+(: smooth-consistent? (-> Smooth Pos Boolean))
 (define (smooth-consistent? t v)
   (fls3consistent? t v))
 
-(: smooth-approximate (-> Smooth+ Pos AffLin))
+(: smooth-approximate (-> Smooth Pos Affine))
 (define (smooth-approximate t v)
-  (flafflin3->afflin (fls3approximate t v)))
+  (flafflin3->affine (fls3approximate t v)))
 
-(: smooth-between (-> Smooth+ Smooth+ (U Real (-> Pos Real)) Smooth+))
+(: smooth-between (-> Smooth Smooth (U Real (-> Pos Real)) Smooth))
 (define (smooth-between t0 t1 fα)
   (let ([t0  (if (flafflin3? t0) (flafflin3->fldiff3 t0) t0)]
         [t1  (if (flafflin3? t1) (flafflin3->fldiff3 t1) t1)]
@@ -1207,32 +1207,24 @@ Don't know if I want these for anything other than specifying projective matrice
                (flblend m10 n10 α) (flblend m11 n11 α) (flblend m12 n12 α)
                (flblend m20 n20 α) (flblend m21 n21 α) (flblend m22 n22 α)))))))
     
-    (Smooth f j (or given0? given1?))))
+    (Only-Smooth f j (or given0? given1?))))
 
-(: deform-pos (-> Pos Smooth+ Pos))
+(: deform-pos (-> Pos Smooth Pos))
 (define (deform-pos v t)
   (flv3->pos (fls3apply/pos t v)))
 
-(: deform-dir (-> Pos Dir Smooth+ Dir))
+(: deform-dir (-> Pos Dir Smooth Dir))
 (define (deform-dir v dv t)
   (flv3->dir (fls3apply/dir t v dv)))
 
-(: deform-norm (-> Pos Dir Smooth+ (U #f Dir)))
+(: deform-norm (-> Pos Dir Smooth (U #f Dir)))
 (define (deform-norm v dv t)
   (define n (fls3apply/norm t v dv))
   (and n (flv3->dir n)))
 
-(: deform-affine (-> AffLin Smooth+ AffLin))
+(: deform-affine (-> Affine Smooth Affine))
 (define (deform-affine t1 t2)
-  (flafflin3->afflin (fls3apply/affine t2 t1))
-  #;; Equivalent to this when t2 is Affine:
-  (affine-compose t2 t1)
-  #;; Equivalent to this when t2 is Differentiable:
-  (let-values ([(dx dy dz v)  (affine->cols* t1)])
-    (affine (deform-dir v dx t2)
-            (deform-dir v dy t2)
-            (deform-dir v dz t2)
-            (deform-pos v t2))))
+  (flafflin3->affine (fls3apply/affine t2 t1)))
 
 ;; ===================================================================================================
 ;; Surface data

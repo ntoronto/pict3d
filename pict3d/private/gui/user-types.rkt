@@ -28,7 +28,7 @@
           vtx->vertex
           face->vertices
           fllinear3->linear
-          flafflin3->afflin
+          flafflin3->affine
           flaffine3->affine
           fldiff3->smooth
           flsmooth3->smooth
