@@ -1312,9 +1312,21 @@
 ;; ===================================================================================================
 ;; Combining scenes
 
-(: set-origin (-> Pict3D (Listof Tag) Pict3D))
+(: ungroup-or-affine (-> Pict3D (U (Listof Tag) Affine) Pict3D))
+(define (ungroup-or-affine p n)
+  (if (affine? n) p (ungroup p n)))
+
+(: find-group-transforms-or-affine (-> Pict3D (U (Listof Tag) Affine) (Listof Affine)))
+(define (find-group-transforms-or-affine p n)
+  (if (affine? n) (list n) (find-group-transforms-or-affine p n)))
+
+(: find-group-transform-or-affine (-> Pict3D (U (Listof Tag) Affine) Affine))
+(define (find-group-transform-or-affine p n)
+  (if (affine? n) n (find-group-transform p n)))
+
+(: set-origin (-> Pict3D (U (Listof Tag) Affine) Pict3D))
 (define (set-origin p n)
-  (transform p (affine-inverse (find-group-transform p n))))
+  (transform p (affine-inverse (find-group-transform-or-affine p n))))
 
 (: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
 (define (pin* p1 n1 p2 [n2 empty])
@@ -1345,35 +1357,37 @@
 (if this is intentional, use ~a* instead)"
            n n1 pin)))
 
-(: join (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: join (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (join p1 n1 p2 [n2 empty])
   (combine
    p1
    (relocate p2
-             (find-group-transform p2 n2)
-             (find-group-transform p1 n1))))
+             (find-group-transform-or-affine p2 n2)
+             (find-group-transform-or-affine p1 n1))))
 
-(: glue (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: glue (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (glue p1 n1 p2 [n2 empty])
   (combine
-   (ungroup p1 n1)
-   (relocate (ungroup p2 n2)
-             (find-group-transform p2 n2)
-             (find-group-transform p1 n1))))
+   (ungroup-or-affine p1 n1)
+   (relocate (ungroup-or-affine p2 n2)
+             (find-group-transform-or-affine p2 n2)
+             (find-group-transform-or-affine p1 n1))))
 
-(: join* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: join* (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (join* p1 n1 p2 [n2 empty])
   (let ([p2 (set-origin p2 n2)])
     (combine
      p1
-     (map-group/transform p1 n1 (λ ([t1 : Affine] _) (transform p2 t1))))))
+     (for/list ([t1 (in-list (find-group-transforms-or-affine p1 n1))]) : (Listof Pict3D)
+       (transform p2 t1)))))
 
-(: glue* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: glue* (->* [Pict3D (U (Listof Tag) Affine) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (glue* p1 n1 p2 [n2 empty])
-  (let ([p2 (ungroup (set-origin p2 n2) n2)])
+  (let ([p2 (ungroup-or-affine (set-origin p2 n2) n2)])
     (combine
-     (ungroup p1 n1)
-     (map-group/transform p1 n1 (λ ([t1 : Affine] _) (transform p2 t1))))))
+     (ungroup-or-affine p1 n1)
+     (for/list ([t1 (in-list (find-group-transforms-or-affine p1 n1))]) : (Listof Pict3D)
+       (transform p2 t1)))))
 
 ;; ===================================================================================================
 ;; Testing combinators
