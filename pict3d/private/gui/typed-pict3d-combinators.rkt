@@ -1328,22 +1328,22 @@
 (define (set-origin p n)
   (transform p (affine-inverse (find-group-transform-or-affine p n))))
 
-(: pin* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: pin* (->* [Pict3D (Listof Tag) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (pin* p1 n1 p2 [n2 empty])
-  (let ([p2  (ungroup (set-origin p2 n2) n2)])
+  (let ([p2  (ungroup-or-affine (set-origin p2 n2) n2)])
     (replace-in-group p1 n1 (λ ([p : Pict3D]) (combine p p2)))))
 
-(: weld* (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: weld* (->* [Pict3D (Listof Tag) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (weld* p1 n1 p2 [n2 empty])
-  (let ([p2  (ungroup (set-origin p2 n2) n2)])
+  (let ([p2  (ungroup-or-affine (set-origin p2 n2) n2)])
     (replace-group p1 n1 (λ ([p : Pict3D]) (combine (group-contents p) p2)))))
 
-(: pin (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: pin (->* [Pict3D (Listof Tag) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (pin p1 n1 p2 [n2 empty])
   (check-pin-multi 'pin p1 n1)
   (pin* p1 n1 p2 n2))
 
-(: weld (->* [Pict3D (Listof Tag) Pict3D] [(Listof Tag)] Pict3D))
+(: weld (->* [Pict3D (Listof Tag) Pict3D] [(U (Listof Tag) Affine)] Pict3D))
 (define (weld p1 n1 p2 [n2 empty])
   (check-pin-multi 'weld p1 n1)
   (weld* p1 n1 p2 n2))
