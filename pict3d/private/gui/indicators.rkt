@@ -6,6 +6,7 @@
          math/base
          "../math.rkt"
          "../engine.rkt"
+         "../soup.rkt"
          "../shape.rkt"
          "shape/point-light-shell.rkt"
          "parameters.rkt"
@@ -173,58 +174,65 @@
        (scene-group-transforms scene 'all)))
 
 (define (make-group-box)
-  (define edge
-    (parameterize ([current-color    (rgba 0 0.25)]
-                   [current-emitted  (emitted 1 1 0.5 2)])
-      (combine
-       (for/list : (Listof Pict3D) ([z  (in-range (- 3/8 1) (- 1 2/8) 1/2)])
-         (rectangle (pos 1 1 z) (pos (+ 1 1/32) (+ 1 1/32) (+ z 1/8)))))))
+  (: make-face (-> RGBA Emitted Material Positive-Flonum Boolean Pict3D))
+  (define (make-face cc ce cm width back?)
+    (define vtx1 (vtx (flv3 1.0 1.0 1.0) +z cc ce cm))
+    (define vtx2 (vtx (flv3 -1.0 1.0 1.0) +z cc ce cm))
+    (define vtx3 (vtx (flv3 1.0 -1.0 1.0) +z cc ce cm))
+    (define vtx4 (vtx (flv3 -1.0 -1.0 1.0) +z cc ce cm))
+    (define ts
+      (list identity-affine
+            (rotate-z 90)
+            (rotate-z 180)
+            (rotate-z 270)))
+    (pict3d
+     (scene-union*
+      (list*
+       (make-triangle-outline-shape
+        (vector vtx3 vtx2 vtx4)
+        (vector #t #t #t)
+        (vector #f #t #t)
+        width
+        back?)
+       (make-triangle-outline-shape
+        (vector vtx1 vtx2 vtx3)
+        (vector #t #t #t)
+        (vector #t #f #t)
+        width
+        back?)
+       (for/list : (Listof triangle-outline-shape) ([t  (in-list ts)])
+         (make-triangle-outline-shape
+          (vector (vtx (flt3apply/pos t (flv3 1.0 1.0 1.0)) -y cc ce cm)
+                  (vtx (flt3apply/pos t (flv3 0.0 1.25 1.0)) -y cc ce cm)
+                  (vtx (flt3apply/pos t (flv3 -1.0 1.0 1.0)) -y cc ce cm))
+          (vector #t #f #t)
+          (vector #f #f #t)
+          width
+          back?))))))
   
-  (define edges
-    (let* ([edges  (combine edge (rotate-z edge 90))]
-           [edges2  (combine edges (rotate-z edges 180))]
-           [edges3  (combine edges2 (rotate-x edges2 90))])
-      (combine edges3 (rotate-y edges2 90))))
+  (define m (material #:ambient 1.0 #:diffuse 0.0 #:specular 0.0 #:roughness 1.0))
   
-  (define face
-    (parameterize ([current-color    (rgba 0 0.25)]
-                   [current-emitted  (emitted 0.5 1 1 2)])
-      (combine
-       (rectangle (pos (+ 1 1/64) 0 0)
-                  (dir 1/128 1/128 1/8))
-       (rectangle (pos (+ 1 1/64) 0 0)
-                  (dir 1/128 1/8 1/128)))))
+  (define front-face
+    (combine (make-face (rgba 0 0.5) (emitted 0) m 3.5 #f)
+             (make-face (rgba 1 0.5) (emitted 1 1 0.5 2) m 1.5 #f)))
   
-  (define faces
-    (let* ([faces  (combine face (rotate-z face 90))]
-           [faces  (combine faces (rotate-z face -90))])
-      (combine faces (rotate-x (rotate-y faces 180) 90))))
+  (define back-face
+    (combine (make-face (rgba 0 0.25) (emitted 0) m 3.5 #t)
+             (make-face (rgba 0 0.25) (emitted 0.5 1 1 2) m 1.5 #t)))
   
-  (define corner
-    (let* ([out  (+ 1 1/32)]
-           [in  (- 1 1/4)]
-           [c   (pos out out out)]
-           [cx  (pos in out out)]
-           [cy  (pos out in out)]
-           [cz  (pos out out in)])
-      (combine
-       (parameterize ([current-color    (rgba 0 0.25)]
-                      [current-emitted  (emitted 1 0.5 1 2)])
-         (combine (triangle c cz cx)
-                  (triangle c cx cy)
-                  (triangle c cy cz)))
-       (parameterize ([current-color  (rgba 1 0 1 0.25)])
-         (combine (triangle c cz cx #:back? #t)
-                  (triangle c cx cy #:back? #t)
-                  (triangle c cy cz #:back? #t))))))
-  
-  (define corners
-    (let* ([corners  (combine corner (rotate-z corner 90))]
-           [corners  (combine corners (rotate-z corners 180))])
-      (combine corners (rotate-x corners 180))))
+  (define ts
+    (list identity-affine
+          (scale-z -1)
+          (rotate-x 90)
+          (rotate-x -90)
+          (rotate-y -90)
+          (rotate-y 90)))
   
   (freeze
-   (combine corners edges faces)))
+   (combine
+    (for*/list : (Listof Pict3D) ([t  (in-list ts)])
+      (combine (transform front-face t)
+               (transform back-face t))))))
 
 (define group-box (make-group-box))
 
