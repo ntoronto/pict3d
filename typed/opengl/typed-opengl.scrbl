@@ -2,7 +2,7 @@
 
 @title{OpenGL}
 
-@(defmodule opengl)
+@(defmodule typed/opengl)
 
 @(require (for-label racket/gui/base))
 @(require (for-label ffi/vector))
