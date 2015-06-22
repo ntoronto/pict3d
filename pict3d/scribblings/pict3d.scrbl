@@ -1473,8 +1473,9 @@ with @racket[(f p)].
 Equivalent to @racket[(replace-group pict path (λ (p) (group (f (group-contents p)) (group-tag p))))].
 }
 
-@defproc[(set-origin [pict Pict3D] [path (Listof Tag)]) Pict3D]{
-Transforms @racket[pict] so that the group with the given path is aligned with the origin.
+@defproc[(set-origin [pict Pict3D] [path (U (Listof Tag) Affine)]) Pict3D]{
+Transforms @racket[pict] so that the group with the given @tech{tag path}, or the given
+@tech{affine transformation}, is aligned with the origin.
 @examples[#:eval pict3d-eval
                  (define pict
                    (combine (cube origin 1/2)
@@ -1485,13 +1486,18 @@ Transforms @racket[pict] so that the group with the given path is aligned with t
 If there is more than one group with the given path, @racket[set-origin] raises an error.
 }
 
-@defproc[(join [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+@defproc[(join [pict1 Pict3D]
+               [path1 (U (Listof Tag) Affine)]
+               [pict2 Pict3D]
+               [path2 (U (Listof Tag) Affine) '()]) Pict3D]{
 Does two things:
 @itemlist[#:style 'ordered
  @item{Transforms @racket[pict2] so that its group with path @racket[path2] aligns with the group 
        in @racket[pict1] with path @racket[path1].}
  @item{Combines the result with @racket[pict1].}
  ]
+If @racket[path1] or @racket[path2] is given as an @tech{affine transformation}, @racket[join]
+uses them directly instead of looking up a group transformation.
 
 If there is more than one group with @racket[path1] in @racket[pict1], @racket[join] raises an error,
 and likewise for @racket[path2] in @racket[pict2].
@@ -1511,20 +1517,32 @@ alignment.
                        (combine p2 (basis 'bot (point-at (pos 0 0 -1/2) +z)))
                        '(bot))]
 
-In code, @racket[(join pict1 path1 pict2 path2)] is equivalent to
+When @racket[path1] and @racket[path2] are @tech{tag paths},
+@racket[(join pict1 path1 pict2 path2)] is equivalent to
 @racketblock[(combine
               pict1
               (relocate pict2
                         (find-group-transform pict2 path2)
                         (find-group-transform pict1 path1)))]
+When @racket[path1] and @racket[path2] are @tech{affine transformations},
+@racket[(join pict1 path1 pict2 path2)] is equivalent to
+@racketblock[(combine pict1 (relocate pict2 path2 path1))]
 }
 
-@defproc[(glue [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+@defproc[(glue [pict1 Pict3D]
+               [path1 (U (Listof Tag) Affine)]
+               [pict2 Pict3D]
+               [path2 (U (Listof Tag) Affine) '()]) Pict3D]{
 Like @racket[(join pict1 path1 pict2 path2)], but ungroups all groups in @racket[pict1] that have
 path @racket[path1], and ungroups all groups in @racket[pict2] that have path @racket[path2].
+
+Like @racket[join], @racket[glue] accepts @tech{affine transformations} as well as @tech{tag paths}.
 }
 
-@defproc[(pin [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+@defproc[(pin [pict1 Pict3D]
+              [path1 (Listof Tag)]
+              [pict2 Pict3D]
+              [path2 (U (Listof Tag) Affine) '()]) Pict3D]{
 Similar to @racket[join], but additionally
 @itemlist[
  @item{Ungroups the group @racket[path2] in @racket[pict2].}
@@ -1537,9 +1555,14 @@ See @secref{combining-scenes} for an extended example.
 In code, @racket[(pin pict1 path1 pict2 path2)] is equivalent to
 @racketblock[(let ([pict2  (ungroup (set-origin pict2 path2) path2)])
                (replace-in-group pict1 path1 (λ (p) (combine p pict2))))]
+
+Like @racket[join], @racket[pin] accepts an @tech{affine transformation} for its second argument.
 }
 
-@defproc[(weld [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]{
+@defproc[(weld [pict1 Pict3D]
+               [path1 (Listof Tag)]
+               [pict2 Pict3D]
+               [path2 (U (Listof Tag) Affine) '()]) Pict3D]{
 Like @racket[(pin pict1 path1 pict2 path2)], but additionally ungroups all groups in @racket[pict1]
 that have path @racket[path1].
 
@@ -1548,16 +1571,32 @@ Use @racket[weld] instead of @racket[pin] when you don't intend to update the gr
 For example, use @racket[pin] to attach a swinging arm to a robot body, and use @racket[weld] to
 place a roof on top of a house.
 (Unless you intend to blow up the house later. Then you'll need to pin the roof.)
+
+Like @racket[glue], @racket[weld] accepts an @tech{affine transformation} for its second argument.
 }
 
 @deftogether[[
-  @defproc[(pin* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
-  @defproc[(join* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
-  @defproc[(weld* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
-  @defproc[(glue* [pict1 Pict3D] [path1 (Listof Tag)] [pict2 Pict3D] [path2 (Listof Tag) '()]) Pict3D]
+  @defproc[(pin* [pict1 Pict3D]
+                 [path1 (Listof Tag)]
+                 [pict2 Pict3D]
+                 [path2 (U (Listof Tag) Affine) '()]) Pict3D]
+  @defproc[(weld* [pict1 Pict3D]
+                  [path1 (Listof Tag)]
+                  [pict2 Pict3D]
+                  [path2 (U (Listof Tag) Affine) '()]) Pict3D]
+  @defproc[(join* [pict1 Pict3D]
+                  [path1 (U (Listof Tag) Affine)]
+                  [pict2 Pict3D]
+                  [path2 (U (Listof Tag) Affine) '()])
+           Pict3D]
+  @defproc[(glue* [pict1 Pict3D]
+                  [path1 (U (Listof Tag) Affine)]
+                  [pict2 Pict3D]
+                  [path2 (U (Listof Tag) Affine) '()])
+           Pict3D]
 ]]{
-Like @racket[pin], @racket[join], @racket[weld], and @racket[glue], but if multiple groups with path
-@racket[path1] exist in @racket[pict1], @racket[pict2] is pinned, joined, welded, or glued to all of
+Like @racket[pin], @racket[weld], @racket[join], and @racket[glue], but if multiple groups with path
+@racket[path1] exist in @racket[pict1], @racket[pict2] is pinned, welded, joined, or glued to all of
 them.
 }
 
@@ -1588,6 +1627,7 @@ transformation for each of them.
 Equivalent to:
 @racketblock[(map-group/transform pict path (λ ([t : Affine] _) t))]
 }
+
 
 @;{===================================================================================================
    ===================================================================================================
