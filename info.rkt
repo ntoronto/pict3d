@@ -16,7 +16,9 @@
                "pfds"
                ))
 
-(define build-deps '("draw-doc"
+(define build-deps '("images-doc"
+                     "images-lib"
+                     "draw-doc"
                      "gui-doc"
                      "gui-lib"
                      "racket-doc"
