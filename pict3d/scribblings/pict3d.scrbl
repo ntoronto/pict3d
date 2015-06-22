@@ -1179,7 +1179,7 @@ onto @racket[dv2], or @racket[#f] if @racket[dv2] is @racket[(dir 0 0 0)].
 Returns the @hyperlink["http://en.wikipedia.org/wiki/Vector_projection"]{rejection} of @racket[dv1]
 from @racket[dv2].
 Equivalent to
-@racketblock[(dir- dv (dir-scale (dir-project dv1 dv2) s))]
+@racketblock[(dir- dv1 (dir-scale (dir-project dv1 dv2) s))]
 when @racket[(dir-project dv1 dv2)] doesn't return @racket[#f].
 }
 
@@ -1373,7 +1373,7 @@ We have a few options.
        degrees.}
 ]
 The first option only requires us to replace @racket[(basis 'left (point-at v dv))] in the definition
-of @racket[left] with @racket[(basis 'left (point-at v dv) #:angle 30)].
+of @racket[left] with @racket[(basis 'left (point-at v dv #:angle 30))].
 The second option requires similar changes to @racket[top].
 But at this point, with @racket[p3] already defined, both are more work than the third option, which
 is simply this:
