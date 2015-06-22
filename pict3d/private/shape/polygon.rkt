@@ -88,12 +88,13 @@
 
 (: get-quad-shape-bbox (-> shape FlAffine3 bbox))
 (define (get-quad-shape-bbox s t)
-  (match-define (vector vtx1 vtx2 vtx3 vtx4) (quad-shape-vtxs (assert s quad-shape?)))
-  (bbox (flrect3 (vtx-position vtx1)
-                 (vtx-position vtx2)
-                 (vtx-position vtx3)
-                 (vtx-position vtx4))
-        0.0))
+  (let ([s  (assert s quad-shape?)])
+    (match-define (vector vtx1 vtx2 vtx3 vtx4) (quad-shape-vtxs s))
+    (bbox (flrect3 (vtx-position vtx1)
+                   (vtx-position vtx2)
+                   (vtx-position vtx3)
+                   (vtx-position vtx4))
+          0.0)))
 
 ;; ===================================================================================================
 ;; Transform
