@@ -9,7 +9,6 @@
 
 (require racket/match
          scribble/eval
-         unstable/sandbox
          racket/runtime-path
          racket/draw
          "serializable-bitmap.rkt"
