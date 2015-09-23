@@ -33,6 +33,10 @@
    ack-channel)
   #:transparent)
 
+(define gui-provides-gl-scale-support?
+  ;; Version 1.16 of gui-lib adds `get-gl-client-size`
+  (method-in-interface? 'get-gl-client-size (class->interface canvas%)))
+
 (define (render cmd canvas)
   (define-values (_ cpu real gc)
     (time-apply
@@ -106,6 +110,8 @@
     
     (define config (new gl-config%))
     (send config set-legacy? legacy?)
+    (when gui-provides-gl-scale-support?
+      (send config set-hires-mode #t))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
@@ -133,9 +139,14 @@
     
     ;(: get-gl-window-size (-> (Values Index Index)))
     (define (get-gl-window-size)
-      (define-values (w h) (send (send this get-dc) get-size))
-      (values (exact-ceiling w)
-              (exact-ceiling h)))
+      ;; Version 1.16 of gui-lib adds `get-gl-client-size`
+      (cond
+       [gui-provides-gl-scale-support?
+        (send this get-gl-client-size)]
+       [else
+        (define-values (w h) (send (send this get-dc) get-size))
+        (values (exact-ceiling w)
+                (exact-ceiling h))]))
     
     (define z-near (current-pict3d-z-near))
     (define z-far (current-pict3d-z-far))
