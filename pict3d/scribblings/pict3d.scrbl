@@ -2816,6 +2816,9 @@ There is currently no support for networked games.
                      [#:stop-state? stop-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:name name String "World3D"]
                      [#:width width Positive-Integer 512]
+                     [#:x x (U Integer False) #f]
+                     [#:y y (U Integer False) #f]
+                     [#:display-mode display-mode (U 'normal 'fullscreen 'hide-menu-bar) 'normal]
                      [#:height height Positive-Integer 512]
                      [#:frame-delay frame-delay Positive-Real (/ 1000 30)]
                      [#:on-frame on-frame (-> S Natural Flonum S) (λ (s n t) s)]
@@ -2845,7 +2848,11 @@ In the initialization phase, @racket[big-bang3d] does the following once.
  @item{Computes @racket[(stop-state? s n t)].}
  @item{Creates a window with title @racket[name] and a @racket[width]-by-@racket[height] client
        area. The window contains only a @racket[pict3d-canvas%] with @racket[(on-draw s n t)] as
-       its initial @racket[Pict3D].}
+       its initial @racket[Pict3D]. The window is positioned at @racket[x] and @racket[y]
+       on the screen (where @racket[#f] values use auto-placement). The @racket[display-mode]
+       determines the window's style, either as a normal window, a fullscreen window, or
+       a fullscreen-like window that hides the window's title and menu bar (but is not ``fullscreen''
+       from the platform's perspective).}
  @item{Waits one second for the GUI machinery to start up.}
  @item{Synchronizes on a signal that the window has painted itself for the first time.}
 ]
