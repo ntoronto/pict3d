@@ -88,6 +88,9 @@ Universe/networking
                 [#:name String]
                 [#:width Positive-Integer]
                 [#:height Positive-Integer]
+                [#:x (U Integer False)]
+                [#:y (U Integer False)]
+                [#:display-mode (U 'normal 'fullscreen 'hide-menu-bar)]
                 [#:frame-delay Positive-Real]
                 [#:on-frame (-> S Natural Flonum S)]
                 [#:on-draw (-> S Natural Flonum Pict3D)]
@@ -102,6 +105,9 @@ Universe/networking
          #:name [name "World3D"]
          #:width [width 512]
          #:height [height 512]
+         #:x [frame-x #f]
+         #:y [frame-y #f]
+         #:display-mode [display-mode 'normal]
          #:frame-delay [orig-frame-delay #i1000/30]
          #:on-frame [on-frame (λ ([s : S] [n : Natural] [t : Flonum]) s)]
          #:on-draw [on-draw (λ ([s : S] [n : Natural] [t : Flonum]) empty-pict3d)]
@@ -134,7 +140,29 @@ Universe/networking
   (: event-channel (Async-Channelof Input))
   (define event-channel (make-async-channel))
   
-  (define window (new frame% [label name] [width width] [height height]))
+  (: mode-width Integer)
+  (: mode-height Integer)
+  (: mode-frame-x (U Integer False))
+  (: mode-frame-y (U Integer False))
+  (define-values (mode-width mode-height mode-frame-x mode-frame-y)
+    (case display-mode
+      [(normal fullscreen) (values width height frame-x frame-y)]
+      [(hide-menu-bar)
+       (define-values (dx dy) (get-display-left-top-inset))
+       (define-values (w h) (get-display-size #t))
+       (values (or w width) (or h height) (and dx (- dx)) (and dy (- dy)))]))
+  
+  (define window (new frame%
+                      [label name]
+                      [width mode-width]
+                      [height mode-height]
+                      [x mode-frame-x]
+                      [y mode-frame-y]
+                      [style (if (eq? display-mode 'hide-menu-bar)
+                                 '(no-resize-border no-caption hide-menu-bar)
+                                 '(fullscreen-button))]))
+  (send window fullscreen (eq? display-mode 'fullscreen))
+  
   (define canvas
     (new pict3d-world-canvas%
          [parent window]
