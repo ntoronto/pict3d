@@ -145,6 +145,13 @@ Universe/networking
   (: event-channel (Async-Channelof Input))
   (define event-channel (make-async-channel))
   
+  ;; Used for 'hide-menu-bar style:
+  (: get-frame-position (-> (Values Integer Integer (U Integer False) (U Integer False))))
+  (define (get-frame-position)
+    (define-values (dx dy) (get-display-left-top-inset))
+    (define-values (w h) (get-display-size #t))
+    (values (or w width) (or h height) (and dx (- dx)) (and dy (- dy))))
+  
   (: mode-width Integer)
   (: mode-height Integer)
   (: mode-frame-x (U Integer False))
@@ -152,12 +159,20 @@ Universe/networking
   (define-values (mode-width mode-height mode-frame-x mode-frame-y)
     (case display-mode
       [(normal fullscreen) (values width height frame-x frame-y)]
-      [(hide-menu-bar)
-       (define-values (dx dy) (get-display-left-top-inset))
-       (define-values (w h) (get-display-size #t))
-       (values (or w width) (or h height) (and dx (- dx)) (and dy (- dy)))]))
+      [(hide-menu-bar) (get-frame-position)]))
   
-  (define window (new frame%
+  (define window (new (class frame%
+                        ;; Subclass to handle resize for 'hide-menu-bar mode:
+                        (super-new)
+                        (inherit move resize)
+                        (define/augment (display-changed)
+                          (case display-mode
+                            [(hide-menu-bar)
+                             (let-values ([(w h x y) (get-frame-position)])
+                               (when (and x y)
+                                 (move x y))
+                               (resize w h))]
+                            [else (void)])))
                       [label name]
                       [width mode-width]
                       [height mode-height]
