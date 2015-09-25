@@ -11,6 +11,7 @@ Universe/networking
 
 (require racket/match
          typed/racket/gui
+         typed/racket/draw
          typed/racket/class
          typed/racket/async-channel
          "../lazy-gui.rkt"
@@ -22,7 +23,8 @@ Universe/networking
 
 (define-type Pict3D-World-Canvas%
   (Class #:implements Pict3D-Canvas%
-         (init [parent  (Instance Area-Container<%>)])
+         (init [parent  (Instance Area-Container<%>)]
+               [gl-config (Instance GL-Config%)])
          (init-field [on-key (-> Boolean String Void)]
                      [on-mouse (-> Integer Integer String Void)]
                      [on-start (-> Void)]
@@ -31,10 +33,11 @@ Universe/networking
 (: pict3d-world-canvas% Pict3D-World-Canvas%)
 (define pict3d-world-canvas%
   (class pict3d-canvas%
-    (init parent)
+    (init parent gl-config)
     (init-field on-key on-mouse on-start)
     
     (super-new [parent parent]
+               [gl-config gl-config]
                [style '()]
                [label #f]
                [enabled #t]
@@ -91,6 +94,7 @@ Universe/networking
                 [#:x (U Integer False)]
                 [#:y (U Integer False)]
                 [#:display-mode (U 'normal 'fullscreen 'hide-menu-bar)]
+                [#:gl-config (Instance GL-Config%)]
                 [#:frame-delay Positive-Real]
                 [#:on-frame (-> S Natural Flonum S)]
                 [#:on-draw (-> S Natural Flonum Pict3D)]
@@ -108,6 +112,7 @@ Universe/networking
          #:x [frame-x #f]
          #:y [frame-y #f]
          #:display-mode [display-mode 'normal]
+         #:gl-config [gl-config (pict3d-default-gl-config)]
          #:frame-delay [orig-frame-delay #i1000/30]
          #:on-frame [on-frame (λ ([s : S] [n : Natural] [t : Flonum]) s)]
          #:on-draw [on-draw (λ ([s : S] [n : Natural] [t : Flonum]) empty-pict3d)]
@@ -166,6 +171,7 @@ Universe/networking
   (define canvas
     (new pict3d-world-canvas%
          [parent window]
+         [gl-config gl-config]
          ;; Key handler: throw everything into event-channel (if running)
          [on-key
           (λ ([r? : Boolean] [k : String])

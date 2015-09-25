@@ -15,7 +15,8 @@
          "pict3d-draw.rkt"
          )
 
-(provide pict3d-canvas%)
+(provide pict3d-canvas%
+         pict3d-default-gl-config)
 
 ;; ===================================================================================================
 ;; Rendering threads
@@ -90,6 +91,15 @@
 ;; ===================================================================================================
 ;; Scene canvas
 
+(define (pict3d-default-gl-config)
+  (define legacy? (current-pict3d-legacy?))
+    
+  (define config (new gl-config%))
+  (send config set-legacy? legacy?)
+  (when gui-provides-gl-scale-support?
+    (send config set-hires-mode #t))
+  config)
+
 ;(: pict3d-canvas% Pict3D-Canvas%)
 (define pict3d-canvas%
   (class canvas%
@@ -101,23 +111,19 @@
           [horiz-margin  0]
           [min-width   #f]
           [min-height  #f]
+          [gl-config   (pict3d-default-gl-config)]
           [stretchable-width   #t]
           [stretchable-height  #t])
     (init-field [pict3d  empty-pict3d])
     
-    (define legacy? (current-pict3d-legacy?))
+    (define legacy? (send gl-config get-legacy?))
     (define check-version? (current-pict3d-check-version?))
-    
-    (define config (new gl-config%))
-    (send config set-legacy? legacy?)
-    (when gui-provides-gl-scale-support?
-      (send config set-hires-mode #t))
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
                [paint-callback  void]
                [label  label]
-               [gl-config  config]
+               [gl-config  gl-config]
                [enabled  enabled]
                [vert-margin   vert-margin]
                [horiz-margin  horiz-margin]

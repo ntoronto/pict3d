@@ -33,7 +33,8 @@
                              Instance)
                     (only-in typed/racket/draw
                              Color%
-                             Bitmap%)
+                             Bitmap%
+                             GL-Config%)
                     (except-in pict3d pict3d)
                     pict3d/universe))
 

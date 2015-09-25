@@ -2680,6 +2680,7 @@ Or use @racket[big-bang3d], which is intended for games and animations.
                                    'no-focus 'deleted))
                         null]
                  [label (U #f String) #f]
+                 [gl-config (Instance GL-Config%) (pict3d-default-gl-config)]
                  [enabled Any #t]
                  [vert-margin Natural 0]
                  [horiz-margin Natural 0]
@@ -2741,6 +2742,14 @@ Set the update mode.
 The default value is @racket[#f].
 See @method[pict3d-canvas% set-pict3d].
 }
+}
+
+
+@defthing[pict3d-default-gl-config (-> (Instance GL-Config%))]{
+
+Creates @racket[gl-config%] that is initialized by @racket[current-pict3d-legacy?]
+and adjusts other defaults suitable for @racket[pict3d-canvas%].
+
 }
 
 @;{===================================================================================================
@@ -2816,10 +2825,11 @@ There is currently no support for networked games.
                      [#:stop-state? stop-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:name name String "World3D"]
                      [#:width width Positive-Integer 512]
+                     [#:height height Positive-Integer 512]
                      [#:x x (U Integer False) #f]
                      [#:y y (U Integer False) #f]
                      [#:display-mode display-mode (U 'normal 'fullscreen 'hide-menu-bar) 'normal]
-                     [#:height height Positive-Integer 512]
+                     [#:gl-config gl-config (Instance GL-Config%) (pict3d-default-gl-config)]
                      [#:frame-delay frame-delay Positive-Real (/ 1000 30)]
                      [#:on-frame on-frame (-> S Natural Flonum S) (λ (s n t) s)]
                      [#:on-key on-key (-> S Natural Flonum String S) (λ (s n t k) s)]
@@ -2852,7 +2862,7 @@ In the initialization phase, @racket[big-bang3d] does the following once.
        on the screen (where @racket[#f] values use auto-placement). The @racket[display-mode]
        determines the window's style, either as a normal window, a fullscreen window, or
        a fullscreen-like window that hides the window's title and menu bar (but is not ``fullscreen''
-       from the platform's perspective).}
+       from the platform's perspective). The canvas is configured with @racket[gl-config].}
  @item{Waits one second for the GUI machinery to start up.}
  @item{Synchronizes on a signal that the window has painted itself for the first time.}
 ]
