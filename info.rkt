@@ -14,6 +14,7 @@
                "pict-lib" ; why?
                "profile-lib" ; for tests
                "pfds"
+               "unstable-lib"
                ))
 
 (define build-deps '("draw-doc"
