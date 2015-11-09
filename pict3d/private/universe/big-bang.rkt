@@ -95,6 +95,7 @@ Universe/networking
                 [#:y (U Integer False)]
                 [#:display-mode (U 'normal 'fullscreen 'hide-menu-bar)]
                 [#:gl-config (Instance GL-Config%)]
+                [#:cursor (U (Instance Cursor%) False)]
                 [#:frame-delay Positive-Real]
                 [#:on-frame (-> S Natural Flonum S)]
                 [#:on-draw (-> S Natural Flonum Pict3D)]
@@ -113,6 +114,7 @@ Universe/networking
          #:y [frame-y #f]
          #:display-mode [display-mode 'normal]
          #:gl-config [gl-config (pict3d-default-gl-config)]
+         #:cursor [cursor #f]
          #:frame-delay [orig-frame-delay #i1000/30]
          #:on-frame [on-frame (λ ([s : S] [n : Natural] [t : Flonum]) s)]
          #:on-draw [on-draw (λ ([s : S] [n : Natural] [t : Flonum]) empty-pict3d)]
@@ -199,6 +201,9 @@ Universe/networking
          [on-start  (λ () (semaphore-post start-sema))]
          ;; Initial pict
          [pict3d  (on-draw init-state 0 0.0)]))
+  
+  (when cursor
+    (send canvas set-cursor cursor))
   
   (send window show #t)
   (send canvas focus)

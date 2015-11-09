@@ -2830,6 +2830,7 @@ There is currently no support for networked games.
                      [#:y y (U Integer False) #f]
                      [#:display-mode display-mode (U 'normal 'fullscreen 'hide-menu-bar) 'normal]
                      [#:gl-config gl-config (Instance GL-Config%) (pict3d-default-gl-config)]
+                     [#:cursor cursor (U (Instance Cursor%) False) #f]
                      [#:frame-delay frame-delay Positive-Real (/ 1000 30)]
                      [#:on-frame on-frame (-> S Natural Flonum S) (λ (s n t) s)]
                      [#:on-key on-key (-> S Natural Flonum String S) (λ (s n t k) s)]
@@ -2862,7 +2863,8 @@ In the initialization phase, @racket[big-bang3d] does the following once.
        on the screen (where @racket[#f] values use auto-placement). The @racket[display-mode]
        determines the window's style, either as a normal window, a fullscreen window, or
        a fullscreen-like window that hides the window's title and menu bar (but is not ``fullscreen''
-       from the platform's perspective). The canvas is configured with @racket[gl-config].}
+       from the platform's perspective). The canvas is configured with @racket[gl-config],
+       and @racket[cursor] is installed as the canvas's cursor.}
  @item{Waits one second for the GUI machinery to start up.}
  @item{Synchronizes on a signal that the window has painted itself for the first time.}
 ]
