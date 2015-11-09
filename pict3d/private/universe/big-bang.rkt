@@ -203,10 +203,9 @@ Universe/networking
   (send window show #t)
   (send canvas focus)
   
-  ;; Give the GUI thread a chance to work through its event queue and show the window
-  (sleep/yield 1.0)
-  ;; Wait until after the first paint
-  (semaphore-wait start-sema)
+  ;; Give the GUI thread a chance to work through its event queue and show the window,
+  ;; and wait until after the first paint
+  (yield start-sema)
   
   (: current-state S)
   (define current-state init-state)
