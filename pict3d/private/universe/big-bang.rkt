@@ -240,6 +240,7 @@ Universe/networking
   ;; Main loop
   (let loop ()
     (when (and running? (send window is-shown?))
+      (collect-garbage 'incremental)
       ;; Mark the start of the frame
       (define start (real->double-flonum (current-inexact-milliseconds)))
       (set! frame (+ frame 1))
