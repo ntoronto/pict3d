@@ -76,8 +76,7 @@
   #:transparent)
 
 (: make-gl-shader (-> Integer String gl-shader))
-(define (make-gl-shader type orig-code)
-  (define code (string-append (glsl-version-string) "\n\n" orig-code))
+(define (make-gl-shader type code)
   
   (get-current-managed-gl-context 'make-gl-shader)
   
