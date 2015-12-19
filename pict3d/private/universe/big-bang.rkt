@@ -14,6 +14,8 @@ Universe/networking
          typed/racket/draw
          typed/racket/class
          typed/racket/async-channel
+         (for-syntax racket/base
+                     version/utils)
          "../lazy-gui.rkt"
          "../gui/pict3d-canvas.rkt")
 
@@ -240,7 +242,15 @@ Universe/networking
   ;; Main loop
   (let loop ()
     (when (and running? (send window is-shown?))
-      (collect-garbage 'incremental)
+      (define-syntax (version-must-be-after-6.3 stx)
+        (syntax-case stx ()
+          [(_ form)
+           (if (version<? "6.3" (version))
+               #'form
+               (syntax/loc stx (void)))]))
+      
+      (version-must-be-after-6.3
+       (collect-garbage 'incremental))
       ;; Mark the start of the frame
       (define start (real->double-flonum (current-inexact-milliseconds)))
       (set! frame (+ frame 1))
