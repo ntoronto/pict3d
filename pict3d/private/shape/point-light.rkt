@@ -17,6 +17,10 @@
 
 (provide make-point-light-shape
          (struct-out point-light-shape))
+(module+ shaders
+  (define shaders
+    (list point-light-program-code))
+  (provide shaders))
 
 (struct point-light-shape shape
   ([affine : FlAffine3]

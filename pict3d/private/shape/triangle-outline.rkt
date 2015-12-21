@@ -13,6 +13,11 @@
 
 (provide make-triangle-outline-shape
          (struct-out triangle-outline-shape))
+(module+ shaders
+  (define shaders
+    (list polygon-mat-program-code
+          polygon-tran-program-code))
+  (provide shaders))
 
 ;; ===================================================================================================
 ;; Shape data types

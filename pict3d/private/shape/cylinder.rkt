@@ -20,6 +20,12 @@
          make-cylinder-wall-shape
          (struct-out cylinder-shape)
          (struct-out cylinder-wall-shape))
+(module+ shaders
+  (define shaders
+    (list (cylinder-mat-program-code)
+          (cylinder-opaq-program-code)
+          (cylinder-tran-program-code)))
+  (provide shaders))
 
 (struct cylinder-shape shape
   ([affine : FlAffine3]
@@ -156,9 +162,9 @@
    #:definitions
    (list #<<code
 void output_unit_cube_vertex2(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
-                mix(-1.0, +1.0, (vertex_id & 4) >> 2),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
+                mix(-1.0, +1.0, float((vertex_id & 4) >> 2)),
                 1.0);
   float z1 = (proj * trans * vec4(-1.0,-1.0,-1.0,1.0)).z;
   float z2 = (proj * trans * vec4(+1.0,-1.0,-1.0,1.0)).z;

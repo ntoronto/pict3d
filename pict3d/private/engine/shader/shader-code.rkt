@@ -425,9 +425,9 @@ code
    #:definitions
    (list #<<code
 void output_unit_cube_vertex(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
-                mix(-1.0, +1.0, (vertex_id & 4) >> 2),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
+                mix(-1.0, +1.0, float((vertex_id & 4) >> 2)),
                 1.0);
   p = proj * trans * p;
   gl_Position = vec4(p.xy / p.w, 0.0, 1.0);
@@ -441,8 +441,8 @@ code
    #:definitions
    (list #<<code
 void output_unit_quad_vertex(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
                 0.0,
                 1.0);
   p = proj * trans * p;
