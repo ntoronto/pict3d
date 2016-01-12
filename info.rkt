@@ -2,7 +2,7 @@
 
 (define collection 'multi)
 
-(define deps '(("base" #:version "6.1.1")
+(define deps '(("base" #:version "6.3")
                "draw-lib"
                "srfi-lite-lib"
                "typed-racket-lib"
