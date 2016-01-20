@@ -34,3 +34,5 @@
 
 (define pkg-desc "Pict3D: Functional 3D Scenes")
 (define pkg-authors '(ntoronto))
+
+(define version "1.2")

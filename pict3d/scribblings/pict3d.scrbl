@@ -2822,6 +2822,7 @@ There is currently no support for networked games.
 
 @defproc[(big-bang3d [init-state S]
                      [#:valid-state? valid-state? (-> S Natural Flonum Boolean) (λ (s n t) #t)]
+                     [#:pause-state? pause-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:stop-state? stop-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:name name String "World3D"]
                      [#:width width Positive-Integer 512]
@@ -2848,7 +2849,7 @@ On startup, @racket[big-bang3d] begins to keep track of
  @item{The frame number @racket[n : Natural], initially set to @racket[0].}
  @item{The time @racket[t : Flonum], in milliseconds, initially set to @racket[0.0].}
 ]
-All callback functions---@racket[valid-state?], @racket[stop-state?], @racket[on-frame],
+All callback functions---@racket[valid-state?], @racket[pause-state?], @racket[stop-state?], @racket[on-frame],
 @racket[on-key], @racket[on-release], @racket[on-mouse] and @racket[on-draw]---receive the current
 values of @racket[s], @racket[n] and @racket[t].
 
@@ -2856,6 +2857,7 @@ There are two phases in running a 3D world program: initialization and frame loo
 In the initialization phase, @racket[big-bang3d] does the following once.
 @itemlist[#:style 'ordered
  @item{Computes @racket[(valid-state? s n t)]; if @racket[#f], raises an error.}
+ @item{Computes @racket[(pause-state? s n t)].}
  @item{Computes @racket[(stop-state? s n t)].}
  @item{Creates a window with title @racket[name] and a @racket[width]-by-@racket[height] client
        area. The window contains only a @racket[pict3d-canvas%] with @racket[(on-draw s n t)] as
@@ -2872,9 +2874,11 @@ If @racket[(stop-state? s n t)] returned @racket[#f], @racket[big-bang3d] enters
 In the frame loop phase, @racket[big-bang3d] repeats the following.
 @itemlist[#:style 'ordered
  @item{Updates @racket[n] to @racket[(+ n 1)].}
- @item{Updates @racket[t] to the numer of milliseconds since @racket[big-bang3d] was called.}
+ @item{Updates @racket[t] to the numer of milliseconds since @racket[big-bang3d] was called
+       minus the number of milliseconds spent in paused states.}
  @item{Computes @racket[(on-frame s n t)] to yield a new state @racket[s].}
- @item{Handles all accumulated keyboard and mouse events, which also update @racket[s].}
+ @item{Handles all accumulated keyboard and mouse events, which also update @racket[s]---and
+       waits until a new keyboard or mouse event if the most recent @racket[s] is a pause state.}
  @item{Computes @racket[(on-draw s n t)] to yield a new @racket[Pict3D], which it sets in the canvas.}
  @item{Computes the number of milliseconds @racket[ms] until @racket[frame-delay] milliseconds will
        have passed since the start of the frame, and sleeps for @racket[(max 1.0 ms)] milliseconds.}
@@ -2897,6 +2901,7 @@ In that case, @racket[e] is @racket["drag"] if a mouse button is pressed; otherw
 After every state update, the frame loop
 @itemlist[#:style 'ordered
  @item{Checks @racket[(valid-state? s n t)]; if @racket[#f], raises an error.}
+ @item{Checks @racket[(pause-state? s n t)] to determine whether to pause the frame.}
  @item{Checks @racket[(stop-state? s n t)]; if @racket[#t], flags the frame loop as being on its last
        iteration.}
 ]
@@ -2905,6 +2910,8 @@ completing its current iteration, and @racket[big-bang3d] returns @racket[s].
 
 The callbacks @racket[valid-state?], @racket[stop-state?] and @racket[on-draw] can determine whether
 they're being used during the initialization phase by checking @racket[(zero? n)].
+
+@history[#:changed "1.2" @elem{Added @racket[#:pause-state?].}]
 }
 
 @(close-evals)

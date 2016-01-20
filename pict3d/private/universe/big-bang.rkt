@@ -89,6 +89,7 @@ Universe/networking
 (: big-bang3d
    (All (S) (-> S
                 [#:valid-state? (-> S Natural Flonum Boolean)]
+                [#:pause-state? (-> S Natural Flonum Boolean)]
                 [#:stop-state? (-> S Natural Flonum Boolean)]
                 [#:name String]
                 [#:width Positive-Integer]
@@ -108,6 +109,7 @@ Universe/networking
 (define (big-bang3d
          init-state
          #:valid-state? [valid-state? (λ ([s : S] [n : Natural] [t : Flonum]) #t)]
+         #:pause-state? [pause-state? (λ ([s : S] [n : Natural] [t : Flonum]) #f)]
          #:stop-state? [stop-state? (λ ([s : S] [n : Natural] [t : Flonum]) #f)]
          #:name [name "World3D"]
          #:width [width 512]
@@ -223,21 +225,38 @@ Universe/networking
   (: frame-time Flonum)
   (define frame-time 0.0)
   
+  (: paused? Boolean)
+  (define paused? #f)
+  (: paused-time Flonum)
+  (define paused-time 0.0)
+  (: start-pause-time Flonum)
+  (define start-pause-time 0.0)
+
   (: set-current-state! (-> Symbol S Void))
-  ;; Sets the current state, checks valid-state? and stop-state?
+  ;; Sets the current state, checks valid-state?, pause-state?, and stop-state?
   (define (set-current-state! setter new-state)
-    (when running?
-      (unless (valid-state? new-state frame frame-time)
-        (set! running? #f)
-        (error 'valid-state?
-               "~a handler returned ~e at ~a ~a, for which valid-state? returns #f"
-               setter
-               new-state
-               frame
-               frame-time))
-      (set! current-state new-state)
-      (when (stop-state? new-state frame frame-time)
-        (set! running? #f))))
+    ;; valid?
+    (unless (valid-state? new-state frame frame-time)
+      (set! running? #f)
+      (error 'valid-state?
+             "~a handler returned ~e at ~a ~a, for which valid-state? returns #f"
+             setter
+             new-state
+             frame
+             frame-time))
+    ;; pause?
+    (if (pause-state? new-state frame frame-time)
+        (unless paused?
+          (set! paused? #t)
+          (set! start-pause-time (current-inexact-milliseconds)))
+        (when paused?
+          (set! paused? #f)
+          (set! paused-time (+ paused-time
+                               (- (current-inexact-milliseconds) start-pause-time)))))
+    ;; stop?
+    (set! current-state new-state)
+    (when (stop-state? new-state frame frame-time)
+      (set! running? #f)))
   
   ;; Main loop
   (let loop ()
@@ -254,12 +273,14 @@ Universe/networking
       ;; Mark the start of the frame
       (define start (real->double-flonum (current-inexact-milliseconds)))
       (set! frame (+ frame 1))
-      (set! frame-time (- start first-frame-time))
+      (set! frame-time (- start first-frame-time paused-time))
       ;; Call the user's on-frame handler
       (set-current-state! 'on-frame (on-frame current-state frame frame-time))
       ;; Work through all the input events
       (let event-loop ()
-        (match (async-channel-try-get event-channel)
+        (match (if paused?
+                   (yield event-channel)
+                   (async-channel-try-get event-channel))
           ;; Key events
           [(key release? code)
            (cond
