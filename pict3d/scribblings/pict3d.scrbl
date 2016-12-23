@@ -92,7 +92,7 @@ When the mouse hovers over a displayed @racket[Pict3D] instance, it looks someth
 
 If you're following along in DrRacket, click on it.
 @margin-note*{You can also click and drag to look.
-              ``Mouse look'' doesn't work on Mac OS X because of reasons.}
+              ``Mouse look'' doesn't work on Mac OS because of reasons.}
 Move the mouse to look around, and use these keys to navigate:
 @itemlist[
  @item{@tt{W} and @tt{S} (or @tt{↑} and @tt{↓}): forwards and backwards}
@@ -2572,7 +2572,7 @@ creating an OpenGL rendering context.
 In general, you should only try setting @racket[(current-pict3d-legacy? #t)] if you're getting
 strange OpenGL errors.
 
-On Mac OS X, this parameter @emph{must} be @racket[#f].
+On Mac OS, this parameter @emph{must} be @racket[#f].
 If @racket[#t], only OpenGL 2.1 is available.
 If @racket[#f], OpenGL 3.2 or higher is available.
 Pict3D requires at least OpenGL 3.0.
