@@ -26,7 +26,8 @@
           blur-vert-program-code
           blur-horz-program-code))
   (provide shaders))
-
+(module+ gl-helpers
+  (provide get-draw-fbo))
 
 ;; These must be in the order the engine completes the passes in!
 (add-engine-debug-passes!
@@ -389,8 +390,9 @@ code
     (make-gl-framebuffer width height
                          (list (cons GL_COLOR_ATTACHMENT0 rgba)
                                (cons GL_DEPTH_ATTACHMENT (get-depth-buffer width height)))))
-  (glClearColor 0.0 0.0 0.0 1.0)
-  (glClear GL_COLOR_BUFFER_BIT)
+  (with-gl-framebuffer fbo
+    (glClearColor 0.0 0.0 0.0 1.0)
+    (glClear GL_COLOR_BUFFER_BIT))
   fbo)
 
 (define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural])

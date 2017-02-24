@@ -11,6 +11,7 @@
          "master-context.rkt"
          "pict3d-struct.rkt"
          "pict3d-draw.rkt"
+         "typed-pict3d-bitmap.rkt"
          )
 
 (provide (contract-out
@@ -25,6 +26,18 @@
      (make-bytes n))
    bytes-length))
 
+(define (rgba->argb! pixels)
+  (for ((i (in-range (/ (bytes-length pixels) 4))))
+    (let* ((offset (* 4 i))
+           (  red (bytes-ref pixels (+ 0 offset)))
+           (green (bytes-ref pixels (+ 1 offset)))
+           ( blue (bytes-ref pixels (+ 2 offset)))
+           (alpha (bytes-ref pixels (+ 3 offset))))
+      (bytes-set! pixels (+ 0 offset) alpha)
+      (bytes-set! pixels (+ 1 offset) red)
+      (bytes-set! pixels (+ 2 offset) green)
+      (bytes-set! pixels (+ 3 offset) blue))))
+
 ;(: pict3d->bitmap (-> Pict3D Integer Integer (Instance Bitmap%)))
 (define (pict3d->bitmap pict [width (current-pict3d-width)] [height (current-pict3d-height)])
   (define-values (bms cpu real gc)
@@ -33,10 +46,9 @@
        ;; Lock everything up for drawing
        (with-gl-context (get-master-gl-context (current-pict3d-legacy?)
                                                (current-pict3d-check-version?))
-         (draw-pict3ds (list pict) #:width width #:height height #:bitmap? #t)
-         ;; Get the resulting pixels and set them into the bitmap
          (define bs (get-the-bytes (* 4 width height)))
-         (glReadPixels 0 0 width height GL_BGRA GL_UNSIGNED_INT_8_8_8_8 bs)
+         (pict3d-set-bytes! pict width height bs)
+         (rgba->argb! bs)
          (define bm (make-bitmap width height))
          (send bm set-argb-pixels 0 0 width height bs #f #t)
          bm))
