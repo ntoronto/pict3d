@@ -26,8 +26,6 @@
           blur-vert-program-code
           blur-horz-program-code))
   (provide shaders))
-(module+ gl-helpers
-  (provide get-draw-fbo))
 
 ;; These must be in the order the engine completes the passes in!
 (add-engine-debug-passes!
