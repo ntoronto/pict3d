@@ -34,7 +34,7 @@
                              Color%
                              Bitmap%
                              GL-Config%)
-                    (except-in pict3d pict3d)
+                    pict3d
                     pict3d/universe))
 
 (provide (all-defined-out)
