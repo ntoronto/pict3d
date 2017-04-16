@@ -13,7 +13,7 @@ To use:
  6. Test by running a program like the following.
 
 ```racket
-#lang racket
+# lang racket
 (require pict3d)
 (sphere origin 1/2)
 ```
