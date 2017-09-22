@@ -264,8 +264,6 @@
 (: load-texture (-> Path-String [#:mipmap Any] [#:repeat (U 'none 'x 'y 'both)] Natural))
 ;; Directly load a file from disk as texture.
 (define (load-texture filename #:mipmap (mipmap #t) #:repeat (repeat-mode 'none))
-  (error 'load-texture "currently not working due to an error in Typed Racket")
-  #;
   (bitmap->texture (read-bitmap filename) #:mipmap mipmap #:repeat repeat-mode))
 
 ;;; Utility functions for dealing with shaders
