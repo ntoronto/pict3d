@@ -14,6 +14,9 @@
 
 (provide make-light-grid-shape
          (struct-out light-grid-shape))
+(module+ shaders
+  (define shaders (list light-grid-program-code))
+  (provide shaders))
 
 (struct light-grid-shape shape
   ([x-emitted : FlV4]
@@ -53,8 +56,8 @@
    #:out-attributes light-grid-fragment-attributes
    #<<code
 // output the right vertices for a triangle strip
-vec4 p = vec4(mix(-1.0, +1.0, int(vertex_id) & 1),
-              mix(-1.0, +1.0, (int(vertex_id) & 2) >> 1),
+vec4 p = vec4(mix(-1.0, +1.0, float(int(vertex_id) & 1)),
+              mix(-1.0, +1.0, float((int(vertex_id) & 2) >> 1)),
               0.0,
               1.0);
 gl_Position = p;

@@ -11,8 +11,11 @@ Universe/networking
 
 (require racket/match
          typed/racket/gui
+         typed/racket/draw
          typed/racket/class
          typed/racket/async-channel
+         (for-syntax racket/base
+                     version/utils)
          "../lazy-gui.rkt"
          "../gui/pict3d-canvas.rkt")
 
@@ -22,7 +25,8 @@ Universe/networking
 
 (define-type Pict3D-World-Canvas%
   (Class #:implements Pict3D-Canvas%
-         (init [parent  (Instance Area-Container<%>)])
+         (init [parent  (Instance Area-Container<%>)]
+               [gl-config (Instance GL-Config%)])
          (init-field [on-key (-> Boolean String Void)]
                      [on-mouse (-> Integer Integer String Void)]
                      [on-start (-> Void)]
@@ -31,10 +35,11 @@ Universe/networking
 (: pict3d-world-canvas% Pict3D-World-Canvas%)
 (define pict3d-world-canvas%
   (class pict3d-canvas%
-    (init parent)
+    (init parent gl-config)
     (init-field on-key on-mouse on-start)
     
     (super-new [parent parent]
+               [gl-config gl-config]
                [style '()]
                [label #f]
                [enabled #t]
@@ -84,10 +89,16 @@ Universe/networking
 (: big-bang3d
    (All (S) (-> S
                 [#:valid-state? (-> S Natural Flonum Boolean)]
+                [#:pause-state? (-> S Natural Flonum Boolean)]
                 [#:stop-state? (-> S Natural Flonum Boolean)]
                 [#:name String]
                 [#:width Positive-Integer]
                 [#:height Positive-Integer]
+                [#:x (U Integer False)]
+                [#:y (U Integer False)]
+                [#:display-mode (U 'normal 'fullscreen 'hide-menu-bar)]
+                [#:gl-config (Instance GL-Config%)]
+                [#:cursor (U (Instance Cursor%) False)]
                 [#:frame-delay Positive-Real]
                 [#:on-frame (-> S Natural Flonum S)]
                 [#:on-draw (-> S Natural Flonum Pict3D)]
@@ -98,10 +109,16 @@ Universe/networking
 (define (big-bang3d
          init-state
          #:valid-state? [valid-state? (λ ([s : S] [n : Natural] [t : Flonum]) #t)]
+         #:pause-state? [pause-state? (λ ([s : S] [n : Natural] [t : Flonum]) #f)]
          #:stop-state? [stop-state? (λ ([s : S] [n : Natural] [t : Flonum]) #f)]
          #:name [name "World3D"]
          #:width [width 512]
          #:height [height 512]
+         #:x [frame-x #f]
+         #:y [frame-y #f]
+         #:display-mode [display-mode 'normal]
+         #:gl-config [gl-config (pict3d-default-gl-config)]
+         #:cursor [cursor #f]
          #:frame-delay [orig-frame-delay #i1000/30]
          #:on-frame [on-frame (λ ([s : S] [n : Natural] [t : Flonum]) s)]
          #:on-draw [on-draw (λ ([s : S] [n : Natural] [t : Flonum]) empty-pict3d)]
@@ -134,10 +151,48 @@ Universe/networking
   (: event-channel (Async-Channelof Input))
   (define event-channel (make-async-channel))
   
-  (define window (new frame% [label name] [width width] [height height]))
+  ;; Used for 'hide-menu-bar style:
+  (: get-frame-position (-> (Values Integer Integer (U Integer False) (U Integer False))))
+  (define (get-frame-position)
+    (define-values (dx dy) (get-display-left-top-inset))
+    (define-values (w h) (get-display-size #t))
+    (values (or w width) (or h height) (and dx (- dx)) (and dy (- dy))))
+  
+  (: mode-width Integer)
+  (: mode-height Integer)
+  (: mode-frame-x (U Integer False))
+  (: mode-frame-y (U Integer False))
+  (define-values (mode-width mode-height mode-frame-x mode-frame-y)
+    (case display-mode
+      [(normal fullscreen) (values width height frame-x frame-y)]
+      [(hide-menu-bar) (get-frame-position)]))
+  
+  (define window (new (class frame%
+                        ;; Subclass to handle resize for 'hide-menu-bar mode:
+                        (super-new)
+                        (inherit move resize)
+                        (define/augment (display-changed)
+                          (case display-mode
+                            [(hide-menu-bar)
+                             (let-values ([(w h x y) (get-frame-position)])
+                               (when (and x y)
+                                 (move x y))
+                               (resize w h))]
+                            [else (void)])))
+                      [label name]
+                      [width mode-width]
+                      [height mode-height]
+                      [x mode-frame-x]
+                      [y mode-frame-y]
+                      [style (if (eq? display-mode 'hide-menu-bar)
+                                 '(no-resize-border no-caption hide-menu-bar)
+                                 '(fullscreen-button))]))
+  (send window fullscreen (eq? display-mode 'fullscreen))
+  
   (define canvas
     (new pict3d-world-canvas%
          [parent window]
+         [gl-config gl-config]
          ;; Key handler: throw everything into event-channel (if running)
          [on-key
           (λ ([r? : Boolean] [k : String])
@@ -151,13 +206,15 @@ Universe/networking
          ;; Initial pict
          [pict3d  (on-draw init-state 0 0.0)]))
   
+  (when cursor
+    (send canvas set-cursor cursor))
+  
   (send window show #t)
   (send canvas focus)
   
-  ;; Give the GUI thread a chance to work through its event queue and show the window
-  (sleep/yield 1.0)
-  ;; Wait until after the first paint
-  (semaphore-wait start-sema)
+  ;; Give the GUI thread a chance to work through its event queue and show the window,
+  ;; and wait until after the first paint
+  (yield start-sema)
   
   (: current-state S)
   (define current-state init-state)
@@ -168,34 +225,62 @@ Universe/networking
   (: frame-time Flonum)
   (define frame-time 0.0)
   
+  (: paused? Boolean)
+  (define paused? #f)
+  (: paused-time Flonum)
+  (define paused-time 0.0)
+  (: start-pause-time Flonum)
+  (define start-pause-time 0.0)
+
   (: set-current-state! (-> Symbol S Void))
-  ;; Sets the current state, checks valid-state? and stop-state?
+  ;; Sets the current state, checks valid-state?, pause-state?, and stop-state?
   (define (set-current-state! setter new-state)
-    (when running?
-      (unless (valid-state? new-state frame frame-time)
-        (set! running? #f)
-        (error 'valid-state?
-               "~a handler returned ~e at ~a ~a, for which valid-state? returns #f"
-               setter
-               new-state
-               frame
-               frame-time))
-      (set! current-state new-state)
-      (when (stop-state? new-state frame frame-time)
-        (set! running? #f))))
+    ;; valid?
+    (unless (valid-state? new-state frame frame-time)
+      (set! running? #f)
+      (error 'valid-state?
+             "~a handler returned ~e at ~a ~a, for which valid-state? returns #f"
+             setter
+             new-state
+             frame
+             frame-time))
+    ;; pause?
+    (if (pause-state? new-state frame frame-time)
+        (unless paused?
+          (set! paused? #t)
+          (set! start-pause-time (current-inexact-milliseconds)))
+        (when paused?
+          (set! paused? #f)
+          (set! paused-time (+ paused-time
+                               (- (current-inexact-milliseconds) start-pause-time)))))
+    ;; stop?
+    (set! current-state new-state)
+    (when (stop-state? new-state frame frame-time)
+      (set! running? #f)))
   
   ;; Main loop
   (let loop ()
     (when (and running? (send window is-shown?))
+      (define-syntax (version-must-be-after-6.3 stx)
+        (syntax-case stx ()
+          [(_ form)
+           (if (version<? "6.3" (version))
+               #'form
+               (syntax/loc stx (void)))]))
+      
+      (version-must-be-after-6.3
+       (collect-garbage 'incremental))
       ;; Mark the start of the frame
       (define start (real->double-flonum (current-inexact-milliseconds)))
       (set! frame (+ frame 1))
-      (set! frame-time (- start first-frame-time))
+      (set! frame-time (- start first-frame-time paused-time))
       ;; Call the user's on-frame handler
       (set-current-state! 'on-frame (on-frame current-state frame frame-time))
       ;; Work through all the input events
       (let event-loop ()
-        (match (async-channel-try-get event-channel)
+        (match (if paused?
+                   (yield event-channel)
+                   (async-channel-try-get event-channel))
           ;; Key events
           [(key release? code)
            (cond

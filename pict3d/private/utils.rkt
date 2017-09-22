@@ -19,7 +19,7 @@
   (profile-thunk (λ () body ...)))
 
 (require/typed
- unstable/custom-write
+ racket/struct
  [make-constructor-style-printer
   (All (A) (-> (-> A (U Symbol String))
                (-> A (Sequenceof Any))

@@ -2,6 +2,7 @@
 
 (require typed/racket/private/gui-types
          typed/racket/class
+         typed/racket/draw
          "../gl.rkt"
          "pict3d-struct.rkt")
 
@@ -22,6 +23,7 @@
                             'no-focus))
                         #:optional]
                [label    (U #f String) #:optional]
+               [gl-config (Instance GL-Config%) #:optional]
                [enabled  Any #:optional]
                [vert-margin   Natural #:optional]
                [horiz-margin  Natural #:optional]

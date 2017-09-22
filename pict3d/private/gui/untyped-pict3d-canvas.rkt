@@ -15,7 +15,8 @@
          "pict3d-draw.rkt"
          )
 
-(provide pict3d-canvas%)
+(provide pict3d-canvas%
+         pict3d-default-gl-config)
 
 ;; ===================================================================================================
 ;; Rendering threads
@@ -32,6 +33,10 @@
    auto-camera
    ack-channel)
   #:transparent)
+
+(define gui-provides-gl-scale-support?
+  ;; Version 1.16 of gui-lib adds `get-gl-client-size`
+  (method-in-interface? 'get-gl-client-size (class->interface canvas%)))
 
 (define (render cmd canvas)
   (define-values (_ cpu real gc)
@@ -86,6 +91,15 @@
 ;; ===================================================================================================
 ;; Scene canvas
 
+(define (pict3d-default-gl-config)
+  (define legacy? (current-pict3d-legacy?))
+    
+  (define config (new gl-config%))
+  (send config set-legacy? legacy?)
+  (when gui-provides-gl-scale-support?
+    (send config set-hires-mode #t))
+  config)
+
 ;(: pict3d-canvas% Pict3D-Canvas%)
 (define pict3d-canvas%
   (class canvas%
@@ -97,21 +111,19 @@
           [horiz-margin  0]
           [min-width   #f]
           [min-height  #f]
+          [gl-config   (pict3d-default-gl-config)]
           [stretchable-width   #t]
           [stretchable-height  #t])
     (init-field [pict3d  empty-pict3d])
     
-    (define legacy? (current-pict3d-legacy?))
+    (define legacy? (send gl-config get-legacy?))
     (define check-version? (current-pict3d-check-version?))
-    
-    (define config (new gl-config%))
-    (send config set-legacy? legacy?)
     
     (super-new [parent parent]
                [style  (list* 'gl 'no-autoclear style)]
                [paint-callback  void]
                [label  label]
-               [gl-config  config]
+               [gl-config  gl-config]
                [enabled  enabled]
                [vert-margin   vert-margin]
                [horiz-margin  horiz-margin]
@@ -133,9 +145,14 @@
     
     ;(: get-gl-window-size (-> (Values Index Index)))
     (define (get-gl-window-size)
-      (define-values (w h) (send (send this get-dc) get-size))
-      (values (exact-ceiling w)
-              (exact-ceiling h)))
+      ;; Version 1.16 of gui-lib adds `get-gl-client-size`
+      (cond
+       [gui-provides-gl-scale-support?
+        (send this get-gl-client-size)]
+       [else
+        (define-values (w h) (send (send this get-dc) get-size))
+        (values (exact-ceiling w)
+                (exact-ceiling h))]))
     
     (define z-near (current-pict3d-z-near))
     (define z-far (current-pict3d-z-far))

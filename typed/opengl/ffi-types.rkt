@@ -14,7 +14,9 @@
  F64Vector f64vector?
  )
 
-(require/typed
+(require typed/racket/unsafe) ; only for cpointer? and ctype?
+
+(unsafe-require/typed
  ffi/unsafe
  [#:opaque CPointer cpointer?]  ; includes Bytes and other things that can be used as cpointers
  [#:opaque CType ctype?]

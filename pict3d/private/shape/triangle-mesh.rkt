@@ -26,6 +26,12 @@
          triangle-mesh-shape-ray-intersect
          triangle-mesh-shape-tessellate
          triangle-mesh-shape-deform)
+(module+ shaders
+  (define shaders
+    (list polygon-mat-program-code
+          polygon-opaq-program-code
+          polygon-tran-program-code))
+  (provide shaders))
 
 (add-engine-debug-shapes! '(triangle-mesh))
 

@@ -34,9 +34,9 @@
     (define x-rotation 0)
     (define y-rotation 0)
     (define zoom 1)
- 
+
     (define/override (on-paint)
-      (with-gl-context               
+      (with-gl-context
         (lambda ()
           (unless setup-called
             (setup)
@@ -79,35 +79,36 @@
 
 
 (define (show-gl-info frame canvas)
-  (let-values (((renderer version vendor)
+  (let-values (((renderer version vendor extensions)
                 (send canvas with-gl-context
-                      (lambda () 
+                      (lambda ()
                         (values
                           (glGetString GL_RENDERER)
                           (glGetString GL_VERSION)
-                          (glGetString GL_VENDOR))))))
+                          (glGetString GL_VENDOR)
+                          (gl-extensions))))))
     (define label
       (format "RENDERER: ~a~%VERSION: ~a~%VENDOR: ~a"
               renderer version vendor))
-    (define dialog (new dialog% [parent frame] [label "OpenGL info"]))          
+    (define dialog (new dialog% [parent frame] [label "OpenGL info"]))
     (define msg (new message%
                      [parent dialog]
                      [label label]))
-    (define extensions-list (new list-box% 
-                                 [parent dialog] 
+    (define extensions-list (new list-box%
+                                 [parent dialog]
                                  [label "EXTENSIONS:"]
                                  [style '(single vertical-label)]
                                  [choices
                                    (sort
-                                     (for/list ((ext (in-set (gl-extensions))))
+                                     (for/list ((ext (in-set extensions)))
                                        (symbol->string ext))
                                      string<?)]))
     (send dialog show #t)))
 
 
 (define (view draw (setup void))
-  (define frame 
-    (new frame% 
+  (define frame
+    (new frame%
          [label "OpenGL viewer"]
          [width 300]
          [height 300]))
@@ -119,9 +120,9 @@
     (new menu% [parent menubar] [label "&Help"]))
 
   (define c
-    (new gl-viewer% 
-         (style '(gl no-autoclear)) 
-         (parent frame) 
+    (new gl-viewer%
+         (style '(gl no-autoclear))
+         (parent frame)
          (draw draw) (setup setup)))
 
   (define gl-info-item

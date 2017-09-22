@@ -15,6 +15,17 @@
          "types.rkt")
 
 (provide draw-draw-passes)
+(module+ shaders
+  (define shaders
+    (list fullscreen-program-code
+          fullscreen-depth-program-code
+          fullscreen-alpha-program-code
+          blend-program-code
+          bloom-extract-program-code
+          bloom-combine-program-code
+          blur-vert-program-code
+          blur-horz-program-code))
+  (provide shaders))
 
 ;; These must be in the order the engine completes the passes in!
 (add-engine-debug-passes!
@@ -377,8 +388,9 @@ code
     (make-gl-framebuffer width height
                          (list (cons GL_COLOR_ATTACHMENT0 rgba)
                                (cons GL_DEPTH_ATTACHMENT (get-depth-buffer width height)))))
-  (glClearColor 0.0 0.0 0.0 1.0)
-  (glClear GL_COLOR_BUFFER_BIT)
+  (with-gl-framebuffer fbo
+    (glClearColor 0.0 0.0 0.0 1.0)
+    (glClear GL_COLOR_BUFFER_BIT))
   fbo)
 
 (define-singleton/context (get-reduce-fbo [width : Natural] [height : Natural])

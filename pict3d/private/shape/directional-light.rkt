@@ -16,6 +16,9 @@
 
 (provide make-directional-light-shape
          (struct-out directional-light-shape))
+(module+ shaders
+  (define shaders (list directional-light-program-code))
+  (provide shaders))
 
 (struct directional-light-shape shape
   ([emitted : FlV4]

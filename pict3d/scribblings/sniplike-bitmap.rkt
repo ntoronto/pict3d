@@ -4,7 +4,11 @@
          racket/match
          racket/draw
          racket/class
-         "../private/lazy-gui.rkt"
+         "../private/gui/pict3d-struct.rkt"
+         "../private/gui/user-types.rkt"
+         "../private/gui/pict3d-combinators.rkt"
+         "../private/gui/pict3d-bitmap.rkt"
+         "../private/gui/parameters.rkt"
          "../private/gui/indicators.rkt"
          "../private/engine.rkt")
 

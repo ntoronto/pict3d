@@ -140,6 +140,7 @@
 (: shader-code->string (-> shader-code String))
 (define (shader-code->string code)
   (string-append
+   (glsl-version-string) "\n\n" 
    (partial-code->string code)
    "\nvoid main() {\n"
    (shader-code-main code)
@@ -299,15 +300,30 @@
 (define (program-code-vao-size prog)
   (vao-struct-size (program-code-vao-struct prog)))
 
-(: program-code-shaders (-> program-code (Listof gl-shader)))
-(define (program-code-shaders prog)
+(: program-code-shaders (-> String program-code (Listof gl-shader)))
+(define (program-code-shaders name prog)
   (define vcode (program-code-vertex-code prog))
+  (define vs (shader-code->string vcode))
   (define gcode (program-code-geometry-code prog))
+  (define gs (if gcode (shader-code->string gcode) #f))
   (define fcode (program-code-fragment-code prog))
+  (define fs (shader-code->string fcode))
+  (when #f
+    (local-require racket/file)
+    (define shader-dir "/tmp/pict3d-shaders")
+    (make-directory* shader-dir)
+    (: save-shader (-> String String Void))
+    (define (save-shader kind s)
+      (display-to-file s
+                       (build-path shader-dir (format "~a.~a" name kind))
+                       #:exists 'replace))
+    (save-shader "vert" vs)
+    (save-shader "frag" fs)
+    (when gs (save-shader "geom" gs)))
   (append
-   (list (make-gl-shader GL_VERTEX_SHADER (shader-code->string vcode)))
-   (if gcode (list (make-gl-shader GL_GEOMETRY_SHADER (shader-code->string gcode))) empty)
-   (list (make-gl-shader GL_FRAGMENT_SHADER (shader-code->string fcode)))))
+   (list (make-gl-shader GL_VERTEX_SHADER vs))
+   (if gs (list (make-gl-shader GL_GEOMETRY_SHADER gs)) empty)
+   (list (make-gl-shader GL_FRAGMENT_SHADER fs))))
 
 (: program-code->gl-program (-> program-code gl-program))
 (define (program-code->gl-program prog)
@@ -316,7 +332,8 @@
    (program-code-standard-uniform-pairs prog)
    (program-code-vao-struct prog)
    (program-code-output-names prog)
-   (program-code-shaders prog)))
+   (program-code-shaders (program-code-name prog)
+                         prog)))
 
 ;; ===================================================================================================
 ;; Standard shader library
@@ -408,9 +425,9 @@ code
    #:definitions
    (list #<<code
 void output_unit_cube_vertex(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
-                mix(-1.0, +1.0, (vertex_id & 4) >> 2),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
+                mix(-1.0, +1.0, float((vertex_id & 4) >> 2)),
                 1.0);
   p = proj * trans * p;
   gl_Position = vec4(p.xy / p.w, 0.0, 1.0);
@@ -424,8 +441,8 @@ code
    #:definitions
    (list #<<code
 void output_unit_quad_vertex(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
                 0.0,
                 1.0);
   p = proj * trans * p;

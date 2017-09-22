@@ -17,6 +17,12 @@
 
 (provide make-disk-shape
          (struct-out disk-shape))
+(module+ shaders
+  (define shaders
+    (list (disk-mat-program-code)
+          (disk-opaq-program-code)
+          (disk-tran-program-code)))
+  (provide shaders))
 
 (struct disk-shape shape
   ([affine : FlAffine3]
@@ -87,8 +93,8 @@
    #:definitions
    (list #<<code
 void output_unit_quad_vertex2(mat4 trans, mat4 proj, int vertex_id) {
-  vec4 p = vec4(mix(-1.0, +1.0, vertex_id & 1),
-                mix(-1.0, +1.0, (vertex_id & 2) >> 1),
+  vec4 p = vec4(mix(-1.0, +1.0, float(vertex_id & 1)),
+                mix(-1.0, +1.0, float((vertex_id & 2) >> 1)),
                 0.0,
                 1.0);
   float z1 = (proj * trans * vec4(-1.0,-1.0,0.0,1.0)).z;

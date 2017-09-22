@@ -2,7 +2,7 @@
 
 (define collection 'multi)
 
-(define deps '(("base" #:version "6.1.1")
+(define deps '(("base" #:version "6.3")
                "draw-lib"
                "srfi-lite-lib"
                "typed-racket-lib"
@@ -14,6 +14,7 @@
                "pict-lib" ; why?
                "profile-lib" ; for tests
                "pfds"
+               "unstable-lib"
                ))
 
 (define build-deps '("draw-doc"
@@ -33,3 +34,5 @@
 
 (define pkg-desc "Pict3D: Functional 3D Scenes")
 (define pkg-authors '(ntoronto))
+
+(define version "1.2")
