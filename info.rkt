@@ -36,3 +36,4 @@
 (define pkg-authors '(ntoronto))
 
 (define version "1.2")
+(define license 'LGPL-3.0-only)
