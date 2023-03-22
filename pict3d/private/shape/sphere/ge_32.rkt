@@ -10,6 +10,12 @@
          "sphere-type.rkt")
 
 (provide get-sphere-shape-passes)
+(module+ shaders
+  (define shaders
+    (list (sphere-mat-program-code)
+          (sphere-opaq-program-code)
+          (sphere-tran-program-code)))
+  (provide shaders))
 
 ;; ===================================================================================================
 ;; Program for pass 1: material

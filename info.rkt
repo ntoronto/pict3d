@@ -2,7 +2,7 @@
 
 (define collection 'multi)
 
-(define deps '(("base" #:version "6.1.1")
+(define deps '(("base" #:version "6.3")
                "draw-lib"
                "srfi-lite-lib"
                "typed-racket-lib"
@@ -33,3 +33,6 @@
 
 (define pkg-desc "Pict3D: Functional 3D Scenes")
 (define pkg-authors '(ntoronto))
+
+(define version "1.2")
+(define license 'LGPL-3.0-only)

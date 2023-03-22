@@ -92,7 +92,7 @@ When the mouse hovers over a displayed @racket[Pict3D] instance, it looks someth
 
 If you're following along in DrRacket, click on it.
 @margin-note*{You can also click and drag to look.
-              ``Mouse look'' doesn't work on Mac OS X because of reasons.}
+              ``Mouse look'' doesn't work on Mac OS because of reasons.}
 Move the mouse to look around, and use these keys to navigate:
 @itemlist[
  @item{@tt{W} and @tt{S} (or @tt{↑} and @tt{↓}): forwards and backwards}
@@ -2572,7 +2572,7 @@ creating an OpenGL rendering context.
 In general, you should only try setting @racket[(current-pict3d-legacy? #t)] if you're getting
 strange OpenGL errors.
 
-On Mac OS X, this parameter @emph{must} be @racket[#f].
+On Mac OS, this parameter @emph{must} be @racket[#f].
 If @racket[#t], only OpenGL 2.1 is available.
 If @racket[#f], OpenGL 3.2 or higher is available.
 Pict3D requires at least OpenGL 3.0.
@@ -2680,6 +2680,7 @@ Or use @racket[big-bang3d], which is intended for games and animations.
                                    'no-focus 'deleted))
                         null]
                  [label (U #f String) #f]
+                 [gl-config (Instance GL-Config%) (pict3d-default-gl-config)]
                  [enabled Any #t]
                  [vert-margin Natural 0]
                  [horiz-margin Natural 0]
@@ -2741,6 +2742,14 @@ Set the update mode.
 The default value is @racket[#f].
 See @method[pict3d-canvas% set-pict3d].
 }
+}
+
+
+@defthing[pict3d-default-gl-config (-> (Instance GL-Config%))]{
+
+Creates @racket[gl-config%] that is initialized by @racket[current-pict3d-legacy?]
+and adjusts other defaults suitable for @racket[pict3d-canvas%].
+
 }
 
 @;{===================================================================================================
@@ -2813,10 +2822,16 @@ There is currently no support for networked games.
 
 @defproc[(big-bang3d [init-state S]
                      [#:valid-state? valid-state? (-> S Natural Flonum Boolean) (λ (s n t) #t)]
+                     [#:pause-state? pause-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:stop-state? stop-state? (-> S Natural Flonum Boolean) (λ (s n t) #f)]
                      [#:name name String "World3D"]
                      [#:width width Positive-Integer 512]
                      [#:height height Positive-Integer 512]
+                     [#:x x (U Integer False) #f]
+                     [#:y y (U Integer False) #f]
+                     [#:display-mode display-mode (U 'normal 'fullscreen 'hide-menu-bar) 'normal]
+                     [#:gl-config gl-config (Instance GL-Config%) (pict3d-default-gl-config)]
+                     [#:cursor cursor (U (Instance Cursor%) False) #f]
                      [#:frame-delay frame-delay Positive-Real (/ 1000 30)]
                      [#:on-frame on-frame (-> S Natural Flonum S) (λ (s n t) s)]
                      [#:on-key on-key (-> S Natural Flonum String S) (λ (s n t k) s)]
@@ -2834,7 +2849,7 @@ On startup, @racket[big-bang3d] begins to keep track of
  @item{The frame number @racket[n : Natural], initially set to @racket[0].}
  @item{The time @racket[t : Flonum], in milliseconds, initially set to @racket[0.0].}
 ]
-All callback functions---@racket[valid-state?], @racket[stop-state?], @racket[on-frame],
+All callback functions---@racket[valid-state?], @racket[pause-state?], @racket[stop-state?], @racket[on-frame],
 @racket[on-key], @racket[on-release], @racket[on-mouse] and @racket[on-draw]---receive the current
 values of @racket[s], @racket[n] and @racket[t].
 
@@ -2842,10 +2857,16 @@ There are two phases in running a 3D world program: initialization and frame loo
 In the initialization phase, @racket[big-bang3d] does the following once.
 @itemlist[#:style 'ordered
  @item{Computes @racket[(valid-state? s n t)]; if @racket[#f], raises an error.}
+ @item{Computes @racket[(pause-state? s n t)].}
  @item{Computes @racket[(stop-state? s n t)].}
  @item{Creates a window with title @racket[name] and a @racket[width]-by-@racket[height] client
        area. The window contains only a @racket[pict3d-canvas%] with @racket[(on-draw s n t)] as
-       its initial @racket[Pict3D].}
+       its initial @racket[Pict3D]. The window is positioned at @racket[x] and @racket[y]
+       on the screen (where @racket[#f] values use auto-placement). The @racket[display-mode]
+       determines the window's style, either as a normal window, a fullscreen window, or
+       a fullscreen-like window that hides the window's title and menu bar (but is not ``fullscreen''
+       from the platform's perspective). The canvas is configured with @racket[gl-config],
+       and @racket[cursor] is installed as the canvas's cursor.}
  @item{Waits one second for the GUI machinery to start up.}
  @item{Synchronizes on a signal that the window has painted itself for the first time.}
 ]
@@ -2853,9 +2874,11 @@ If @racket[(stop-state? s n t)] returned @racket[#f], @racket[big-bang3d] enters
 In the frame loop phase, @racket[big-bang3d] repeats the following.
 @itemlist[#:style 'ordered
  @item{Updates @racket[n] to @racket[(+ n 1)].}
- @item{Updates @racket[t] to the numer of milliseconds since @racket[big-bang3d] was called.}
+ @item{Updates @racket[t] to the numer of milliseconds since @racket[big-bang3d] was called
+       minus the number of milliseconds spent in paused states.}
  @item{Computes @racket[(on-frame s n t)] to yield a new state @racket[s].}
- @item{Handles all accumulated keyboard and mouse events, which also update @racket[s].}
+ @item{Handles all accumulated keyboard and mouse events, which also update @racket[s]---and
+       waits until a new keyboard or mouse event if the most recent @racket[s] is a pause state.}
  @item{Computes @racket[(on-draw s n t)] to yield a new @racket[Pict3D], which it sets in the canvas.}
  @item{Computes the number of milliseconds @racket[ms] until @racket[frame-delay] milliseconds will
        have passed since the start of the frame, and sleeps for @racket[(max 1.0 ms)] milliseconds.}
@@ -2878,6 +2901,7 @@ In that case, @racket[e] is @racket["drag"] if a mouse button is pressed; otherw
 After every state update, the frame loop
 @itemlist[#:style 'ordered
  @item{Checks @racket[(valid-state? s n t)]; if @racket[#f], raises an error.}
+ @item{Checks @racket[(pause-state? s n t)] to determine whether to pause the frame.}
  @item{Checks @racket[(stop-state? s n t)]; if @racket[#t], flags the frame loop as being on its last
        iteration.}
 ]
@@ -2886,6 +2910,8 @@ completing its current iteration, and @racket[big-bang3d] returns @racket[s].
 
 The callbacks @racket[valid-state?], @racket[stop-state?] and @racket[on-draw] can determine whether
 they're being used during the initialization phase by checking @racket[(zero? n)].
+
+@history[#:changed "1.2" @elem{Added @racket[#:pause-state?].}]
 }
 
 @(close-evals)

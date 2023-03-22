@@ -9,7 +9,6 @@
 
 (require racket/match
          scribble/eval
-         unstable/sandbox
          racket/runtime-path
          racket/draw
          "serializable-bitmap.rkt"
@@ -33,8 +32,9 @@
                              Instance)
                     (only-in typed/racket/draw
                              Color%
-                             Bitmap%)
-                    (except-in pict3d pict3d)
+                             Bitmap%
+                             GL-Config%)
+                    pict3d
                     pict3d/universe))
 
 (provide (all-defined-out)
